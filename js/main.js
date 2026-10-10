@@ -8,6 +8,7 @@ import { createPlayerState, addItem, removeItem, recalcMaxHp } from './playerSta
 import { RECIPES, canCraft, ITEMS } from './items.js';
 import { gather, attackMonster, equip, SELL_PRICES, SHOP_STOCK } from './gameplay.js';
 import { createInventoryUI } from './inventoryUI.js';
+import { saveToLocal, loadFromLocal, exportSave, importSave } from './save.js';
 
 const scene = createScene();
 const camera = createCamera();
@@ -23,7 +24,6 @@ player.mesh = playerMesh.mesh; // link for distance checks
 const { log } = setupUI();
 const keys = setupInput(renderer, camera, ground, playerMesh, log);
 
-// Craft panel
 const craftPanel = document.createElement('div');
 craftPanel.id = 'craftPanel';
 craftPanel.style.cssText = 'position:absolute;bottom:60px;right:10px;background:rgba(0,0,0,0.7);color:#fff;padding:8px;border-radius:6px;font-size:11px;max-width:220px;max-height:180px;overflow:auto;pointer-events:auto;';
@@ -132,5 +132,49 @@ window.addEventListener('resize', () => {
 });
 
 updatePanels();
+
+// Load existing save
+if (loadFromLocal(skills, player, playerMesh)) {
+  log('Save loaded.');
+  updatePanels();
+}
+
+// Auto-save every 15 seconds
+setInterval(() => {
+  saveToLocal(skills, player, playerMesh);
+}, 15000);
+
+// Save buttons
+const saveBar = document.createElement('div');
+saveBar.style.cssText = 'position:absolute;top:10px;left:10px;display:flex;gap:4px;pointer-events:auto;z-index:10;';
+saveBar.innerHTML = `
+  <button id="saveBtn" style="padding:6px 10px;font-size:11px;">Save</button>
+  <button id="exportBtn" style="padding:6px 10px;font-size:11px;">Export</button>
+  <button id="importBtn" style="padding:6px 10px;font-size:11px;">Import</button>
+`;
+document.body.appendChild(saveBar);
+
+document.getElementById('saveBtn').onclick = () => {
+  if (saveToLocal(skills, player, playerMesh)) log('Game saved.');
+};
+document.getElementById('exportBtn').onclick = () => {
+  exportSave(skills, player, playerMesh);
+  log('Save exported.');
+};
+document.getElementById('importBtn').onclick = () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = () => {
+    if (input.files[0]) {
+      importSave(input.files[0], skills, player, playerMesh, (ok) => {
+        if (ok) { log('Save imported.'); updatePanels(); }
+        else log('Import failed.');
+      });
+    }
+  };
+  input.click();
+};
+
 log('Tap ground to walk. Interact near trees, rocks, fish, monsters, or the Merchant.');
 animate();

@@ -54,31 +54,56 @@ export function createPlayer(scene) {
   return {
     mesh: playerGroup,
     position: playerGroup.position,
-    speed: 0.1,
+    velocity: new THREE.Vector3(),
+    maxSpeed: 0.12,
+    accel: 0.008,
+    friction: 0.92,
     target: null
   };
 }
 
 export function updatePlayer(player, keys) {
-  const { mesh, speed } = player;
+  const { mesh, velocity, maxSpeed, accel, friction } = player;
 
-  // Keyboard movement
-  if (keys['w'] || keys['arrowup']) mesh.position.z -= speed;
-  if (keys['s'] || keys['arrowdown']) mesh.position.z += speed;
-  if (keys['a'] || keys['arrowleft']) mesh.position.x -= speed;
-  if (keys['d'] || keys['arrowright']) mesh.position.x += speed;
+  // Desired direction
+  const desired = new THREE.Vector3();
+  if (keys['w'] || keys['arrowup']) desired.z -= 1;
+  if (keys['s'] || keys['arrowdown']) desired.z += 1;
+  if (keys['a'] || keys['arrowleft']) desired.x -= 1;
+  if (keys['d'] || keys['arrowright']) desired.x += 1;
 
-  // Click-to-move
+  // Click-to-move overrides
   if (player.target) {
     const dx = player.target.x - mesh.position.x;
     const dz = player.target.z - mesh.position.z;
     const dist = Math.hypot(dx, dz);
-    if (dist > 0.2) {
-      mesh.position.x += (dx / dist) * speed;
-      mesh.position.z += (dz / dist) * speed;
-      mesh.lookAt(player.target.x, 0, player.target.z);
+    if (dist > 0.15) {
+      desired.x = dx / dist;
+      desired.z = dz / dist;
     } else {
       player.target = null;
     }
   }
+
+  if (desired.length() > 0) {
+    desired.normalize();
+    velocity.x += desired.x * accel;
+    velocity.z += desired.z * accel;
+    // Face movement direction
+    mesh.lookAt(mesh.position.x + desired.x, 0, mesh.position.z + desired.z);
+  }
+
+  // Clamp speed
+  const speed = Math.hypot(velocity.x, velocity.z);
+  if (speed > maxSpeed) {
+    velocity.x = (velocity.x / speed) * maxSpeed;
+    velocity.z = (velocity.z / speed) * maxSpeed;
+  }
+
+  // Apply friction
+  velocity.multiplyScalar(friction);
+
+  // Move
+  mesh.position.x += velocity.x;
+  mesh.position.z += velocity.z;
 }

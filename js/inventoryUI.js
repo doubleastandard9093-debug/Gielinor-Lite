@@ -44,7 +44,7 @@ export function createInventoryUI(player, skills, onEquip, onLog) {
     let html = `
       <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
         <strong>Inventory</strong>
-        <span>HP ${player.hp}/${player.maxHp} | ${player.gold}gp</span>
+        <span>HP ${player.hp}/${player.maxHp} | MP ${player.mana || 0}/${player.maxMana || 100} | ${player.gold}gp</span>
       </div>
       <div style="font-size:11px; color:#aaa; margin-bottom:4px;">
         Eq: ${player.equipment.weapon || '—'} / ${player.equipment.shield || '—'} / ${player.equipment.body || '—'}

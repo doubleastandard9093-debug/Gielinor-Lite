@@ -1,7 +1,9 @@
 export function createPlayerState() {
   return {
-    hp: 10,
-    maxHp: 10,
+    hp: 100,
+    maxHp: 100,
+    mana: 10,
+    maxMana: 100,
     gold: 0,
     inventory: {},
     equipment: { weapon: null, body: null, legs: null, shield: null },
@@ -18,7 +20,8 @@ export function createPlayerState() {
       Crafting: { quickCraft: false, masterwork: false, enchant: false },
       Cooking: { betterHeal: false, noBurn: false, bulkCook: false },
       Fletching: { quickFletch: false, masterFletcher: false, specialAmmo: false }
-    }
+    },
+    bank: {}
   };
 }
 

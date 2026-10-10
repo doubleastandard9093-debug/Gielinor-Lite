@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+
 export function setupUI() {
   const logEl = document.getElementById('log');
   const interactBtn = document.getElementById('interactBtn');
@@ -21,12 +23,12 @@ export function setupUI() {
 }
 
 export function updateCamera(camera, player) {
-  // RS2-style elevated follow camera
-  const offsetX = 0;
-  const offsetY = 16;
-  const offsetZ = 12;
-  camera.position.x = player.mesh.position.x + offsetX;
-  camera.position.y = player.mesh.position.y + offsetY;
-  camera.position.z = player.mesh.position.z + offsetZ;
+  // Smooth RS2-style follow camera
+  const targetPos = new THREE.Vector3(
+    player.mesh.position.x,
+    player.mesh.position.y + 16,
+    player.mesh.position.z + 12
+  );
+  camera.position.lerp(targetPos, 0.08);
   camera.lookAt(player.mesh.position.x, 1, player.mesh.position.z);
 }
