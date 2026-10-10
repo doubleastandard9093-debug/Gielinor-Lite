@@ -35,7 +35,9 @@ export function gather(node, skills, player, onLog) {
 export const SELL_PRICES = {
   'Copper ore': 3, 'Tin ore': 3, 'Iron ore': 10, 'Logs': 2,
   'Raw shrimp': 5, 'Raw trout': 12, 'Cooked shrimp': 4, 'Cooked trout': 10,
-  'Bronze sword': 15, 'Wooden shield': 10, 'Bronze shield': 20
+  'Bronze sword': 15, 'Wooden shield': 10, 'Bronze shield': 20,
+  'Bones': 2, 'Cowhide': 6, 'Raw beef': 3, 'Cooked meat': 4, 'Feather': 1,
+  'Coal': 12, 'Iron bar': 25, 'Iron sword': 35
 };
 
 export const SHOP_STOCK = [
@@ -70,6 +72,43 @@ export function equip(player, skills, item, onLog) {
   onLog(`Equipped ${item}.`);
 }
 
+// Loot tables: each entry rolls separately. chance is 0-1, qty is [min, max].
+export const LOOT_TABLES = {
+  Goblin: [
+    { item: 'Bones', chance: 1 },
+    { item: 'Copper ore', chance: 0.25 },
+    { item: 'Tin ore', chance: 0.25 },
+    { item: 'Raw shrimp', chance: 0.2 },
+    { item: 'Bronze sword', chance: 0.06 }
+  ],
+  Cow: [
+    { item: 'Bones', chance: 1 },
+    { item: 'Cowhide', chance: 1 },
+    { item: 'Raw beef', chance: 1 }
+  ],
+  Guard: [
+    { item: 'Bones', chance: 1 },
+    { item: 'Iron ore', chance: 0.35, qty: [1, 2] },
+    { item: 'Coal', chance: 0.25 },
+    { item: 'Iron bar', chance: 0.12 },
+    { item: 'Iron sword', chance: 0.04 },
+    { item: 'Bronze shield', chance: 0.08 }
+  ]
+};
+
+function rollLoot(mon) {
+  const drops = [];
+  for (const d of LOOT_TABLES[mon.name] || [{ item: 'Bones', chance: 1 }]) {
+    if (Math.random() < d.chance) {
+      const [lo, hi] = d.qty || [1, 1];
+      drops.push({ item: d.item, qty: lo + Math.floor(Math.random() * (hi - lo + 1)) });
+    }
+  }
+  return drops;
+}
+
+const lvlUp = onLog => (s, l) => onLog(`${s} advanced to level ${l}!`);
+
 export function attackMonster(mon, skills, player, onLog) {
   if (!mon.alive) return;
   const dist = Math.hypot(mon.mesh.position.x - player.mesh.position.x, mon.mesh.position.z - player.mesh.position.z);
@@ -81,14 +120,30 @@ export function attackMonster(mon, skills, player, onLog) {
     dmg = ITEMS[weapon].atk + Math.floor(skills.Strength.level / 2);
     if (player.skillTrees.Attack.powerStrike) dmg += 2;
   }
+  dmg = Math.min(dmg, mon.hp);
   mon.hp -= dmg;
   onLog(`You hit the ${mon.name} for ${dmg}.`);
 
+  // Combat XP for every point of damage dealt
+  addXP(skills, 'Attack', dmg * 2, lvlUp(onLog));
+  addXP(skills, 'Strength', dmg * 2, lvlUp(onLog));
+  addXP(skills, 'Hitpoints', Math.ceil(dmg * 1.33), lvlUp(onLog));
+
   if (mon.hp <= 0) {
-    addXP(skills, 'Attack', mon.xp, (s, l) => onLog(`${s} advanced to level ${l}!`));
-    addXP(skills, 'Hitpoints', mon.xp);
-    player.gold += 5 + mon.level * 2;
-    onLog(`You defeat the ${mon.name}! +${5 + mon.level * 2} gold`);
+    // Kill bonus XP
+    addXP(skills, 'Attack', mon.xp, lvlUp(onLog));
+    addXP(skills, 'Strength', Math.ceil(mon.xp / 2), lvlUp(onLog));
+    addXP(skills, 'Hitpoints', Math.ceil(mon.xp / 2), lvlUp(onLog));
+    const gold = 5 + mon.level * 2;
+    player.gold += gold;
+
+    const drops = rollLoot(mon);
+    for (const d of drops) addItem(player, d.item, d.qty);
+    const lootText = drops.map(d => d.qty > 1 ? `${d.qty} ${d.item}` : d.item).join(', ');
+    onLog(`You defeat the ${mon.name}! +${gold} gold, +${mon.xp} XP.`);
+    if (lootText) onLog(`Loot: ${lootText}.`);
+    if (drops.some(d => /sword|shield/i.test(d.item))) onLog('Rare drop!');
+
     mon.alive = false;
     mon.mesh.visible = false;
     setTimeout(() => { mon.hp = mon.maxHp; mon.alive = true; mon.mesh.visible = true; }, 12000);
@@ -96,6 +151,8 @@ export function attackMonster(mon, skills, player, onLog) {
     const mDmg = Math.max(0, mon.atk - Math.floor(skills.Defence.level / 4));
     player.hp -= mDmg;
     onLog(`The ${mon.name} hits you for ${mDmg}.`);
+    // Defence XP for taking hits
+    if (mDmg > 0) addXP(skills, 'Defence', mDmg * 2, lvlUp(onLog));
     if (player.hp <= 0) {
       player.hp = Math.floor(player.maxHp / 2);
       onLog('You were defeated and respawn with half health.');

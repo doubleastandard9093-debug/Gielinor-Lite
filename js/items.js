@@ -11,6 +11,9 @@ export const ITEMS = {
   'Raw salmon': { type: 'resource' },
   'Flax': { type: 'resource' },
   'Cowhide': { type: 'resource' },
+  'Bones': { type: 'resource' },
+  'Raw beef': { type: 'resource' },
+  'Feather': { type: 'resource' },
   'Bronze bar': { type: 'processed' },
   'Iron bar': { type: 'processed' },
   'Steel bar': { type: 'processed' },
@@ -19,6 +22,7 @@ export const ITEMS = {
   'Cooked shrimp': { type: 'food', heal: 3 },
   'Cooked trout': { type: 'food', heal: 7 },
   'Cooked salmon': { type: 'food', heal: 9 },
+  'Cooked meat': { type: 'food', heal: 4 },
   'Bronze sword': { type: 'weapon', atk: 5, str: 3, req: { Attack: 1 } },
   'Iron sword': { type: 'weapon', atk: 9, str: 6, req: { Attack: 10 } },
   'Steel sword': { type: 'weapon', atk: 14, str: 10, req: { Attack: 20 } },
@@ -53,6 +57,7 @@ export const RECIPES = [
   { name: 'Fletch Iron arrows', skill: 'Fletching', level: 15, inputs: { 'Iron bar': 1, 'Oak logs': 1 }, output: 'Iron arrows', xp: 15 },
   { name: 'Cook shrimp', skill: 'Cooking', level: 1, inputs: { 'Raw shrimp': 1 }, output: 'Cooked shrimp', xp: 30 },
   { name: 'Cook trout', skill: 'Cooking', level: 15, inputs: { 'Raw trout': 1 }, output: 'Cooked trout', xp: 70 },
+  { name: 'Cook beef', skill: 'Cooking', level: 1, inputs: { 'Raw beef': 1 }, output: 'Cooked meat', xp: 30 },
   { name: 'Cook salmon', skill: 'Cooking', level: 25, inputs: { 'Raw salmon': 1 }, output: 'Cooked salmon', xp: 90 }
 ];
 
