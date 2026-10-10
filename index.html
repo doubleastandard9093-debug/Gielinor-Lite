@@ -23,4 +23,798 @@
 <meta name="twitter:image" content="og.jpg">
 <meta property="x:game:image" content="x-banner.jpg">
 <style>
-body { margin: 0; background: #1a1a1a; color: #fff; font-family: 'Segoe UI', Arial, sans-serif; overflow
+body { margin: 0; background: #1a1a1a; color: #fff; font-family: 'Segoe UI', Arial, sans-serif; overflow: hidden; }
+#gameContainer { display: flex; height: 100vh; }
+#canvasWrap { flex: 1; position: relative; background: #000; min-height: 300px; }
+canvas { display: block; touch-action: none; background: #1a3a1a; }
+#ui { width: 320px; background: #2a2a2a; border-left: 2px solid #555; padding: 8px; overflow-y: auto; box-sizing: border-box; }
+@media (max-width: 700px) {
+  #gameContainer { flex-direction: column; }
+  #ui { width: 100%; height: 40vh; border-left: none; border-top: 2px solid #555; }
+  #canvasWrap { height: 60vh; }
+}
+h2 { margin: 8px 0; font-size: 16px; color: #ffd700; border-bottom: 1px solid #555; }
+.panel { margin-bottom: 12px; background: #333; padding: 8px; border-radius: 4px; }
+.skill { display: flex; justify-content: space-between; font-size: 13px; margin: 2px 0; }
+.skill .bar { height: 6px; background: #444; margin-top: 2px; border-radius: 3px; }
+.skill .bar > div { height: 100%; background: #4caf50; border-radius: 3px; }
+#inventory { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.item { background: #444; padding: 4px; font-size: 11px; text-align: center; border-radius: 3px; cursor: pointer; }
+.item:hover { background: #555; }
+#log { height: 120px; overflow-y: auto; font-size: 12px; background: #222; padding: 6px; border-radius: 4px; }
+#log div { margin: 2px 0; }
+button { background: #555; color: #fff; border: none; padding: 6px 10px; margin: 2px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+button:hover { background: #666; }
+#controls { font-size: 12px; color: #aaa; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <div id="canvasWrap">
+    <canvas id="gameCanvas"></canvas>
+  </div>
+  <div id="ui">
+    <h2>Gielinor Lite</h2>
+    <div class="panel">
+      <strong>Player</strong><br>
+      HP: <span id="hp">10/10</span><br>
+      <div class="skill"><span>Combat Lvl</span><span id="combatLvl">3</span></div>
+    </div>
+    <h2>Skills</h2>
+    <div id="skills" class="panel"></div>
+    <h2>Equipment</h2>
+    <div id="equipment" class="panel"></div>
+    <h2>Inventory</h2>
+    <div id="inventory" class="panel"></div>
+    <h2>Crafting / Actions</h2>
+    <div id="crafting" class="panel"></div>
+    <h2>Log</h2>
+    <div id="log"></div>
+    <div id="controls">
+      <strong>Controls:</strong><br>
+      Tap map to walk there<br>
+      Tap Interact button or Space when next to something<br>
+      Click items to equip or use<br>
+      Auto-saves every 10s
+    </div>
+    <div style="margin-top:10px;">
+      <button id="interactBtn" style="width:100%; padding:12px; font-size:16px; background:#6a5;">Interact / Attack</button>
+    </div>
+    <div style="margin-top:8px; display:grid; grid-template-columns:1fr 1fr; gap:4px;">
+      <button id="saveBtn" style="padding:10px;">Save</button>
+      <button id="loadBtn" style="padding:10px;">Load</button>
+      <button id="exportBtn" style="padding:10px;">Export Save</button>
+      <button id="importBtn" style="padding:10px;">Import Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const TILE = 32;
+const MAP_W = 48;
+const MAP_H = 36;
+let cameraX = 0, cameraY = 0;
+
+// Skills
+const SKILLS = ['Attack','Strength','Defence','Hitpoints','Ranged','Mining','Woodcutting','Fishing','Smithing','Crafting','Cooking','Fletching'];
+let skills = {};
+SKILLS.forEach(s => skills[s] = { level: 1, xp: 0 });
+skills.Hitpoints.level = 10;
+skills.Hitpoints.xp = 1154; // approx start
+
+function xpForLevel(level) {
+  // Simplified RS-like: cumulative roughly doubles every ~7 levels
+  if (level <= 1) return 0;
+  let xp = 0;
+  for (let l = 1; l < level; l++) {
+    xp += Math.floor(l * 50 + Math.pow(l, 1.6) * 2);
+  }
+  return xp;
+}
+function getLevel(xp) {
+  let level = 1;
+  while (level < 99 && xp >= xpForLevel(level + 1)) level++;
+  return level;
+}
+function addXP(skill, amount) {
+  skills[skill].xp += amount;
+  const newLvl = getLevel(skills[skill].xp);
+  if (newLvl > skills[skill].level) {
+    skills[skill].level = newLvl;
+    log(`${skill} advanced to level ${newLvl}!`);
+    updateUI();
+  }
+  updateUI();
+}
+
+// Player
+const player = {
+  x: 24, y: 18,
+  hp: 10, maxHp: 10,
+  inventory: {}, // item: count
+  equipment: { weapon: null, body: null, legs: null, shield: null },
+  moving: false
+};
+function recalcMaxHp() {
+  player.maxHp = skills.Hitpoints.level * 10;
+  if (player.hp > player.maxHp) player.hp = player.maxHp;
+}
+
+// Items and recipes
+const ITEMS = {
+  // Resources
+  'Copper ore': { type: 'resource' },
+  'Tin ore': { type: 'resource' },
+  'Iron ore': { type: 'resource' },
+  'Coal': { type: 'resource' },
+  'Logs': { type: 'resource' },
+  'Oak logs': { type: 'resource' },
+  'Willow logs': { type: 'resource' },
+  'Raw shrimp': { type: 'resource' },
+  'Raw trout': { type: 'resource' },
+  'Raw salmon': { type: 'resource' },
+  'Flax': { type: 'resource' },
+  'Cowhide': { type: 'resource' },
+  // Processed
+  'Bronze bar': { type: 'processed' },
+  'Iron bar': { type: 'processed' },
+  'Steel bar': { type: 'processed' },
+  'Bowstring': { type: 'processed' },
+  'Soft leather': { type: 'processed' },
+  // Food
+  'Cooked shrimp': { type: 'food', heal: 3 },
+  'Cooked trout': { type: 'food', heal: 7 },
+  'Cooked salmon': { type: 'food', heal: 9 },
+  // Gear
+  'Bronze sword': { type: 'weapon', atk: 5, str: 3, req: { Attack: 1 } },
+  'Iron sword': { type: 'weapon', atk: 9, str: 6, req: { Attack: 10 } },
+  'Steel sword': { type: 'weapon', atk: 14, str: 10, req: { Attack: 20 } },
+  'Wooden shield': { type: 'shield', def: 4, req: { Defence: 1 } },
+  'Bronze shield': { type: 'shield', def: 7, req: { Defence: 1 } },
+  'Bronze platebody': { type: 'body', def: 8, req: { Defence: 1 } },
+  'Iron platebody': { type: 'body', def: 14, req: { Defence: 10 } },
+  'Leather body': { type: 'body', def: 6, req: { Defence: 1 } },
+  'Shortbow': { type: 'weapon', ranged: 8, req: { Ranged: 1 } },
+  'Oak shortbow': { type: 'weapon', ranged: 14, req: { Ranged: 15 } },
+  'Bronze arrows': { type: 'ammo', count: 15 },
+  'Iron arrows': { type: 'ammo', count: 15 }
+};
+
+const RECIPES = [
+  // Smithing
+  { name: 'Smelt Bronze bar', skill: 'Smithing', level: 1, inputs: { 'Copper ore': 1, 'Tin ore': 1 }, output: 'Bronze bar', xp: 6 },
+  { name: 'Smelt Iron bar', skill: 'Smithing', level: 15, inputs: { 'Iron ore': 1 }, output: 'Iron bar', xp: 12 },
+  { name: 'Smelt Steel bar', skill: 'Smithing', level: 30, inputs: { 'Iron ore': 1, 'Coal': 2 }, output: 'Steel bar', xp: 17 },
+  { name: 'Smith Bronze sword', skill: 'Smithing', level: 1, inputs: { 'Bronze bar': 1 }, output: 'Bronze sword', xp: 12 },
+  { name: 'Smith Iron sword', skill: 'Smithing', level: 15, inputs: { 'Iron bar': 1 }, output: 'Iron sword', xp: 25 },
+  { name: 'Smith Steel sword', skill: 'Smithing', level: 30, inputs: { 'Steel bar': 1 }, output: 'Steel sword', xp: 37 },
+  { name: 'Smith Bronze shield', skill: 'Smithing', level: 5, inputs: { 'Bronze bar': 1 }, output: 'Bronze shield', xp: 15 },
+  { name: 'Smith Bronze platebody', skill: 'Smithing', level: 18, inputs: { 'Bronze bar': 5 }, output: 'Bronze platebody', xp: 62 },
+  { name: 'Smith Iron platebody', skill: 'Smithing', level: 33, inputs: { 'Iron bar': 5 }, output: 'Iron platebody', xp: 125 },
+  // Crafting
+  { name: 'Craft Wooden shield', skill: 'Crafting', level: 1, inputs: { 'Logs': 2 }, output: 'Wooden shield', xp: 10 },
+  { name: 'Spin Flax', skill: 'Crafting', level: 1, inputs: { 'Flax': 1 }, output: 'Bowstring', xp: 15 },
+  { name: 'Tan Cowhide', skill: 'Crafting', level: 1, inputs: { 'Cowhide': 1 }, output: 'Soft leather', xp: 20 },
+  { name: 'Craft Leather body', skill: 'Crafting', level: 14, inputs: { 'Soft leather': 3 }, output: 'Leather body', xp: 25 },
+  // Fletching
+  { name: 'Fletch Shortbow', skill: 'Fletching', level: 5, inputs: { 'Logs': 1, 'Bowstring': 1 }, output: 'Shortbow', xp: 5 },
+  { name: 'Fletch Oak shortbow', skill: 'Fletching', level: 20, inputs: { 'Oak logs': 1, 'Bowstring': 1 }, output: 'Oak shortbow', xp: 16 },
+  { name: 'Fletch Bronze arrows', skill: 'Fletching', level: 1, inputs: { 'Bronze bar': 1, 'Logs': 1 }, output: 'Bronze arrows', xp: 10 },
+  { name: 'Fletch Iron arrows', skill: 'Fletching', level: 15, inputs: { 'Iron bar': 1, 'Oak logs': 1 }, output: 'Iron arrows', xp: 15 },
+  // Cooking
+  { name: 'Cook shrimp', skill: 'Cooking', level: 1, inputs: { 'Raw shrimp': 1 }, output: 'Cooked shrimp', xp: 30 },
+  { name: 'Cook trout', skill: 'Cooking', level: 15, inputs: { 'Raw trout': 1 }, output: 'Cooked trout', xp: 70 },
+  { name: 'Cook salmon', skill: 'Cooking', level: 25, inputs: { 'Raw salmon': 1 }, output: 'Cooked salmon', xp: 90 }
+];
+
+// Map tiles: 0=grass, 1=tree, 2=rock, 3=water, 4=fish spot, 5=monster area marker
+let map = [];
+let nodes = []; // {x,y,type,hp,maxHp,respawn}
+let monsters = []; // {x,y,name,hp,maxHp,atk,def,xp,level,respawn}
+
+function generateWorld() {
+  map = Array.from({length: MAP_H}, () => Array(MAP_W).fill(0));
+  nodes = [];
+  monsters = [];
+
+  // Trees (normal, oak, willow)
+  for (let i = 0; i < 50; i++) {
+    const x = Math.floor(Math.random() * MAP_W);
+    const y = Math.floor(Math.random() * MAP_H);
+    if (map[y][x] === 0) {
+      map[y][x] = 1;
+      const roll = Math.random();
+      const treeType = roll < 0.6 ? 'normal' : (roll < 0.85 ? 'oak' : 'willow');
+      nodes.push({ x, y, type: 'tree', treeType, hp: 1, maxHp: 1, respawn: 0 });
+    }
+  }
+
+  // Rocks (copper, tin, iron, coal)
+  for (let i = 0; i < 35; i++) {
+    const x = Math.floor(Math.random() * MAP_W);
+    const y = Math.floor(Math.random() * MAP_H);
+    if (map[y][x] === 0) {
+      map[y][x] = 2;
+      const roll = Math.random();
+      const ore = roll < 0.4 ? 'Copper' : (roll < 0.7 ? 'Tin' : (roll < 0.9 ? 'Iron' : 'Coal'));
+      nodes.push({ x, y, type: 'rock', ore, hp: 1, maxHp: 1, respawn: 0 });
+    }
+  }
+
+  // Flax patches
+  for (let i = 0; i < 12; i++) {
+    const x = Math.floor(Math.random() * MAP_W);
+    const y = Math.floor(Math.random() * MAP_H);
+    if (map[y][x] === 0) {
+      nodes.push({ x, y, type: 'flax', hp: 1, maxHp: 1, respawn: 0 });
+    }
+  }
+
+  // Water + fish spots
+  for (let i = 0; i < 8; i++) {
+    const cx = Math.floor(Math.random() * (MAP_W - 6)) + 3;
+    const cy = Math.floor(Math.random() * (MAP_H - 6)) + 3;
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        if (dx*dx + dy*dy < 4 && cy+dy >= 0 && cy+dy < MAP_H && cx+dx >= 0 && cx+dx < MAP_W)
+          map[cy+dy][cx+dx] = 3;
+      }
+    }
+    const fishRoll = Math.random();
+    const fish = fishRoll < 0.5 ? 'shrimp' : (fishRoll < 0.8 ? 'trout' : 'salmon');
+    nodes.push({ x: cx, y: cy, type: 'fish', fish, hp: 1, maxHp: 1, respawn: 0 });
+  }
+
+  // Monsters
+  const monsterTypes = [
+    { name: 'Goblin', level: 2, hp: 15, atk: 2, def: 1, xp: 10 },
+    { name: 'Cow', level: 2, hp: 20, atk: 1, def: 2, xp: 8, drop: 'Cowhide' },
+    { name: 'Guard', level: 8, hp: 40, atk: 6, def: 5, xp: 25 },
+    { name: 'Hill Giant', level: 15, hp: 70, atk: 10, def: 8, xp: 45 }
+  ];
+  for (let i = 0; i < 14; i++) {
+    const m = monsterTypes[Math.floor(Math.random() * monsterTypes.length)];
+    const x = Math.floor(Math.random() * MAP_W);
+    const y = Math.floor(Math.random() * MAP_H);
+    if (map[y][x] === 0) {
+      monsters.push({ ...m, x, y, hp: m.hp, maxHp: m.hp, respawn: 0 });
+    }
+  }
+}
+generateWorld();
+
+// Input
+const keys = {};
+let targetX = null, targetY = null;
+let path = [];
+
+document.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  if (e.key === ' ') { e.preventDefault(); interact(); }
+});
+document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+document.getElementById('interactBtn').addEventListener('click', interact);
+
+function getTileFromEvent(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  let clientX, clientY;
+  if (e.touches && e.touches.length) {
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
+  } else {
+    clientX = e.clientX;
+    clientY = e.clientY;
+  }
+  const x = (clientX - rect.left) * scaleX;
+  const y = (clientY - rect.top) * scaleY;
+  const tileX = Math.floor(cameraX + x / TILE);
+  const tileY = Math.floor(cameraY + y / TILE);
+  return { tileX, tileY };
+}
+
+function setTarget(tileX, tileY) {
+  if (tileX < 0 || tileX >= MAP_W || tileY < 0 || tileY >= MAP_H) return;
+  if (map[tileY][tileX] === 3) return; // can't walk on water
+  targetX = tileX;
+  targetY = tileY;
+  // Simple path: just set destination; we'll step greedily
+}
+
+canvas.addEventListener('click', e => {
+  const { tileX, tileY } = getTileFromEvent(e);
+  // If clicked near an interactive and close, interact instead
+  const mon = monsters.find(m => m.x === tileX && m.y === tileY && m.hp > 0);
+  const node = nodes.find(n => n.x === tileX && n.y === tileY && n.hp > 0);
+  if ((mon || node) && Math.abs(tileX - player.x) <= 1 && Math.abs(tileY - player.y) <= 1) {
+    interact();
+  } else {
+    setTarget(tileX, tileY);
+  }
+});
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const { tileX, tileY } = getTileFromEvent(e);
+  const mon = monsters.find(m => m.x === tileX && m.y === tileY && m.hp > 0);
+  const node = nodes.find(n => n.x === tileX && n.y === tileY && n.hp > 0);
+  if ((mon || node) && Math.abs(tileX - player.x) <= 1 && Math.abs(tileY - player.y) <= 1) {
+    interact();
+  } else {
+    setTarget(tileX, tileY);
+  }
+}, { passive: false });
+
+let lastMove = 0;
+function tryMove(dx, dy) {
+  const now = Date.now();
+  if (now - lastMove < 160) return false;
+  const nx = player.x + dx;
+  const ny = player.y + dy;
+  if (nx < 0 || nx >= MAP_W || ny < 0 || ny >= MAP_H) return false;
+  if (map[ny][nx] === 3) return false; // water
+  const mon = monsters.find(m => m.x === nx && m.y === ny && m.hp > 0);
+  if (mon) { attackMonster(mon); return true; }
+  player.x = nx;
+  player.y = ny;
+  lastMove = now;
+  return true;
+}
+
+function stepTowardsTarget() {
+  if (targetX === null || targetY === null) return;
+  if (player.x === targetX && player.y === targetY) {
+    targetX = null; targetY = null;
+    return;
+  }
+  const dx = Math.sign(targetX - player.x);
+  const dy = Math.sign(targetY - player.y);
+  // Prefer cardinal moves; try primary direction first
+  if (dx !== 0 && tryMove(dx, 0)) return;
+  if (dy !== 0 && tryMove(0, dy)) return;
+  // If blocked, clear target
+  targetX = null; targetY = null;
+}
+
+function gameLoop() {
+  // Keyboard movement (overrides target)
+  if (keys['w'] || keys['arrowup']) { targetX = null; targetY = null; tryMove(0, -1); }
+  else if (keys['s'] || keys['arrowdown']) { targetX = null; targetY = null; tryMove(0, 1); }
+  else if (keys['a'] || keys['arrowleft']) { targetX = null; targetY = null; tryMove(-1, 0); }
+  else if (keys['d'] || keys['arrowright']) { targetX = null; targetY = null; tryMove(1, 0); }
+  else {
+    stepTowardsTarget();
+  }
+
+  // Respawn logic
+  nodes.forEach(n => { if (n.respawn > 0) n.respawn--; if (n.respawn === 0 && n.hp <= 0) n.hp = n.maxHp; });
+  monsters.forEach(m => { if (m.respawn > 0) m.respawn--; if (m.respawn === 0 && m.hp <= 0) m.hp = m.maxHp; });
+
+  // Camera
+  const vw = canvas.width / TILE;
+  const vh = canvas.height / TILE;
+  cameraX = Math.max(0, Math.min(MAP_W - vw, player.x - vw/2));
+  cameraY = Math.max(0, Math.min(MAP_H - vh, player.y - vh/2));
+
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const startX = Math.floor(cameraX);
+  const startY = Math.floor(cameraY);
+  const endX = Math.ceil(cameraX + canvas.width / TILE);
+  const endY = Math.ceil(cameraY + canvas.height / TILE);
+
+  for (let y = startY; y < endY && y < MAP_H; y++) {
+    for (let x = startX; x < endX && x < MAP_W; x++) {
+      const sx = (x - cameraX) * TILE;
+      const sy = (y - cameraY) * TILE;
+      const t = map[y][x];
+      if (t === 0) ctx.fillStyle = '#3a5f3a';
+      else if (t === 1) ctx.fillStyle = '#1a3a1a';
+      else if (t === 2) ctx.fillStyle = '#555';
+      else if (t === 3) ctx.fillStyle = '#1a4a7a';
+      else ctx.fillStyle = '#3a5f3a';
+      ctx.fillRect(sx, sy, TILE, TILE);
+      // Node indicator
+      const node = nodes.find(n => n.x === x && n.y === y && n.hp > 0);
+      if (node) {
+        if (node.type === 'tree') { ctx.fillStyle = '#0a2a0a'; ctx.fillRect(sx+8, sy+4, 16, 24); }
+        else if (node.type === 'rock') { ctx.fillStyle = '#777'; ctx.fillRect(sx+6, sy+10, 20, 14); }
+        else if (node.type === 'fish') { ctx.fillStyle = '#88c'; ctx.beginPath(); ctx.arc(sx+16, sy+16, 6, 0, Math.PI*2); ctx.fill(); }
+      }
+    }
+  }
+  // Monsters
+  monsters.forEach(m => {
+    if (m.hp <= 0) return;
+    const sx = (m.x - cameraX) * TILE;
+    const sy = (m.y - cameraY) * TILE;
+    ctx.fillStyle = '#c44';
+    ctx.beginPath();
+    ctx.arc(sx + 16, sy + 16, 10, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '9px sans-serif';
+    ctx.fillText(m.name, sx, sy - 2);
+    // HP bar
+    ctx.fillStyle = '#000';
+    ctx.fillRect(sx+4, sy+24, 24, 4);
+    ctx.fillStyle = '#0f0';
+    ctx.fillRect(sx+4, sy+24, 24 * (m.hp / m.maxHp), 4);
+  });
+  // Player
+  const psx = (player.x - cameraX) * TILE;
+  const psy = (player.y - cameraY) * TILE;
+  ctx.fillStyle = '#ffd700';
+  ctx.beginPath();
+  ctx.arc(psx + 16, psy + 16, 9, 0, Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Player HP bar
+  ctx.fillStyle = '#000';
+  ctx.fillRect(psx+4, psy-6, 24, 4);
+  ctx.fillStyle = '#0f0';
+  ctx.fillRect(psx+4, psy-6, 24 * (player.hp / player.maxHp), 4);
+
+  // Target marker
+  if (targetX !== null && targetY !== null) {
+    const tsx = (targetX - cameraX) * TILE;
+    const tsy = (targetY - cameraY) * TILE;
+    ctx.strokeStyle = '#ff0';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(tsx + 4, tsy + 4, TILE - 8, TILE - 8);
+    ctx.beginPath();
+    ctx.moveTo(tsx + 8, tsy + TILE/2);
+    ctx.lineTo(tsx + TILE - 8, tsy + TILE/2);
+    ctx.moveTo(tsx + TILE/2, tsy + 8);
+    ctx.lineTo(tsx + TILE/2, tsy + TILE - 8);
+    ctx.stroke();
+  }
+}
+
+function interact() {
+  // Nearest node or monster within 1 tile
+  const nearbyNodes = nodes.filter(n => Math.abs(n.x - player.x) <= 1 && Math.abs(n.y - player.y) <= 1 && n.hp > 0);
+  const nearbyMons = monsters.filter(m => Math.abs(m.x - player.x) <= 1 && Math.abs(m.y - player.y) <= 1 && m.hp > 0);
+  if (nearbyMons.length) {
+    attackMonster(nearbyMons[0]);
+    return;
+  }
+  if (nearbyNodes.length) {
+    const n = nearbyNodes[0];
+    gather(n);
+  }
+}
+
+function gather(node) {
+  if (node.type === 'tree') {
+    const t = node.treeType || 'normal';
+    if (t === 'normal') {
+      addXP('Woodcutting', 25);
+      addItem('Logs', 1);
+      log('You chop some logs.');
+    } else if (t === 'oak') {
+      if (skills.Woodcutting.level < 15) { log('You need Woodcutting 15 for oak.'); return; }
+      addXP('Woodcutting', 37);
+      addItem('Oak logs', 1);
+      log('You chop some oak logs.');
+    } else if (t === 'willow') {
+      if (skills.Woodcutting.level < 30) { log('You need Woodcutting 30 for willow.'); return; }
+      addXP('Woodcutting', 67);
+      addItem('Willow logs', 1);
+      log('You chop some willow logs.');
+    }
+    node.hp = 0;
+    node.respawn = 180;
+  } else if (node.type === 'rock') {
+    const ore = node.ore;
+    let xp = 17, req = 1;
+    if (ore === 'Iron') { xp = 35; req = 15; }
+    if (ore === 'Coal') { xp = 50; req = 30; }
+    if (skills.Mining.level < req) { log(`You need Mining ${req} for ${ore}.`); return; }
+    addXP('Mining', xp);
+    addItem(ore === 'Coal' ? 'Coal' : ore + ' ore', 1);
+    log(`You mine some ${ore.toLowerCase()}.`);
+    node.hp = 0;
+    node.respawn = 120;
+  } else if (node.type === 'fish') {
+    const f = node.fish;
+    let xp = 20, req = 1;
+    if (f === 'trout') { xp = 50; req = 20; }
+    if (f === 'salmon') { xp = 70; req = 30; }
+    if (skills.Fishing.level < req) { log(`You need Fishing ${req} for ${f}.`); return; }
+    addXP('Fishing', xp);
+    addItem('Raw ' + f, 1);
+    log(`You catch a ${f}.`);
+    node.hp = 0;
+    node.respawn = 90;
+  } else if (node.type === 'flax') {
+    addXP('Crafting', 10);
+    addItem('Flax', 1);
+    log('You pick some flax.');
+    node.hp = 0;
+    node.respawn = 60;
+  }
+}
+
+function attackMonster(mon) {
+  // Player damage based on style
+  let dmg = 1;
+  const weapon = player.equipment.weapon;
+  if (weapon && ITEMS[weapon] && ITEMS[weapon].atk) {
+    dmg = ITEMS[weapon].atk + Math.floor(skills.Strength.level / 2);
+    addXP('Attack', 4);
+    addXP('Strength', 4);
+  } else if (weapon && ITEMS[weapon] && ITEMS[weapon].ranged) {
+    dmg = ITEMS[weapon].ranged + Math.floor(skills.Ranged.level / 2);
+    addXP('Ranged', 4);
+  } else {
+    dmg = 1 + Math.floor(skills.Strength.level / 3);
+    addXP('Attack', 4);
+    addXP('Strength', 2);
+  }
+  mon.hp -= dmg;
+  log(`You hit the ${mon.name} for ${dmg} damage.`);
+  if (mon.hp <= 0) {
+    addXP('Hitpoints', mon.xp);
+    addXP('Attack', mon.xp);
+    log(`You defeat the ${mon.name}!`);
+    if (mon.drop) {
+      addItem(mon.drop, 1);
+      log(`You receive a ${mon.drop}.`);
+    }
+    mon.respawn = 300;
+  } else {
+    // Monster counterattack
+    const mDmg = Math.max(0, mon.atk - Math.floor(skills.Defence.level / 4) - (player.equipment.body ? (ITEMS[player.equipment.body]?.def || 0) : 0));
+    player.hp -= mDmg;
+    log(`The ${mon.name} hits you for ${mDmg}.`);
+    if (player.hp <= 0) {
+      player.hp = Math.floor(player.maxHp / 2);
+      log('You were defeated and respawn with half health.');
+    }
+  }
+  updateUI();
+}
+
+function addItem(item, qty = 1) {
+  player.inventory[item] = (player.inventory[item] || 0) + qty;
+  updateUI();
+}
+function removeItem(item, qty = 1) {
+  if (!player.inventory[item] || player.inventory[item] < qty) return false;
+  player.inventory[item] -= qty;
+  if (player.inventory[item] <= 0) delete player.inventory[item];
+  updateUI();
+  return true;
+}
+
+function canCraft(recipe) {
+  if (skills[recipe.skill].level < recipe.level) return false;
+  for (const [item, qty] of Object.entries(recipe.inputs)) {
+    if ((player.inventory[item] || 0) < qty) return false;
+  }
+  return true;
+}
+function craft(recipe) {
+  if (!canCraft(recipe)) return;
+  for (const [item, qty] of Object.entries(recipe.inputs)) removeItem(item, qty);
+  addItem(recipe.output, 1);
+  addXP(recipe.skill, recipe.xp);
+  log(`You craft a ${recipe.output}.`);
+}
+
+function equip(item) {
+  const info = ITEMS[item];
+  if (!info || !['weapon','body','legs','shield'].includes(info.type)) {
+    if (info && info.type === 'food') {
+      if (removeItem(item, 1)) {
+        player.hp = Math.min(player.maxHp, player.hp + info.heal);
+        log(`You eat ${item} and heal ${info.heal} HP.`);
+        updateUI();
+      }
+    }
+    return;
+  }
+  if (info.req) {
+    for (const [sk, lvl] of Object.entries(info.req)) {
+      if (skills[sk].level < lvl) {
+        log(`You need ${sk} level ${lvl} to equip that.`);
+        return;
+      }
+    }
+  }
+  const slot = info.type === 'weapon' ? 'weapon' : info.type === 'shield' ? 'shield' : info.type;
+  if (player.equipment[slot]) addItem(player.equipment[slot], 1);
+  player.equipment[slot] = item;
+  removeItem(item, 1);
+  log(`You equip the ${item}.`);
+  updateUI();
+}
+
+function updateUI() {
+  // Skills
+  const skillsDiv = document.getElementById('skills');
+  skillsDiv.innerHTML = SKILLS.map(s => {
+    const lvl = skills[s].level;
+    const next = xpForLevel(lvl + 1);
+    const prev = xpForLevel(lvl);
+    const prog = next > prev ? ((skills[s].xp - prev) / (next - prev) * 100) : 100;
+    return `<div class="skill"><span>${s}</span><span>${lvl}</span></div><div class="skill bar"><div style="width:${Math.min(100,prog)}%"></div></div>`;
+  }).join('');
+  // Inventory
+  const inv = document.getElementById('inventory');
+  inv.innerHTML = Object.entries(player.inventory).map(([item, qty]) =>
+    `<div class="item" onclick="equip('${item}')">${item}<br>x${qty}</div>`
+  ).join('') || '<div>Empty</div>';
+  // Equipment
+  document.getElementById('equipment').innerHTML = `
+    Weapon: ${player.equipment.weapon || 'None'}<br>
+    Shield: ${player.equipment.shield || 'None'}<br>
+    Body: ${player.equipment.body || 'None'}<br>
+    Legs: ${player.equipment.legs || 'None'}
+  `;
+  // Crafting buttons
+  const craftDiv = document.getElementById('crafting');
+  craftDiv.innerHTML = RECIPES.map(r =>
+    `<button ${canCraft(r) ? '' : 'disabled'} onclick='craft(${JSON.stringify(r)})'>${r.name}</button>`
+  ).join(' ') || 'Gather materials first';
+  // HP
+  document.getElementById('hp').textContent = `${player.hp}/${player.maxHp}`;
+  const cb = Math.floor((skills.Attack.level + skills.Strength.level + skills.Defence.level + skills.Hitpoints.level + skills.Ranged.level) / 4);
+  document.getElementById('combatLvl').textContent = cb;
+  recalcMaxHp();
+}
+
+function log(msg) {
+  const logDiv = document.getElementById('log');
+  const d = document.createElement('div');
+  d.textContent = msg;
+  logDiv.appendChild(d);
+  logDiv.scrollTop = logDiv.scrollHeight;
+  while (logDiv.children.length > 20) logDiv.removeChild(logDiv.firstChild);
+}
+
+// Save/Load system
+function getSaveData() {
+  return JSON.stringify({
+    version: 1,
+    skills,
+    player,
+    map,
+    nodes,
+    monsters,
+    timestamp: Date.now()
+  });
+}
+
+function applySaveData(data) {
+  try {
+    const saved = typeof data === 'string' ? JSON.parse(data) : data;
+    if (saved.skills) Object.assign(skills, saved.skills);
+    if (saved.player) Object.assign(player, saved.player);
+    if (saved.map) map = saved.map;
+    if (saved.nodes) nodes = saved.nodes;
+    if (saved.monsters) monsters = saved.monsters;
+    recalcMaxHp();
+    updateUI();
+    return true;
+  } catch(e) {
+    log('Failed to load save data.');
+    return false;
+  }
+}
+
+function save() {
+  try {
+    localStorage.setItem('gielinorLite', getSaveData());
+    log('Game saved.');
+  } catch(e) {
+    log('Save failed (storage full or blocked).');
+  }
+}
+
+function load() {
+  try {
+    const data = localStorage.getItem('gielinorLite');
+    if (data && applySaveData(data)) {
+      log('Game loaded.');
+    } else if (!data) {
+      log('No save found.');
+    }
+  } catch(e) {
+    log('Load failed.');
+  }
+}
+
+function exportSave() {
+  const data = getSaveData();
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'gielinor-lite-save.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  log('Save exported as gielinor-lite-save.json');
+}
+
+function importSave() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (applySaveData(ev.target.result)) {
+        localStorage.setItem('gielinorLite', ev.target.result);
+        log('Save imported and applied.');
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+document.getElementById('saveBtn').addEventListener('click', save);
+document.getElementById('loadBtn').addEventListener('click', load);
+document.getElementById('exportBtn').addEventListener('click', exportSave);
+document.getElementById('importBtn').addEventListener('click', importSave);
+
+setInterval(save, 10000);
+
+// Resize - more reliable on mobile
+function resize() {
+  const isMobile = window.innerWidth < 700;
+  const canvasWrap = document.getElementById('canvasWrap');
+  if (isMobile) {
+    canvas.width = window.innerWidth;
+    canvas.height = Math.floor(window.innerHeight * 0.55);
+    if (canvasWrap) canvasWrap.style.height = canvas.height + 'px';
+  } else {
+    canvas.width = Math.max(320, window.innerWidth - 320);
+    canvas.height = window.innerHeight;
+  }
+  if (canvas.width < 100 || canvas.height < 100) {
+    canvas.width = window.innerWidth;
+    canvas.height = Math.floor(window.innerHeight * 0.6);
+  }
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 200));
+setTimeout(resize, 100);
+setTimeout(resize, 500);
+resize();
+load();
+updateUI();
+// Give a tiny starting kit so the loop is easy to enter
+if (!localStorage.getItem('gielinorLite')) {
+  addItem('Bronze sword', 1);
+  addItem('Cooked shrimp', 5);
+  log('You start with a bronze sword and some food.');
+}
+log('Tap trees, rocks, water, or flax to gather. Fight monsters for combat XP.');
+log('Craft better gear in the Crafting panel, then equip it from Inventory.');
+log('Start with woodcutting or mining â everything scales from there.');
+
+// Catch errors so the game doesn't silently fail
+window.onerror = function(msg, url, line) {
+  log('Error: ' + msg);
+  return false;
+};
+
+gameLoop();
+</script>
+</body>
+</html>
