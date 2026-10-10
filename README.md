@@ -24,10 +24,10 @@ The game saves itself every 15 seconds and whenever you leave the app. Old saves
 ## Side panel tabs
 
 - **Combat:** attack style, combat skills with their unlock levels, auto retaliate, run.
-- **Skills:** tap a skill for XP to next level and its perks (a passive bonus at levels 10, 20 … 90 and 99).
-- **Quests:** red = not started, yellow = in progress, green = complete. Tap a quest for its journal and rewards.
+- **Skills:** tap a skill for XP to next level, your running total of perk bonuses, and its full perk list (✔ unlocked, 🔒 locked, ★ milestone).
+- **Quests:** red = not started, yellow = in progress, green = complete. Tap a quest for its journal, rewards and lasting bonus. **Quest bonuses** at the bottom lists every bonus you've earned plus the quest-point milestones.
 - **Inventory:** 28 slots. Identical items stack in one slot. Tap to eat/wield/bury; hold for Bury all, Drop, Drop all, Light (logs), Make all, Examine.
-- **Worn equipment:** head, weapon, body, shield, legs, ammo, plus the **toolbelt** (axe, pickaxe, net, rod, lobster pot, harpoon, hammer, knife, needle, tinderbox). Tools on the belt don't use inventory space; the belt always uses the best tool your level allows.
+- **Worn equipment:** head, cape, neck, ammo, weapon, body, shield, legs and ring, with attack / defence / other bonus totals, extras, your armour set status and your hit chance against a Black Knight, plus the **toolbelt** (axe, pickaxe, net, rod, lobster pot, harpoon, hammer, knife, needle, tinderbox). Tools on the belt don't use inventory space; the belt always uses the best tool your level allows.
 - **Prayer:** tap prayers on/off. They drain prayer points; recharge at the church altar.
 - **Crafting:** sub-tabs for Smithing (bars at the furnace, gear at the anvil, bronze → rune), Crafting (leather, spinning, shields), Fletching (bows and arrows) and Cooking (range or a fire). Tap 1 or All; you'll walk to the nearest furnace, anvil or range if needed.
 - **Settings:** Save / Export / Import, What's new, D-pad, shadows, auto retaliate, run, auto-pickup loot, reset camera.
@@ -35,10 +35,33 @@ The game saves itself every 15 seconds and whenever you leave the app. Old saves
 ## Systems
 
 - **Toolbelt tiers:** bronze, iron, steel, mithril, adamant, rune axes and pickaxes. Each tier gathers 5% more often. Get them from Bob's Tool Shop, smithing or monster drops. New and old characters get bronze starter tools.
-- **Perks:** every skill has 10 milestone perks, e.g. faster gathering and double resources (Mining, Woodcutting, Fishing), bar saving (Smithing), material saving (Crafting, Fletching), less burnt food (Cooking), +max hit and critical hits (Strength), accuracy and faster recharge (Attack), damage reduction (Defence), faster regen (Hitpoints), arrow saving (Ranged), slower prayer drain and bonus bury XP (Prayer).
+- **Perks:** every skill unlocks a perk every 5 levels (5 … 95) and at 99, 20 per skill. The small ones stack (+1% gathering, +1 max hit, +2% less burning, +0.5% damage reduction and so on). The ★ milestones at 25, 50, 75 and 99 change how the skill plays:
+  - Mining / Woodcutting: Rich Vein / Chain Chop (15% chance the rock or tree isn't used up), Ore Cart / Forester's Cart (5% of resources go straight to the bank), Motherlode / Heartwood (+8% double), Mastery.
+  - Fishing: Barbarian Grip (+5% XP), Fish Barrel (auto-bank), Double Haul, Mastery.
+  - Smithing / Crafting / Fletching / Cooking: make items a tick faster, chance of a free extra item (Double Cook, Double Smelt, Twin Bows, Masterwork), more saving, Arrowsmith (+3 arrows), Gourmet (food heals more), Cooking 99 never burns.
+  - Attack: Riposte (counter-attack when a monster misses), Battle Focus (faster combat-skill recharge), Swift Strikes (some swings come a tick early).
+  - Strength: Critical Strikes, Executioner (+25% vs targets under 25% HP), Brutal (bigger crits).
+  - Defence: Parry (block a hit completely), Iron Skin, Retribution (reflect 10% of damage).
+  - Hitpoints: Bloodlust (heal on kill), Second Wind (double regen below 30% HP), Iron Constitution (+20 max HP).
+  - Ranged: Arrow Retrieval, Double Shot (free second arrow), Deadeye (ranged crits).
+  - Prayer: Faithful (prayer points regenerate), Blessed Burial (bones restore prayer points), Zealot (slower drain).
+  Total damage reduction from perks, quests and sets is capped at 30%.
+- **Equipment bonuses:** RS-style melee attack, ranged attack, strength, ranged strength, melee defence, ranged defence and prayer. Metal armour is strong in melee and a bit weaker vs arrows (body and legs slightly hurt your aim); leather is good vs arrows and helps ranged. Accuracy rolls your attack level and attack bonus against the monster's defence; your defence bonus (ranged defence vs Dark Archers) against its attack. Prayer bonus makes prayers last longer (each point ≈ 3.3%).
+- **Jewellery and capes:** amulets of accuracy, strength, defence, Holy symbol and Amulet of glory; Warrior, Archer, Miner's, Forester's, Angler's rings and Ring of regeneration; red and blue capes. Sold at the General Store, dropped by monsters (Guards, Hill Giants, Black Knights, Dark Archers) or given by quests. **Skill capes** (General Store, 99 in the skill) boost that skill's perks by 10%. The **Quest point cape** is for completing every quest.
+- **Armour sets:** a full matched helm, body, legs and shield of one metal gives a set bonus (2% → 7% less damage by tier, +3% melee accuracy). Full leather (cowl, body or hard body, chaps) gives +5% ranged accuracy and 2% less damage.
 - **Combat skills:** Power Strike (Str 5), Fortify (Def 5), Puncture (Att 10), Rapid Volley (Rng 10), Shield Bash (Def 20), Berserk (Str 30), Snipe (Rng 30), Rejuvenate (Def 40).
 - **Prayer:** bury bones (10 XP) or big bones (30 XP). Prayers: Thick Skin, Burst of Strength, Clarity of Thought, Sharp Eye, Rock Skin, Superhuman Strength, Improved Reflexes, Hawk Eye, Rapid Heal, Provident Hands (chance to keep materials), Steel Skin, Ultimate Strength, Incredible Reflexes, Eagle Eye, Nature's Bounty (gathering), Protect from Melee (40% less damage; needs Rest for the Fallen).
-- **Quests (6 quest points):** Cook's Assistant (Cook), Rest for the Fallen (Father Elric), Doric's Quest (Doric), Goblin Trouble (Captain Rhea), Farmer's Hides (Farmer Gil).
+- **Quests (9 quests, 11 quest points),** each with a lasting bonus:
+  - Cook's Assistant (Cook): +5% Cooking XP, 5% less burning
+  - Rest for the Fallen (Father Elric): prayers drain 5% slower, slow prayer point regen
+  - Doric's Quest (Doric): +5% Mining and Smithing XP
+  - Goblin Trouble (Captain Rhea, 2 QP): +10% damage vs goblins and hill giants, +20 max HP
+  - Farmer's Hides (Farmer Gil): +5% Crafting XP, 5% off in shops
+  - Tools of the Trade (Bob): +3% success when mining, woodcutting and fishing
+  - Supply Run (Merchant): shops pay 10% more, +5% Fletching XP
+  - Archers in the Woods (Ranger Wyn): +2 ranged max hit, +10% damage vs dark archers
+  - Knight's Honour (Sir Vyvin, 2 QP): 3% less damage, +30 max HP, +10% damage vs black knights
+  - Quest-point milestones: 3 QP faster run regen, 6 QP +2% all XP, 9 QP +20 max HP, 11 QP (all quests) Quest point cape and +3% all XP.
 - **Death:** you keep every item and wake up in town with full hitpoints.
 
 ## Map
@@ -47,5 +70,6 @@ The game saves itself every 15 seconds and whenever you leave the app. Old saves
 - **Goblins** to the north-east, **cows** in the fenced field to the north-west
 - **Lake** with net, lure, cage and harpoon spots and willow trees to the south-west
 - **Mine** (copper, tin, iron, coal, mithril, adamantite) to the south-east, **oaks** far north-east, **maples** east, **yews** west
-- **Hill Giants**, **Black Knights**, magic trees and a runite rock in the northern hills
+- **Hill Giants**, **Black Knights**, magic trees and a runite rock in the northern hills; Sir Vyvin on the north road
+- **Dark Archers** (level 25, shoot from range) west of the lake past the yews; Ranger Wyn on the west edge of town
 - **Guards** (level 21) at the tower to the south

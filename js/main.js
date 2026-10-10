@@ -7,17 +7,17 @@ import { setupInput } from './input.js';
 import { setupUI } from './ui.js';
 import { createOverlays } from './overlays.js';
 import { createMinimap } from './minimap.js';
-import { createSkills, addXP, combatLevel, SKILL_ICONS, perk, perksBetween, maxPrayer } from './skills.js';
+import { createSkills, addXP, combatLevel, SKILL_ICONS, perk, perksBetween, maxPrayer, setPerkBoost } from './skills.js';
 import { createPlayerState, addItem, removeItem, recalcMaxHp, roomFor, canAdd } from './playerState.js';
 import { RECIPES, ITEMS, canCraft, hasInputs, recipeOutputQty, examineItem, isRangedWeapon, slotFor, isTool, toolType, TOOL_TYPES, WOODS } from './items.js';
 import {
   TICK_MS, gatherTick, gatherInfo, TREES, ROCKS, FISH_SPOTS, rollPlayerHit, rollMonsterHit, combatXp, rollLoot, RARE_DROPS,
   attackSpeedTicks, attackRange, equip, unequip, eat, sellPrice, bestTool, addTool, ownsToolType, toolName,
-  burnChance, saveChance, makeXp, buryXp, reduceIncoming
+  burnChance, saveChance, makeXp, buryXp, reduceIncoming, xpMultiplier, makeTicks, doubleMakeChance, buyPrice, capeBoosts, regenBonus
 } from './gameplay.js';
-import { PRAYERS, prayerById, togglePrayer, drainTick, prayerFx, rechargePrayer } from './prayer.js';
+import { PRAYERS, prayerById, togglePrayer, drainTick, prayerFx, rechargePrayer, ppRegenPerTick } from './prayer.js';
 import { ABILITIES, abilityById, unlocked as abilityUnlocked, cooldownTicks } from './abilities.js';
-import { QUESTS, questForNpc, questStatus, isDone, onKill, onBury, onPray, NPC_INFO, questPoints } from './quests.js';
+import { QUESTS, questForNpc, questStatus, isDone, onKill, onBury, onPray, NPC_INFO, questPoints, questFx } from './quests.js';
 import { createInventoryUI } from './inventoryUI.js';
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from './save.js';
 
@@ -64,8 +64,13 @@ let queuedAt = 0;
 const buffs = { fortifyUntil: 0, rageUntil: 0 };
 const fires = [];
 
+// Max HP = Hitpoints level + Iron Constitution perk + quest bonuses.
+function refreshMaxHp() {
+  recalcMaxHp(player, skills, perk(skills, 'Hitpoints', 'maxHp') + questFx(player, 'maxHp'));
+}
 function giveXP(skill, amount) {
   if (amount <= 0) return;
+  amount *= xpMultiplier(player, skill); // quest + gear XP bonuses
   addXP(skills, skill, amount, (s, l, old) => {
     const perks = perksBetween(s, old, l);
     ui.levelUp(s, SKILL_ICONS[s], l, perks);
@@ -73,7 +78,7 @@ function giveXP(skill, amount) {
     for (const p of perks) log(`New ${s} perk unlocked: ${p.name} (${p.desc}).`, 'skill');
     for (const a of ABILITIES) if (a.skill === s && a.level > old && a.level <= l) log(`New combat skill unlocked: ${a.name}. It's on your quick bar.`, 'skill');
     for (const pr of PRAYERS) if (s === 'Prayer' && pr.level > old && pr.level <= l) log(`You can now use the prayer ${pr.name}.`, 'skill');
-    if (s === 'Hitpoints') { const oldMax = player.maxHp; recalcMaxHp(player, skills); player.hp += player.maxHp - oldMax; }
+    if (s === 'Hitpoints') { const oldMax = player.maxHp; refreshMaxHp(); player.hp += player.maxHp - oldMax; }
     if (s === 'Prayer') player.prayerPoints = Math.min(maxPrayer(skills), (player.prayerPoints || 0) + (l - old) * 10);
   });
   ui.xpDrop(skill, SKILL_ICONS[skill], amount);
@@ -148,6 +153,8 @@ const invUI = createInventoryUI({
 });
 
 function afterEquip() {
+  setPerkBoost(skills, capeBoosts(player)); // skill capes boost their skill's perks
+  refreshMaxHp();
   applyEquipmentLook(pm, player.equipment);
   markDirty();
 }
@@ -197,7 +204,7 @@ function itemMenu(item, x, y, mode) {
   if (mode === 'bank') {
     for (const q of [1, 5, 10, 'All']) opts.push({ action: `Deposit-${q}`, target: item, color: c, fn: () => deposit(item, q) });
   } else if (mode === 'shop') {
-    opts.push({ action: 'Value', target: item, color: c, fn: () => log(`${item}: shop will buy for ${sellPrice(item)} coins.`, 'game') });
+    opts.push({ action: 'Value', target: item, color: c, fn: () => log(`${item}: shop will buy for ${sellPrice(item, player)} coins.`, 'game') });
     for (const q of [1, 5, 'All']) opts.push({ action: `Sell ${q}`, target: item, color: c, fn: () => sell(item, q) });
   } else {
     const have = player.inventory[item] || 0;
@@ -293,7 +300,7 @@ function sell(item, q) {
   const n = qtyOf(player.inventory[item] || 0, q);
   if (!n) return;
   removeItem(player, item, n);
-  const gp = sellPrice(item) * n;
+  const gp = sellPrice(item, player) * n;
   player.gold += gp;
   log(`You sell ${n > 1 ? n + ' x ' : ''}${item} for ${gp} coins.`, 'game');
   markDirty();
@@ -610,9 +617,12 @@ function doGatherTick(a) {
   if (!a.started) { a.started = true; const info = gatherInfo(node); if (info && !r?.error) log(SKILL_VERB[info.skill].replace('your axe', 'your ' + (bestTool(player, skills, 'axe') || 'axe').toLowerCase()).replace('your pick', 'your ' + (bestTool(player, skills, 'pickaxe') || 'pickaxe').toLowerCase()), 'skill'); }
   if (!r) return;
   if (r.error) { log(r.error, 'warn'); stopAction(); return; }
-  addItem(player, r.item, r.qty || 1);
+  if (r.bank) player.bank[r.item] = (player.bank[r.item] || 0) + (r.qty || 1);
+  else addItem(player, r.item, r.qty || 1);
   giveXP(r.skill, r.xp);
-  log((GOT(r.item) || (node.type === 'rock' ? `You manage to mine some ${r.item.replace(' ore', '').toLowerCase()}.` : `You catch some ${r.item.replace('Raw ', '').toLowerCase()}.`)) + (r.qty > 1 ? ' Your perk doubles it!' : ''), 'skill');
+  log((GOT(r.item) || (node.type === 'rock' ? `You manage to mine some ${r.item.replace(' ore', '').toLowerCase()}.` : `You catch some ${r.item.replace('Raw ', '').toLowerCase()}.`)) +
+    (r.qty > 1 ? ' Your perk doubles it!' : '') + (r.bank ? ' It is sent straight to your bank.' : ''), 'skill');
+  if (r.kept) log(node.type === 'tree' ? 'Chain Chop: the tree stays standing!' : 'Rich Vein: the rock still has ore!', 'skill');
   if (r.depleted) {
     depleteNode(node, node.type === 'tree' ? TREES[node.kind].respawn : ROCKS[node.ore].respawn);
     stopAction();
@@ -662,10 +672,12 @@ function craftOne() {
   if (!st.tool) { log(`You need ${toolName(r.tool)} on your toolbelt.`, 'warn'); stopAction(); return; }
   if (!st.inputs) { if (!a.made) log(`You don't have the materials for that.`, 'warn'); else log(`You run out of materials.`, 'game'); stopAction(); return; }
   if (a.station && (!a.station.alive || (a.station.isFire && !fires.includes(a.station)))) { log('The fire has gone out.', 'warn'); stopAction(); return; }
-  const burnt = Math.random() < burnChance(r, skills);
+  const burnt = Math.random() < burnChance(r, skills, player);
   const output = burnt ? 'Burnt food' : r.output;
   let outQty = burnt ? 1 : recipeOutputQty(r);
   if (!burnt && ITEMS[r.output].type === 'ammo') outQty += perk(skills, 'Fletching', 'extraArrows');
+  const extra = !burnt && Math.random() < doubleMakeChance(r, skills);
+  if (extra) outQty += recipeOutputQty(r);
   const saved = !burnt && Math.random() < saveChance(r, skills, player);
   if (!saved) for (const [item, qty] of Object.entries(r.inputs)) removeItem(player, item, qty);
   if (!canAdd(player, output)) {
@@ -677,11 +689,11 @@ function craftOne() {
   if (burnt) log(`You accidentally burn the ${r.output.replace('Cooked ', '').toLowerCase()}.`, 'warn');
   else {
     giveXP(r.skill, makeXp(r, skills));
-    log(`You make ${outQty > 1 ? outQty + ' ' : ''}${output}.${saved ? ' You manage to save your materials!' : ''}`, 'skill');
+    log(`You make ${outQty > 1 ? outQty + ' ' : ''}${output}.${saved ? ' You manage to save your materials!' : ''}${extra ? ' Your perk makes a free extra one!' : ''}`, 'skill');
   }
   pm.actionAnim = 1; pm.actionKind = 'tool';
   a.left--;
-  a.wait = 2;
+  a.wait = makeTicks(r, skills) - 1;
   if (a.left <= 0) stopAction();
   else if (!hasInputs(player.inventory, r)) { if (a.left !== Infinity || a.made > 1) log(`You have run out of materials.`, 'game'); stopAction(); }
   markDirty();
@@ -701,6 +713,8 @@ function buryOne() {
   pm.actionAnim = 1; pm.actionKind = 'tool';
   log(`You dig a hole in the ground... You bury the ${a.item.toLowerCase()}.`, 'skill');
   giveXP('Prayer', buryXp(a.item, skills));
+  const restore = perk(skills, 'Prayer', 'buryRestore');
+  if (restore) player.prayerPoints = Math.min(maxPrayer(skills), (player.prayerPoints || 0) + restore);
   for (const m of onBury(player)) log(m, 'game');
   a.left--;
   a.wait = 1;
@@ -743,7 +757,7 @@ function removeFire(f) {
 }
 
 // ---- Talking ----
-const NPC_FACE = { cook: '👨‍🍳', priest: '🧔', doric: '🧔‍♂️', captain: '💂‍♀️', farmer: '👨‍🌾', bob: '👷', merchant: '🧑‍💼' };
+const NPC_FACE = { cook: '👨‍🍳', priest: '🧔', doric: '🧔‍♂️', captain: '💂‍♀️', farmer: '👨‍🌾', bob: '👷', merchant: '🧑‍💼', ranger: '🧝', knight: '🤺' };
 const questHelpers = {
   has: (item, n) => (player.inventory[item] || 0) >= n,
   take: (item, n) => { removeItem(player, item, n); markDirty(); },
@@ -752,9 +766,14 @@ const questHelpers = {
   gold: n => { player.gold += n; markDirty(); },
   tool: item => { if (!addTool(player, item)) giveItem(item, 1); else log(`The ${item} goes on your toolbelt.`, 'game'); },
   log: t => log(t, 'game'),
-  questComplete(qd) {
+  questComplete(qd, milestones = []) {
     log(`Congratulations! Quest complete: ${qd.name}. You gain ${qd.points} quest point${qd.points > 1 ? 's' : ''}.`, 'skill');
-    ui.banner(`<div class="lu-icon">📜</div><div><b>Quest complete!</b><br>${qd.name}<br><small>${qd.rewards.join(' · ')}</small></div>`);
+    log(`Lasting quest bonus: ${qd.bonus.desc}.`, 'skill');
+    for (const m of milestones) log(`Quest point milestone (${m.qp} QP): ${m.desc}.`, 'skill');
+    if (isDone(player, 'all')) log('You have completed every quest! The Quest point cape is yours.', 'skill');
+    refreshMaxHp();
+    ui.banner(`<div class="lu-icon">📜</div><div><b>Quest complete!</b><br>${qd.name}<br><small>${qd.rewards.join(' · ')}</small>` +
+      `<div class="lu-perk">★ Lasting bonus: ${qd.bonus.desc}</div>` + milestones.map(m => `<div class="lu-perk">★ ${m.qp} QP: ${m.desc}</div>`).join('') + '</div>');
     updateQuestMarks();
     markDirty();
   }
@@ -764,8 +783,11 @@ function talkTo(ent) {
   const face = NPC_FACE[ent.npc] || (ent.type === 'shop' ? NPC_FACE.merchant : '🙂');
   const qd = questForNpc(ent.npc);
   let script;
-  if (qd) script = qd.talk(player, questHelpers);
-  else if (ent.npc === 'bob') script = [
+  if (qd) {
+    script = qd.talk(player, questHelpers);
+    // Shopkeepers with quests still offer to trade afterwards.
+    if (ent.npc === 'bob' || ent.npc === 'merchant') script = [...script, { choose: [["Let's trade.", [{ run: () => invUI.open(ent.npc === 'bob' ? 'tools' : 'shop') }]], ['Goodbye.', []]] }];
+  } else if (ent.npc === 'bob') script = [
     ['npc', "Welcome to Bob's Brilliant Tools! Axes, pickaxes, fishing gear: it all goes straight on your toolbelt."],
     { choose: [['Let\'s trade.', [{ run: () => { invUI.open('tools'); } }]], ['Just looking.', [['npc', 'Better tools gather faster. Come back any time!']]]] }
   ];
@@ -784,6 +806,11 @@ const arrowMesh = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.6), new THR
 arrowMesh.visible = false;
 scene.add(arrowMesh);
 let arrowFlight = null;
+// Dark archers shoot back.
+const enemyArrowMesh = new THREE.Mesh(arrowMesh.geometry, new THREE.MeshBasicMaterial({ color: 0x1a1a1a }));
+enemyArrowMesh.visible = false;
+scene.add(enemyArrowMesh);
+let enemyArrow = null;
 
 function distTo(ent) {
   return Math.hypot(ent.mesh.position.x - pm.mesh.position.x, ent.mesh.position.z - pm.mesh.position.z);
@@ -844,6 +871,10 @@ function playerAttack(mon, now) {
   else if (special === 'snipe') swings.push({ acc: base.acc + 0.3, dmg: base.dmg + 1.0 });
   else if (special === 'volley') { swings.push({ ...base, acc: base.acc - 0.15 }); for (let i = 0; i < 2; i++) if (useArrow()) swings.push({ ...base, acc: base.acc - 0.15 }); }
   else swings.push(base);
+  // Double Shot perk: a free second arrow now and then.
+  if (ranged && !special && Math.random() < perk(skills, 'Ranged', 'doubleShot')) { swings.push(base); log('Double Shot!', 'combat'); }
+  // Swift Strikes perk: sometimes your next melee swing comes a tick early.
+  if (!ranged && Math.random() < perk(skills, 'Attack', 'quick')) nextPlayerAttack = Math.max(tick + 1, nextPlayerAttack - 1);
   if (special) log(`${abilityById(special).name}!`, 'combat');
   let dmg = 0;
   swings.forEach((mods, i) => {
@@ -870,6 +901,12 @@ function killMonster(mon, now) {
   mon.state = 'dead';
   mon.respawnAt = 0;
   log(`You have defeated the ${mon.name}.`, 'combat');
+  const kh = perk(skills, 'Hitpoints', 'killHeal');
+  if (kh && player.hp > 0 && player.hp < player.maxHp) {
+    const heal = Math.max(1, Math.round(player.maxHp * kh));
+    player.hp = Math.min(player.maxHp, player.hp + heal);
+    log(`Bloodlust: you heal ${heal} hitpoints.`, 'combat');
+  }
   for (const m of onKill(player, mon.name)) log(m, 'game');
   if (action && action.mon === mon) stopAction();
   const drops = rollLoot(mon.name);
@@ -883,8 +920,30 @@ function killMonster(mon, now) {
   }
 }
 
+// A free hit from a perk (Riposte counter-attack). Gives normal combat XP.
+function bonusHit(mon, now, label) {
+  if (!mon.alive || mon.hp <= 0) return;
+  const d = rollPlayerHit(player, skills, mon);
+  mon.hp -= d;
+  overlays.splat(mon, d, now + 120);
+  for (const [s, v] of Object.entries(combatXp(player, d))) giveXP(s, v);
+  if (d > 0) log(`${label}!`, 'combat');
+  if (mon.hp <= 0) killMonster(mon, now);
+}
 function monsterAttack(mon, now) {
-  const dmg = reduceIncoming(rollMonsterHit(mon, player, skills), player, skills, { fortify: tick < buffs.fortifyUntil, rage: tick < buffs.rageUntil });
+  const raw = rollMonsterHit(mon, player, skills);
+  if (mon.ranged) enemyArrow = { from: mon.mesh.position.clone().setY(1.3), t: 0 };
+  let dmg = reduceIncoming(raw, player, skills, { fortify: tick < buffs.fortifyUntil, rage: tick < buffs.rageUntil });
+  if (dmg > 0 && Math.random() < perk(skills, 'Defence', 'block')) { dmg = 0; log('Parry: you block the attack!', 'combat'); }
+  // Retribution: reflect some damage back.
+  const refl = dmg > 0 ? Math.floor(dmg * perk(skills, 'Defence', 'reflect')) : 0;
+  if (refl > 0 && mon.alive) {
+    mon.hp -= Math.min(refl, mon.hp); overlays.splat(mon, refl, now + 150);
+    if (mon.hp <= 0) { killMonster(mon, now); }
+  }
+  // Riposte: counter when a melee monster misses and you're fighting it up close.
+  if (raw === 0 && !mon.ranged && mon.alive && !isRangedWeapon(player.equipment.weapon) && action && action.kind === 'attack' && action.mon === mon &&
+      Math.random() < perk(skills, 'Attack', 'counter')) bonusHit(mon, now, 'Riposte');
   player.hp = Math.max(0, player.hp - dmg);
   playerEnt.lastHitAt = now;
   overlays.splat(playerEnt, dmg, now);
@@ -904,7 +963,7 @@ function playerDied() {
   pm.target = null;
   pm.mesh.position.set(SPAWN.x + 1, 0, SPAWN.z + 1);
   rig.fx = pm.mesh.position.x; rig.fz = pm.mesh.position.z;
-  recalcMaxHp(player, skills);
+  refreshMaxHp();
   player.hp = player.maxHp;
   player.runEnergy = 100;
   player.activePrayers = [];
@@ -923,7 +982,9 @@ function gameTick(now) {
   tick++;
   // Hitpoint regen (faster with Hitpoints perks and Rapid Heal) and run energy
   if (player.hp < player.maxHp && player.hp > 0) {
-    player.regenAcc = (player.regenAcc || 0) + (1 + perk(skills, 'Hitpoints', 'regen') + prayerFx(player, 'regen')) / 6;
+    let rate = 1 + perk(skills, 'Hitpoints', 'regen') + prayerFx(player, 'regen') + regenBonus(player);
+    if (player.hp < player.maxHp * 0.3) rate *= 1 + perk(skills, 'Hitpoints', 'lowRegen'); // Second Wind
+    player.regenAcc = (player.regenAcc || 0) + rate / 6;
     while (player.regenAcc >= 1) { player.regenAcc--; player.hp = Math.min(player.maxHp, player.hp + 1); markDirty(); }
   }
   // Prayer drain
@@ -931,9 +992,16 @@ function gameTick(now) {
     if (drainTick(player, skills)) log('You have run out of prayer points. Recharge them at an altar.', 'warn');
     if (tick % 3 === 0 || !player.activePrayers.length) markDirty();
   }
+  // Faithful perk / Rest for the Fallen: slow prayer point regen.
+  const ppr = ppRegenPerTick(player, skills), ppMax = maxPrayer(skills);
+  if (ppr > 0 && player.prayerPoints < ppMax) {
+    const before = Math.floor(player.prayerPoints);
+    player.prayerPoints = Math.min(ppMax, player.prayerPoints + ppr);
+    if (Math.floor(player.prayerPoints) !== before) markDirty();
+  }
   if (queuedAbility && tick - queuedAt > 12) queuedAbility = null;
   for (let i = fires.length - 1; i >= 0; i--) if (now > fires[i].expires) { removeFire(fires[i]); }
-  if (!(player.settings.run && pm.moving)) player.runEnergy = Math.min(100, player.runEnergy + 0.45);
+  if (!(player.settings.run && pm.moving)) player.runEnergy = Math.min(100, player.runEnergy + 0.45 * (1 + questFx(player, 'runRegen')));
 
   // Respawns
   for (const n of nodes) if (!n.alive && n.respawnAt && now >= n.respawnAt) respawnNode(n);
@@ -951,7 +1019,7 @@ function gameTick(now) {
     const d = distTo(m);
     const leash = Math.hypot(m.mesh.position.x - m.spawnX, m.mesh.position.z - m.spawnZ);
     if (d > 13 || leash > 16) { m.state = 'return'; continue; }
-    if (d <= 1.7 + (m.radius - 0.7) && tick >= m.nextAttackTick && !(m.stunUntil > tick)) {
+    if (d <= (m.range || 1.7 + (m.radius - 0.7)) && tick >= m.nextAttackTick && !(m.stunUntil > tick)) {
       m.nextAttackTick = tick + m.speed;
       monsterAttack(m, now);
     }
@@ -1031,7 +1099,7 @@ function updateMonsters(dt, now) {
     }
     if (!m.alive) continue;
     let tx = null, tz = null, speed = 1.4, stop = 0.1;
-    if (m.state === 'fight') { tx = pm.mesh.position.x; tz = pm.mesh.position.z; speed = 3.0; stop = 1.3; }
+    if (m.state === 'fight') { tx = pm.mesh.position.x; tz = pm.mesh.position.z; speed = 3.0; stop = m.range ? m.range - 1 : 1.3; }
     else if (m.state === 'return') {
       tx = m.spawnX; tz = m.spawnZ; speed = 3.0;
       if (Math.hypot(pos.x - tx, pos.z - tz) < 0.4) { m.state = 'idle'; m.hp = m.maxHp; }
@@ -1083,15 +1151,18 @@ function updateFish(dt) {
   }
 }
 
-function updateArrow(dt) {
-  if (!arrowFlight) return;
-  const f = arrowFlight;
+function flyArrow(f, mesh, target, dt) {
   f.t += dt / 0.35;
-  if (f.t >= 1 || !f.mon.mesh.visible) { arrowMesh.visible = false; arrowFlight = null; return; }
-  const to = f.mon.mesh.position;
-  arrowMesh.visible = true;
-  arrowMesh.position.set(f.from.x + (to.x - f.from.x) * f.t, 1.3 + Math.sin(f.t * Math.PI) * 0.6 - f.t * 0.3, f.from.z + (to.z - f.from.z) * f.t);
-  arrowMesh.lookAt(to.x, 1, to.z);
+  if (f.t >= 1 || !target.visible) { mesh.visible = false; return false; }
+  const to = target.position;
+  mesh.visible = true;
+  mesh.position.set(f.from.x + (to.x - f.from.x) * f.t, 1.3 + Math.sin(f.t * Math.PI) * 0.6 - f.t * 0.3, f.from.z + (to.z - f.from.z) * f.t);
+  mesh.lookAt(to.x, 1, to.z);
+  return true;
+}
+function updateArrow(dt) {
+  if (arrowFlight && !flyArrow(arrowFlight, arrowMesh, arrowFlight.mon.mesh, dt)) arrowFlight = null;
+  if (enemyArrow && !flyArrow(enemyArrow, enemyArrowMesh, pm.mesh, dt)) enemyArrow = null;
 }
 
 const ACTION_LABEL = {
@@ -1112,7 +1183,8 @@ function updateStatus() {
 // Load / start
 // ---------------------------------------------------------------------------
 function afterLoad() {
-  recalcMaxHp(player, skills);
+  setPerkBoost(skills, capeBoosts(player));
+  refreshMaxHp();
   applyEquipmentLook(pm, player.equipment);
   inputCtl.setDpadVisible(!!player.settings.showDpad);
   setShadows(renderer, dirLight, shadowsOn());

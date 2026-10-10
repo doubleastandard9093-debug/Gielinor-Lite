@@ -1,6 +1,9 @@
 // Item definitions, tiers, tools and recipes.
-// type decides what tapping the item does. Equipment bonuses: atk, str (melee),
-// ranged, rstr (arrow damage), def (armour). value = shop sell price.
+// type decides what tapping the item does. Equipment bonuses (RS-style):
+//   atk = melee attack, str = melee strength, ranged = ranged attack, rstr = ranged strength,
+//   def = melee defence, rdef = ranged defence, prayer = prayer bonus (slows drain).
+// Extras on some items: regen (HP regen), gather { skill: speed }, xp { skill: bonus }.
+// set = armour set name (full matched set gives a set bonus). value = shop sell price.
 
 export const HEAL_SCALE = 10; // hitpoints are 10x classic RuneScape
 
@@ -38,12 +41,18 @@ for (const [raw, cooked, , , heal, , v] of FOODS) {
 }
 
 // ---- Metal tiers: bars, gear, tools, arrows ----
+// Metal armour: strong melee defence, a bit less vs arrows, small attack penalty on big pieces.
+function armour(def, t, rangedPenalty) {
+  const o = { def, rdef: Math.round(def * 0.8), set: METALS[t], req: { Defence: TIER_REQ[t] } };
+  if (rangedPenalty) o.ranged = Math.round(rangedPenalty * (t + 1)) || -1;
+  return o;
+}
 const GEAR = {
   sword:  { suffix: 'sword', slot: 'weapon', bars: 1, off: 2,  stat: t => ({ atk: [5, 9, 14, 20, 28, 38][t], str: [3, 6, 10, 15, 22, 32][t], speed: 4, req: { Attack: TIER_REQ[t] } }), val: 15 },
-  helm:   { suffix: 'full helm', slot: 'head', bars: 2, off: 4, stat: t => ({ def: [3, 5, 8, 11, 15, 21][t], req: { Defence: TIER_REQ[t] } }), val: 12 },
-  shield: { suffix: 'shield', slot: 'shield', bars: 2, off: 6, stat: t => ({ def: [7, 11, 16, 22, 30, 42][t], req: { Defence: TIER_REQ[t] } }), val: 20 },
-  legs:   { suffix: 'platelegs', slot: 'legs', bars: 3, off: 12, stat: t => ({ def: [6, 10, 15, 21, 29, 40][t], req: { Defence: TIER_REQ[t] } }), val: 30 },
-  body:   { suffix: 'platebody', slot: 'body', bars: 5, off: 16, stat: t => ({ def: [8, 14, 20, 28, 38, 52][t], req: { Defence: TIER_REQ[t] } }), val: 60 },
+  helm:   { suffix: 'full helm', slot: 'head', bars: 2, off: 4, stat: t => armour([3, 5, 8, 11, 15, 21][t], t, 0), val: 12 },
+  shield: { suffix: 'shield', slot: 'shield', bars: 2, off: 6, stat: t => armour([7, 11, 16, 22, 30, 42][t], t, 0), val: 20 },
+  legs:   { suffix: 'platelegs', slot: 'legs', bars: 3, off: 12, stat: t => armour([6, 10, 15, 21, 29, 40][t], t, -0.5), val: 30 },
+  body:   { suffix: 'platebody', slot: 'body', bars: 5, off: 16, stat: t => armour([8, 14, 20, 28, 38, 52][t], t, -1), val: 60 },
   axe:    { suffix: 'axe', tool: 'axe', bars: 1, off: 0, stat: t => ({ toolTier: t, req: { Woodcutting: TOOL_REQ[t] } }), val: 10 },
   pickaxe:{ suffix: 'pickaxe', tool: 'pickaxe', bars: 2, off: 1, stat: t => ({ toolTier: t, req: { Mining: TOOL_REQ[t] } }), val: 14 }
 };
@@ -60,12 +69,40 @@ export const BOWS = [['Shortbow', 1, 8], ['Oak shortbow', 15, 14], ['Willow shor
 BOWS.forEach(([n, req, r], t) => def(n, { type: 'weapon', ranged: r, speed: 4, tier: t, req: { Ranged: req }, value: [20, 40, 80, 160, 400, 1000][t] }));
 
 // ---- Leather and wood armour ----
-def('Leather cowl', { type: 'head', def: 2, req: { Defence: 1 }, value: 8 });
-def('Leather body', { type: 'body', def: 6, req: { Defence: 1 }, value: 25 });
-def('Leather chaps', { type: 'legs', def: 4, req: { Defence: 1 }, value: 15 });
-def('Hard leather body', { type: 'body', def: 12, req: { Defence: 10 }, value: 60 });
-def('Wooden shield', { type: 'shield', def: 4, req: { Defence: 1 }, value: 10 });
-def('Oak shield', { type: 'shield', def: 6, req: { Defence: 5 }, value: 25 });
+// Leather is weaker in melee but good against arrows and helps your aim.
+def('Leather cowl', { type: 'head', def: 2, rdef: 4, ranged: 2, set: 'Leather', req: { Defence: 1 }, value: 8 });
+def('Leather body', { type: 'body', def: 6, rdef: 9, ranged: 4, set: 'Leather', req: { Defence: 1 }, value: 25 });
+def('Leather chaps', { type: 'legs', def: 4, rdef: 6, ranged: 3, set: 'Leather', req: { Defence: 1 }, value: 15 });
+def('Hard leather body', { type: 'body', def: 12, rdef: 16, ranged: 8, set: 'Leather', req: { Defence: 10 }, value: 60 });
+def('Wooden shield', { type: 'shield', def: 4, rdef: 4, req: { Defence: 1 }, value: 10 });
+def('Oak shield', { type: 'shield', def: 6, rdef: 7, req: { Defence: 5 }, value: 25 });
+
+// ---- Jewellery and capes ----
+def('Amulet of accuracy', { type: 'neck', atk: 4, ranged: 4, value: 120 });
+def('Amulet of strength', { type: 'neck', str: 10, value: 500 });
+def('Amulet of defence', { type: 'neck', def: 7, rdef: 7, value: 300 });
+def('Holy symbol', { type: 'neck', prayer: 8, value: 200 });
+def('Amulet of glory', { type: 'neck', atk: 10, str: 6, ranged: 10, def: 3, rdef: 3, prayer: 3, value: 3000 });
+def('Warrior ring', { type: 'ring', atk: 4, str: 4, value: 800 });
+def('Archer ring', { type: 'ring', ranged: 6, rstr: 2, value: 800 });
+def('Ring of regeneration', { type: 'ring', regen: 0.25, value: 1200 });
+def("Miner's ring", { type: 'ring', gather: { Mining: 0.04 }, xp: { Mining: 0.03 }, value: 600 });
+def("Forester's ring", { type: 'ring', gather: { Woodcutting: 0.04 }, xp: { Woodcutting: 0.03 }, value: 600 });
+def("Angler's ring", { type: 'ring', gather: { Fishing: 0.04 }, xp: { Fishing: 0.03 }, value: 600 });
+def('Red cape', { type: 'cape', def: 1, rdef: 1, value: 15 });
+def('Blue cape', { type: 'cape', def: 1, rdef: 1, value: 15 });
+def('Quest point cape', { type: 'cape', atk: 3, str: 3, ranged: 3, def: 6, rdef: 6, prayer: 4, regen: 0.1, questCape: true, value: 99 });
+export const SKILL_CAPE_SKILLS = ['Attack', 'Strength', 'Defence', 'Hitpoints', 'Ranged', 'Prayer', 'Mining', 'Woodcutting', 'Fishing', 'Smithing', 'Crafting', 'Cooking', 'Fletching'];
+for (const sk of SKILL_CAPE_SKILLS) def(`${sk} cape`, { type: 'cape', def: 4, rdef: 4, prayer: 2, capeSkill: sk, req: { [sk]: 99 }, value: 9900 });
+
+// Full matched sets. pieces = how many you need; fx feeds the combat maths.
+export const SETS = {
+  Leather: { pieces: ['head', 'body', 'legs'], fx: { racc: 0.05, dr: 0.02 } },
+  ...Object.fromEntries(METALS.map((m, t) => [m, { pieces: ['head', 'body', 'legs', 'shield'], fx: { dr: 0.02 + 0.01 * t, acc: 0.03 } }]))
+};
+export function setDesc(fx) {
+  return Object.entries(fx).map(([k, v]) => ({ dr: `take ${Math.round(v * 100)}% less damage`, acc: `+${Math.round(v * 100)}% melee accuracy`, racc: `+${Math.round(v * 100)}% ranged accuracy` })[k]).join(', ');
+}
 
 // ---- Single-tier tools ----
 export const TOOL_TYPES = [
@@ -94,7 +131,7 @@ export function isStackable(item) { return true; }
 
 export function slotFor(item) {
   const t = ITEMS[item] && ITEMS[item].type;
-  if (['weapon', 'shield', 'body', 'legs', 'head', 'ammo'].includes(t)) return t;
+  if (['weapon', 'shield', 'body', 'legs', 'head', 'ammo', 'neck', 'ring', 'cape'].includes(t)) return t;
   return null;
 }
 export function isRangedWeapon(item) { return !!(item && ITEMS[item] && ITEMS[item].ranged); }
@@ -113,11 +150,16 @@ const FIXED_ICONS = {
   'Leather cowl': ['🧢', ''], 'Leather body': ['🧥', ''], 'Leather chaps': ['👖', '#7a4a2450'], 'Hard leather body': ['🧥', '#5a3a1a60'],
   'Wooden shield': ['🛡️', '#8a5a2a50'], 'Oak shield': ['🛡️', '#c49a5a50'],
   'Small fishing net': ['🥅', ''], 'Fly fishing rod': ['🎣', ''], 'Lobster pot': ['🧺', ''], Harpoon: ['🔱', ''],
-  Hammer: ['🔨', ''], Knife: ['🔪', ''], Needle: ['🪡', ''], Tinderbox: ['🔥', '']
+  Hammer: ['🔨', ''], Knife: ['🔪', ''], Needle: ['🪡', ''], Tinderbox: ['🔥', ''],
+  'Amulet of accuracy': ['📿', '#4a8ad060'], 'Amulet of strength': ['📿', '#d04a4a60'], 'Amulet of defence': ['📿', '#4ad08a60'],
+  'Holy symbol': ['✝️', '#e0e0e060'], 'Amulet of glory': ['📿', '#ffd70080'], 'Warrior ring': ['💍', '#d04a4a60'], 'Archer ring': ['💍', '#4ad04a60'],
+  'Ring of regeneration': ['💍', '#ff80c060'], "Miner's ring": ['💍', '#8a8a8a60'], "Forester's ring": ['💍', '#3a8a3a60'], "Angler's ring": ['💍', '#3a7ad060'],
+  'Red cape': ['🧣', '#c0303060'], 'Blue cape': ['🧣', '#3050c060'], 'Quest point cape': ['🧣', '#3060ff80']
 };
 const WOOD_TINT = ['', '#c49a5a40', '#7a9a4a40', '#c0702a40', '#4a6a3a50', '#3a5ad050'];
 export function iconFor(item) {
   if (FIXED_ICONS[item]) return FIXED_ICONS[item];
+  if (ITEMS[item] && ITEMS[item].capeSkill) return ['🧣', '#d4af3780'];
   const w = WOODS.indexOf(item);
   if (w >= 0) return ['🪵', WOOD_TINT[w]];
   const bow = BOWS.findIndex(b => b[0] === item);
@@ -139,19 +181,30 @@ const EXAMINE = {
   Needle: 'Used with leather to make armour.', Tinderbox: 'Useful for lighting a fire.', 'Small fishing net': 'Useful for catching small fish.',
   'Fly fishing rod': 'Useful for fly fishing.', 'Lobster pot': 'Useful for catching lobsters.', Harpoon: 'Useful for catching really big fish.'
 };
+// Short bonus summary, e.g. "melee atk +9, str +6, def +3".
+export const STAT_NAMES = { atk: 'melee atk', str: 'str', ranged: 'ranged atk', rstr: 'ranged str', def: 'melee def', rdef: 'ranged def', prayer: 'prayer' };
+export function statLine(item) {
+  const info = ITEMS[item] || {};
+  const bits = [];
+  for (const [k, n] of Object.entries(STAT_NAMES)) if (info[k]) bits.push(`${n} ${info[k] > 0 ? '+' : ''}${info[k]}`);
+  if (info.regen) bits.push(`HP regen +${Math.round(info.regen * 100)}%`);
+  for (const [sk, v] of Object.entries(info.gather || {})) bits.push(`${sk} speed +${Math.round(v * 100)}%`);
+  for (const [sk, v] of Object.entries(info.xp || {})) bits.push(`${sk} XP +${Math.round(v * 100)}%`);
+  return bits.join(', ');
+}
 export function examineItem(item) {
   const info = ITEMS[item] || {};
   let text = EXAMINE[item] || (info.type === 'food' ? 'Mmm, this looks tasty.' : info.tool ? `A ${item.toLowerCase()}. It goes on my toolbelt.`
     : /^Raw /.test(item) ? 'I should try cooking this.' : / ore$/.test(item) ? 'This needs refining.' : / bar$/.test(item) ? `It's a bar of ${item.split(' ')[0].toLowerCase()}.`
     : `It's ${/^[aeiou]/i.test(item) ? 'an' : 'a'} ${item.toLowerCase()}.`);
+  if (info.capeSkill) text = `The cape worn by masters of ${info.capeSkill}. Boosts your ${info.capeSkill} perks by 10%.`;
+  if (info.questCape) text = 'The cape of a true adventurer. Needs every quest complete.';
   const bits = [];
   if (info.heal) bits.push(`heals ${info.heal * HEAL_SCALE}`);
   if (info.prayerXp) bits.push(`bury for ${info.prayerXp} Prayer xp`);
-  if (info.atk) bits.push(`atk +${info.atk}`);
-  if (info.str) bits.push(`str +${info.str}`);
-  if (info.ranged) bits.push(`ranged +${info.ranged}`);
-  if (info.rstr) bits.push(`arrow str +${info.rstr}`);
-  if (info.def) bits.push(`def +${info.def}`);
+  const st = statLine(item);
+  if (st) bits.push(st);
+  if (info.set) bits.push(`${info.set} set piece`);
   if (info.tool && info.toolTier !== undefined) bits.push(`tier ${info.toolTier + 1} tool`);
   if (info.req) bits.push('needs ' + Object.entries(info.req).map(([k, v]) => `${k} ${v}`).join(', '));
   if (bits.length) text += ` (${bits.join(', ')})`;

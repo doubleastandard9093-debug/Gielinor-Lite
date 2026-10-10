@@ -6,7 +6,7 @@
 //   { choose: [['Option label', [...entries]], ...] }
 //   { run: () => {} }   (runs when the conversation reaches it)
 
-export const QUEST_POINTS_TOTAL = 6;
+export const QUEST_POINTS_TOTAL = 11;
 
 export function q(player, id) {
   player.quests = player.quests || {};
@@ -20,23 +20,30 @@ export function questStatus(player, id) {
   const s = q(player, id).stage;
   return s === 'done' ? 'complete' : s > 0 ? 'in progress' : 'not started';
 }
-export function isDone(player, id) { return q(player, id).stage === 'done'; }
+export function isDone(player, id) {
+  if (id === 'all') return QUESTS.every(x => q(player, x.id).stage === 'done');
+  return q(player, id).stage === 'done';
+}
 export function questPoints(player) {
   return QUESTS.reduce((t, x) => t + (isDone(player, x.id) ? x.points : 0), 0);
 }
 
 // g = game helpers: has(item,n), take(item,n), give(item,n), xp(skill,n), gold(n), tool(item), log(text)
 function finish(player, quest, g) {
+  const before = questPoints(player);
   setQ(player, quest.id, { stage: 'done' });
   quest.reward(g);
   player.questPoints = questPoints(player);
-  g.questComplete(quest);
+  const newMilestones = QP_MILESTONES.filter(m => m.qp > before && m.qp <= player.questPoints);
+  if (isDone(player, 'all')) g.give('Quest point cape', 1);
+  g.questComplete(quest, newMilestones);
 }
 
 export const QUESTS = [
   {
     id: 'cook', name: "Cook's Assistant", giver: 'cook', points: 1, start: 'Talk to the Cook in the cookhouse, south-west of the town square.',
     rewards: ['300 Cooking XP', '100 coins', 'Cooked lobster sold at the General Store'],
+    bonus: { desc: '+5% Cooking XP and burn food 5% less often', fx: { 'xp.Cooking': 0.05, burnLess: 0.05 } },
     journal(player) {
       const s = q(player, 'cook').stage;
       if (s === 0) return [{ text: this.start }];
@@ -70,6 +77,7 @@ export const QUESTS = [
   {
     id: 'fallen', name: 'Rest for the Fallen', giver: 'priest', points: 1, start: 'Talk to Father Elric outside the church, north of the town square.',
     rewards: ['250 Prayer XP', 'Unlocks the Protect from Melee prayer (Prayer 43)', '2 Cooked trout'],
+    bonus: { desc: 'Prayers drain 5% slower and you slowly regain prayer points', fx: { drainLess: 0.05, ppRegen: 0.02 } },
     journal(player) {
       const st = q(player, 'fallen');
       if (st.stage === 0) return [{ text: this.start }];
@@ -103,6 +111,7 @@ export const QUESTS = [
   {
     id: 'doric', name: "Doric's Quest", giver: 'doric', points: 1, start: 'Talk to Doric at the smithy, south-east of the town square.',
     rewards: ['400 Mining XP', '180 coins', 'Mithril and adamant tools sold at the Tool Shop'],
+    bonus: { desc: '+5% Mining and Smithing XP', fx: { 'xp.Mining': 0.05, 'xp.Smithing': 0.05 } },
     journal(player) {
       const s = q(player, 'doric').stage;
       if (s === 0) return [{ text: this.start }];
@@ -133,6 +142,7 @@ export const QUESTS = [
   {
     id: 'goblins', name: 'Goblin Trouble', giver: 'captain', points: 2, start: 'Talk to Captain Rhea on the south road out of town.',
     rewards: ['600 Attack XP', '600 Strength XP', 'Steel sword'],
+    bonus: { desc: '+10% damage against goblins and hill giants, +20 max hitpoints', fx: { 'dmgVs.Goblin': 0.1, 'dmgVs.Hill Giant': 0.1, maxHp: 20 } },
     journal(player) {
       const st = q(player, 'goblins');
       if (st.stage === 0) return [{ text: this.start }];
@@ -171,6 +181,7 @@ export const QUESTS = [
   {
     id: 'hides', name: "Farmer's Hides", giver: 'farmer', points: 1, start: 'Talk to Farmer Gil at the cow field gate, north-west of town.',
     rewards: ['350 Crafting XP', '150 coins', 'Fly fishing rod and 30 feathers', 'Oak shortbows sold at the General Store'],
+    bonus: { desc: '+5% Crafting XP and 5% off everything in shops', fx: { 'xp.Crafting': 0.05, shopDiscount: 0.05 } },
     journal(player) {
       const s = q(player, 'hides').stage;
       if (s === 0) return [{ text: this.start }];
@@ -207,6 +218,130 @@ export const QUESTS = [
       ];
       return [['npc', 'Bring me a Leather body when you can make one.']];
     }
+  },
+  {
+    id: 'tools', name: 'Tools of the Trade', giver: 'bob', points: 1, start: "Talk to Bob at Bob's Brilliant Tools, north-east of the square.",
+    rewards: ['300 Smithing XP', '300 Woodcutting XP', '150 coins'],
+    bonus: { desc: '+3% success when mining, woodcutting and fishing', fx: { gather: 0.03 } },
+    journal(player) {
+      const s = q(player, 'tools').stage;
+      if (s === 0) return [{ text: this.start }];
+      const h = i => player.inventory[i] || 0;
+      return [{ text: `Bring Bob 3 Iron bars (${h('Iron bar')}) and 5 Oak logs (${h('Oak logs')}) for new tool handles.`, done: s === 'done' }];
+    },
+    reward(g) { g.xp('Smithing', 300); g.xp('Woodcutting', 300); g.gold(150); },
+    talk(player, g) {
+      const s = q(player, 'tools').stage;
+      if (s === 'done') return [['npc', 'Those new axes are flying off the shelves! You know your tools, friend.']];
+      if (s === 0) return [
+        ['npc', "Business is booming but I'm out of stock! I need iron for the heads and oak for the handles."],
+        ['npc', 'Bring me 3 Iron bars and 5 Oak logs and I\'ll share a trick or two of the trade.'],
+        { choose: [
+          ["I'll get them.", [{ run: () => setQ(player, 'tools', { stage: 1 }) }, ['npc', 'Smelt iron ore at the furnace in the smithy. Oaks grow far to the north-east.']]],
+          ['Not now.', [['npc', 'Come back when you can.']]]
+        ] }
+      ];
+      if (g.has('Iron bar', 3) && g.has('Oak logs', 5)) return [
+        ['player', "Here's the iron and oak."],
+        { run: () => { g.take('Iron bar', 3); g.take('Oak logs', 5); } },
+        ['npc', 'Perfect! Here\'s the trick: hold your tool like this and swing from the hip. You\'ll gather faster from now on.'],
+        { run: () => finish(player, this, g) }
+      ];
+      return [['npc', '3 Iron bars and 5 Oak logs, please!']];
+    }
+  },
+  {
+    id: 'supply', name: 'Supply Run', giver: 'merchant', points: 1, start: 'Talk to the Merchant at the General Store stall, east of the square.',
+    rewards: ['250 Fletching XP', '300 coins', 'Amulet of accuracy'],
+    bonus: { desc: 'Shops pay you 10% more and +5% Fletching XP', fx: { sellBonus: 0.1, 'xp.Fletching': 0.05 } },
+    journal(player) {
+      const s = q(player, 'supply').stage;
+      if (s === 0) return [{ text: this.start }];
+      const h = i => player.inventory[i] || 0;
+      return [{ text: `Bring the Merchant 10 Cooked shrimp (${h('Cooked shrimp')}) and 30 Bronze arrows (${h('Bronze arrows')}) for the guards.`, done: s === 'done' }];
+    },
+    reward(g) { g.xp('Fletching', 250); g.gold(300); g.give('Amulet of accuracy', 1); },
+    talk(player, g) {
+      const s = q(player, 'supply').stage;
+      if (s === 'done') return [['npc', 'The guards loved those supplies. I\'ll always pay you top coin!']];
+      if (s === 0) return [
+        ['npc', 'The tower guards ordered food and arrows, and my supplier never came!'],
+        ['npc', 'Could you bring me 10 Cooked shrimp and 30 Bronze arrows?'],
+        { choose: [
+          ['Leave it to me.', [{ run: () => setQ(player, 'supply', { stage: 1 }) }, ['npc', 'Wonderful! Arrows are fletched from bronze bars and logs.']]],
+          ['Sorry, no.', [['npc', 'Oh well.']]]
+        ] }
+      ];
+      if (g.has('Cooked shrimp', 10) && g.has('Bronze arrows', 30)) return [
+        ['player', 'Here are the supplies.'],
+        { run: () => { g.take('Cooked shrimp', 10); g.take('Bronze arrows', 30); } },
+        ['npc', "You're a lifesaver! Take this amulet, and from now on I'll pay you extra for your goods."],
+        { run: () => finish(player, this, g) }
+      ];
+      return [['npc', '10 Cooked shrimp and 30 Bronze arrows, if you please.']];
+    }
+  },
+  {
+    id: 'archers', name: 'Archers in the Woods', giver: 'ranger', points: 1, start: 'Talk to Ranger Wyn on the western edge of town.',
+    rewards: ['600 Ranged XP', 'Archer ring'],
+    bonus: { desc: '+2 ranged max hit and +10% damage against dark archers', fx: { rmaxHit: 2, 'dmgVs.Dark Archer': 0.1 } },
+    journal(player) {
+      const st = q(player, 'archers');
+      if (st.stage === 0) return [{ text: this.start }];
+      return [
+        { text: `Defeat 3 Dark Archers west of the lake (${Math.min(3, st.kills || 0)}/3).`, done: st.stage === 'done' || st.stage >= 2 },
+        { text: 'Return to Ranger Wyn.', done: st.stage === 'done' }
+      ];
+    },
+    reward(g) { g.xp('Ranged', 600); g.give('Archer ring', 1); },
+    talk(player, g) {
+      const st = q(player, 'archers');
+      if (st.stage === 'done') return [['npc', 'The woods are quiet again. Keep that ring, it suits a good shot.']];
+      if (st.stage === 0) return [
+        ['npc', 'Dark archers have set up camp west of the lake. They shoot at anyone gathering wood.'],
+        ['npc', 'Defeat 3 of them. Their arrows bite, so wear something with good ranged defence: leather works well.'],
+        { choose: [
+          ["I'll take care of them.", [{ run: () => setQ(player, 'archers', { stage: 1, kills: 0 }) }, ['npc', 'Good hunting.']]],
+          ['Too dangerous for me.', [['npc', 'Come back when you\'re ready.']]]
+        ] }
+      ];
+      if (st.stage === 1) return [['npc', `${st.kills || 0} of 3 dark archers down.`]];
+      return [['npc', 'You did it! Here, a ring fit for an archer.'], { run: () => finish(player, this, g) }];
+    }
+  },
+  {
+    id: 'honour', name: "Knight's Honour", giver: 'knight', points: 2, start: 'Talk to Sir Vyvin on the north road, past the church.',
+    rewards: ['1000 Defence XP', '500 Attack XP', 'Amulet of glory'],
+    bonus: { desc: 'Take 3% less damage, +30 max hitpoints, +10% damage against black knights', fx: { dr: 0.03, maxHp: 30, 'dmgVs.Black Knight': 0.1 } },
+    journal(player) {
+      const st = q(player, 'honour');
+      if (st.stage === 0) return [{ text: this.start }];
+      return [
+        { text: `Defeat 2 Black Knights in the northern hills (${Math.min(2, st.kills || 0)}/2).`, done: st.stage === 'done' || st.stage >= 2 },
+        { text: `Bring Sir Vyvin a Steel full helm as proof of your skill (have ${player.inventory['Steel full helm'] || 0}).`, done: st.stage === 'done' }
+      ];
+    },
+    reward(g) { g.xp('Defence', 1000); g.xp('Attack', 500); g.give('Amulet of glory', 1); },
+    talk(player, g) {
+      const st = q(player, 'honour');
+      if (st.stage === 'done') return [['npc', 'Brightwater is proud of you, knight.']];
+      if (st.stage === 0) return [
+        ['npc', 'The Black Knights dishonour the northern hills. A true knight would stand against them.'],
+        ['npc', 'Defeat 2 of them, then bring me a Steel full helm, smithed or won, and I will name you a knight.'],
+        { choose: [
+          ['I accept.', [{ run: () => setQ(player, 'honour', { stage: 1, kills: 0 }) }, ['npc', 'For Brightwater!']]],
+          ['Not today.', [['npc', 'Honour can wait, but not forever.']]]
+        ] }
+      ];
+      if (st.stage === 1) return [['npc', `You have bested ${st.kills || 0} of 2 Black Knights.`]];
+      if (g.has('Steel full helm', 1)) return [
+        ['player', 'I defeated them, and here is a steel helm.'],
+        { run: () => g.take('Steel full helm', 1) },
+        ['npc', 'Kneel... Rise, a knight of Brightwater! Wear this amulet with pride.'],
+        { run: () => finish(player, this, g) }
+      ];
+      return [['npc', 'Now bring me a Steel full helm. Doric can show you the anvil.']];
+    }
   }
 ];
 
@@ -216,6 +351,15 @@ export function questForNpc(npc) { return QUESTS.find(x => x.giver === npc); }
 // ---- Hooks from the game. Each returns chat messages. ----
 export function onKill(player, monName) {
   const out = [];
+  for (const [id, mon, need] of [['archers', 'Dark Archer', 3], ['honour', 'Black Knight', 2]]) {
+    const st = q(player, id);
+    if (st.stage === 1 && monName === mon) {
+      const kills = (st.kills || 0) + 1;
+      setQ(player, id, { kills, stage: kills >= need ? 2 : 1 });
+      const qn = QUESTS.find(x => x.id === id).name;
+      out.push(kills >= need ? `${qn}: done! Return to ${id === 'archers' ? 'Ranger Wyn' : 'Sir Vyvin'}.` : `${qn}: ${kills}/${need} ${mon.toLowerCase()}s defeated.`);
+    }
+  }
   const st = q(player, 'goblins');
   if (st.stage === 1 && monName === 'Goblin') {
     const kills = (st.kills || 0) + 1;
@@ -249,6 +393,32 @@ export const NPC_INFO = {
   captain: { name: 'Captain Rhea', examine: 'Captain of the Brightwater guard.' },
   farmer: { name: 'Farmer Gil', examine: 'He smells faintly of cow.' },
   bob: { name: 'Bob', examine: 'An expert on axes, pickaxes and other tools.' },
+  ranger: { name: 'Ranger Wyn', examine: 'A sharp-eyed ranger of the western woods.' },
+  knight: { name: 'Sir Vyvin', examine: 'A knight in shining armour.' },
   merchant: { name: 'Merchant', examine: 'A trader of general goods.' },
   banker: { name: 'Banker', examine: 'Good with money.' }
 };
+
+// ---- Lasting quest bonuses ----
+// Quest-point milestones give extra bonuses on top of each quest's own bonus.
+export const QP_MILESTONES = [
+  { qp: 3, desc: 'Run energy restores 25% faster', fx: { runRegen: 0.25 } },
+  { qp: 6, desc: '+2% XP in every skill', fx: { 'xp.*': 0.02 } },
+  { qp: 9, desc: '+20 max hitpoints', fx: { maxHp: 20 } },
+  { qp: 11, desc: 'Every quest done: Quest point cape and +3% XP in every skill', fx: { 'xp.*': 0.03 } }
+];
+// Sum of one bonus from every completed quest and reached milestone.
+export function questFx(player, key) {
+  let v = 0;
+  for (const x of QUESTS) if (x.bonus && x.bonus.fx[key] && isDone(player, x.id)) v += x.bonus.fx[key];
+  const qp = questPoints(player);
+  for (const m of QP_MILESTONES) if (qp >= m.qp && m.fx[key]) v += m.fx[key];
+  return v;
+}
+export function activeQuestBonuses(player) {
+  const qp = questPoints(player);
+  return {
+    quests: QUESTS.map(x => ({ name: x.name, desc: x.bonus.desc, active: isDone(player, x.id) })),
+    milestones: QP_MILESTONES.map(m => ({ ...m, active: qp >= m.qp }))
+  };
+}

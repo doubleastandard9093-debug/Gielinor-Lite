@@ -249,7 +249,7 @@ export function createWorld(scene) {
     mergeStatic(g);
     scene.add(g);
     pickables.push(g);
-    return tag(g, { mesh: g, type: 'shop', alive: true, x, z, name: 'Merchant', radius: 1.2 });
+    return tag(g, { mesh: g, type: 'shop', npc: 'merchant', alive: true, x, z, name: 'Merchant', radius: 1.2 });
   }
   function createBank(x, z) {
     const g = new THREE.Group();
@@ -452,6 +452,10 @@ export function createWorld(scene) {
       } else if (typeName === 'Hill Giant') {
         body.add(part(G.box, 0x5a3a1a, 0.18, 1.1, 0.18, 0.55, 0.9, 0.3)); // club
         body.add(part(G.box, 0x5a3a1a, 0.32, 0.4, 0.32, 0.55, 0.4, 0.3));
+      } else if (typeName === 'Dark Archer') {
+        body.add(part(G.box, 0x1e2a1e, 0.56, 0.3, 0.56, 0, 1.86, -0.03)); // hood
+        body.add(part(G.box, 0x5a3a1a, 0.06, 1.2, 0.06, 0.5, 1.1, 0.3)); // bow
+        body.add(part(G.box, 0x3a2a1a, 0.2, 0.6, 0.15, 0, 1.1, -0.3, false)); // quiver
       } else if (typeName === 'Black Knight') {
         body.add(part(G.box, 0x2a2a34, 0.56, 0.5, 0.56, 0, 1.68, 0));
         body.add(part(G.box, 0x111111, 0.4, 0.06, 0.02, 0, 1.7, 0.29, false));
@@ -495,6 +499,8 @@ export function createWorld(scene) {
   nodes.push(createAltar(-4, -7.6));
   nodes.push(createNpc(-1.8, -7.6, 'priest', 'Father Elric', { body: 0x2a2a3a, legs: 0x2a2a3a, hat: null, beard: 0xdddddd, apron: 0xd4af37 }, 0, 0));
   nodes.push(createNpc(-1.8, 13, 'captain', 'Captain Rhea', { body: 0x8a2a2a, legs: 0x3a3a4a, hat: 0x9a9aa8, hatH: 0.28, skin: 0xc89a74 }, 0, 0));
+  nodes.push(createNpc(-16, 2, 'ranger', 'Ranger Wyn', { body: 0x2a5a2a, legs: 0x3a2a1a, hat: 0x1e4a1e, hatH: 0.2, skin: 0xc89a74 }, -20, 2));
+  nodes.push(createNpc(1.8, -17, 'knight', 'Sir Vyvin', { body: 0xb0b0c0, legs: 0x8a8a9a, hat: 0xc0c0d0, hatH: 0.3, apron: 0x2a4aa0 }, 0, -17));
   nodes.push(createNpc(-10.8, -16, 'farmer', 'Farmer Gil', { body: 0x6a8a3a, legs: 0x4a5a8a, hat: 0xd8c070, hatW: 0.8, hatH: 0.12 }, 0, 0));
   fenceLine(-8, -16.5, 0, -16.5);
   fenceLine(10.5, 9.2, 14.5, 9.2);
@@ -528,6 +534,7 @@ export function createWorld(scene) {
   monsters.push(createMonster('Guard', 2.5, 25, 2.5));
   for (const [x, z] of [[-3, -31], [1.5, -33], [-1, -28.5]]) monsters.push(createMonster('Hill Giant', x, z, 3));
   for (const [x, z] of [[-16, -32], [-18, -35]]) monsters.push(createMonster('Black Knight', x, z, 2.5));
+  for (const [x, z] of [[-34, 9], [-36, 4.5], [-32.5, 5]]) monsters.push(createMonster('Dark Archer', x, z, 2));
 
   return { ground, nodes, monsters, pickables, buildings };
 }

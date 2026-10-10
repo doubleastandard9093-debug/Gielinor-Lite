@@ -120,7 +120,7 @@ button:disabled { opacity: 0.45; }
 .style.on { background: #7a2a1a; color: #fff; }
 .toggle { display: block; width: 100%; margin-top: 4px; padding: 7px; text-align: left; }
 .toggle.on { color: #8aff8a; }
-.equipgrid { display: grid; grid-template-columns: repeat(3, var(--cell)); grid-auto-rows: var(--cell); gap: 6px; justify-content: center; margin: 4px 0; }
+.equipgrid { display: grid; grid-template-columns: repeat(3, var(--cell)); grid-auto-rows: var(--cell); gap: 4px; justify-content: center; margin: 4px 0; }
 .equipgrid .slot { background: #2b2419; border-color: #000; }
 .equipgrid .slot.na { opacity: 0.5; }
 .bonuses { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; font-size: 11px; margin-top: 4px; }
@@ -142,6 +142,14 @@ button:disabled { opacity: 0.45; }
 .perks { margin-top: 6px; font-size: 10px; line-height: 1.35; }
 .perk { color: #8a8070; } .perk span { display: inline-block; min-width: 16px; color: #b0a080; } .perk.got { color: #c8ffb0; } .perk.got b { color: #8aff8a; }
 .lu-perk { color: #8aff8a; font-size: 12px; }
+.perk.big { color: #a89060; } .perk.big b { color: #e0c060; } .perk.got.big { color: #ffe9a0; } .perk.got.big b { color: #ffd84a; }
+.perktotal { margin-top: 6px; background: #1e1a12; border: 1px solid #4a3e2a; border-radius: 3px; padding: 4px 6px; font-size: 10px; line-height: 1.4; color: #c8ffb0; }
+.perktotal b { color: #ffff00; } .perktotal .nextperk { color: #b0a080; margin-top: 2px; }
+.bonushead { font-size: 10px; color: #ff9040; margin-top: 4px; border-bottom: 1px solid #4a3e2a; }
+.setbonus { font-size: 10px; color: #a89878; margin-top: 4px; line-height: 1.35; } .setbonus.on { color: #8aff8a; }
+.journal .qbonus { margin-top: 4px; font-size: 10px; color: #6a4a0a; font-weight: bold; } .journal .qbonus.on { color: #0a6a0a; }
+.qbonuses { font-size: 10px; line-height: 1.4; color: #8a8070; } .qbonuses .on { color: #c8ffb0; } .qbonuses b { color: #ffd84a; }
+.shopinfo { font-size: 11px; color: #ffff00; padding: 4px 6px; min-height: 16px; }
 .bar.praybar i { background: #3a9ad0; }
 .praygrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; margin-top: 6px; }
 .pray { position: relative; height: 40px; padding: 0; font-size: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; }

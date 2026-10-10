@@ -1,8 +1,9 @@
 // Pure game rules (no rendering), so they can be unit-tested in node.
 import { addItem, removeItem, canAdd } from './playerState.js';
-import { ITEMS, HEAL_SCALE, slotFor, isRangedWeapon, itemValue, isTool, toolType, FOODS } from './items.js';
+import { ITEMS, HEAL_SCALE, slotFor, isRangedWeapon, itemValue, isTool, toolType, FOODS, SETS, SKILL_CAPE_SKILLS } from './items.js';
 import { perk } from './skills.js';
 import { prayerFx } from './prayer.js';
+import { questFx, isDone } from './quests.js';
 
 export const TICK_MS = 600;
 
@@ -91,33 +92,49 @@ export function gatherTick(node, skills, player, rng = Math.random) {
   if (!tool) {
     return { error: ownsToolType(player, info.tool) ? `Your ${info.tool} needs a higher ${info.skill} level.` : `You need ${toolName(info.tool)} on your toolbelt. The tool shop sells one.` };
   }
-  const bonus = (ITEMS[tool].toolTier || 0) * 0.05 + perk(skills, info.skill, 'speed') + prayerFx(player, 'gather');
-  const xpMult = 1 + prayerFx(player, 'gather');
+  const gear = equipmentBonuses(player);
+  const bonus = (ITEMS[tool].toolTier || 0) * 0.05 + perk(skills, info.skill, 'speed') + prayerFx(player, 'gather') +
+    (gear.gather[info.skill] || 0) + questFx(player, 'gather');
+  const xpMult = 1 + prayerFx(player, 'gather') + perk(skills, info.skill, 'xpBonus');
   const doubled = () => (rng() < perk(skills, info.skill, 'double') ? 2 : 1);
+  // Milestone perks: resources sometimes go straight to the bank.
+  const banked = () => rng() < perk(skills, info.skill, 'autoBank');
   if (node.type === 'fish') {
     for (const c of info.catches) {
       if (lvl < c.level) continue;
       if (!canAdd(player, c.item)) return { error: 'Your inventory is too full to hold any more.' };
       const last = c === info.catches[info.catches.length - 1];
       if (rng() < Math.min(0.95, successChance(lvl, c.level) + bonus) * (last ? 1 : 0.6)) {
-        return { item: c.item, qty: doubled(), xp: c.xp * xpMult, skill: info.skill, depleted: false };
+        return { item: c.item, qty: doubled(), xp: c.xp * xpMult, skill: info.skill, depleted: false, bank: banked() };
       }
     }
     return null;
   }
   if (!canAdd(player, info.item)) return { error: 'Your inventory is too full to hold any more.' };
   if (rng() >= Math.min(0.95, successChance(lvl, info.level) + bonus)) return null;
-  const depleted = node.type === 'rock' ? true : rng() < info.deplete;
-  return { item: info.item, qty: doubled(), xp: info.xp * xpMult, skill: info.skill, depleted };
+  let depleted = node.type === 'rock' ? true : rng() < info.deplete;
+  // Rich Vein / Chain Chop: sometimes the rock or tree isn't used up.
+  let kept = false;
+  if (depleted && rng() < perk(skills, info.skill, 'chain')) { depleted = false; kept = true; }
+  return { item: info.item, qty: doubled(), xp: info.xp * xpMult, skill: info.skill, depleted, kept, bank: banked() };
 }
 
 // ---- Making things ---------------------------------------------------------
-export function burnChance(recipe, skills) {
+export function burnChance(recipe, skills, player = null) {
   if (!recipe.burnStop) return 0;
   const lvl = skills.Cooking.level;
   if (lvl >= recipe.burnStop) return 0;
   const base = 0.45 * (recipe.burnStop - lvl) / (recipe.burnStop - recipe.level + 1);
-  return Math.max(0, base * (1 - Math.min(1, perk(skills, 'Cooking', 'burnLess'))));
+  const less = perk(skills, 'Cooking', 'burnLess') + (player ? questFx(player, 'burnLess') : 0);
+  return Math.max(0, base * (1 - Math.min(1, less)));
+}
+// Milestone perks for making things: 1 tick faster, and a chance of a free extra item.
+export function makeTicks(recipe, skills) { return perk(skills, recipe.skill, 'fastMake') > 0 ? 2 : 3; }
+export function doubleMakeChance(recipe, skills) { return perk(skills, recipe.skill, 'doubleMake'); }
+// Multiplier on all XP from quests (+x% in a skill or all skills) and worn gear.
+export function xpMultiplier(player, skill) {
+  const gear = equipmentBonuses(player);
+  return 1 + questFx(player, 'xp.' + skill) + questFx(player, 'xp.*') + (gear.xp[skill] || 0);
 }
 // Chance to keep the inputs for one make (perks + Provident Hands prayer).
 export function saveChance(recipe, skills, player) {
@@ -137,7 +154,9 @@ export function buryXp(item, skills) {
 }
 
 // ---- Combat --------------------------------------------------------------
+// ranged: true = attacks from a distance with arrows (your ranged defence counts).
 export const MONSTER_TYPES = {
+  'Dark Archer': { name: 'Dark Archer', level: 25, hp: 260, maxHit: 30, att: 24, def: 16, speed: 5, color: 0x2a3a2a, scale: 1.0, ranged: true, range: 6 },
   Goblin:        { name: 'Goblin',       level: 2,  hp: 50,  maxHit: 8,  att: 1,  def: 1,  speed: 4, color: 0x4a7a3a, scale: 0.85 },
   Cow:           { name: 'Cow',          level: 2,  hp: 80,  maxHit: 6,  att: 1,  def: 1,  speed: 4, color: 0x8a6a4a, scale: 1.0 },
   Guard:         { name: 'Guard',        level: 21, hp: 220, maxHit: 28, att: 18, def: 18, speed: 4, color: 0x3a3a6a, scale: 1.1 },
@@ -165,15 +184,43 @@ export function currentStyle(player) {
   return list[Math.min(list.length - 1, Math.max(0, player.attackStyle | 0))];
 }
 
+export const BONUS_KEYS = ['atk', 'str', 'ranged', 'rstr', 'def', 'rdef', 'prayer'];
+// Totals of everything worn, plus extras and set bonus.
 export function equipmentBonuses(player) {
-  const b = { atk: 0, str: 0, ranged: 0, rstr: 0, def: 0 };
-  for (const item of Object.values(player.equipment || {})) {
+  const b = { atk: 0, str: 0, ranged: 0, rstr: 0, def: 0, rdef: 0, prayer: 0, regen: 0, gather: {}, xp: {}, capeSkill: null };
+  const eq = player.equipment || {};
+  for (const [slot, item] of Object.entries(eq)) {
     const info = item && ITEMS[item];
     if (!info) continue;
-    for (const k of Object.keys(b)) b[k] += info[k] || 0;
+    for (const k of BONUS_KEYS) b[k] += info[k] || 0;
+    b.regen += info.regen || 0;
+    for (const [sk, v] of Object.entries(info.gather || {})) b.gather[sk] = (b.gather[sk] || 0) + v;
+    for (const [sk, v] of Object.entries(info.xp || {})) b.xp[sk] = (b.xp[sk] || 0) + v;
+    if (info.capeSkill && slot === 'cape') b.capeSkill = info.capeSkill;
   }
+  b.set = setStatus(player);
   return b;
 }
+// Which armour set you're closest to completing: { name, have, need, active, fx }.
+export function setStatus(player) {
+  const eq = player.equipment || {};
+  let best = null;
+  for (const [name, set] of Object.entries(SETS)) {
+    const have = set.pieces.filter(sl => eq[sl] && ITEMS[eq[sl]] && ITEMS[eq[sl]].set === name).length;
+    if (!have) continue;
+    if (!best || have / set.pieces.length > best.have / best.need) best = { name, have, need: set.pieces.length, fx: set.fx };
+  }
+  if (best) best.active = best.have >= best.need;
+  return best;
+}
+function setFx(player, key) { const st = setStatus(player); return st && st.active ? st.fx[key] || 0 : 0; }
+// Skill capes: worn 99 cape boosts that skill's perks by 10%.
+export function capeBoosts(player) {
+  const c = player.equipment && player.equipment.cape;
+  const sk = c && ITEMS[c] && ITEMS[c].capeSkill;
+  return sk ? { [sk]: 0.1 } : {};
+}
+export function regenBonus(player) { return equipmentBonuses(player).regen; }
 
 export function attackSpeedTicks(player) {
   const w = ITEMS[player.equipment.weapon];
@@ -197,7 +244,7 @@ export function playerMaxHit(player, skills, mods = {}) {
   let max;
   if (isRangedWeapon(player.equipment.weapon)) {
     const lvl = skills.Ranged.level * (1 + prayerFx(player, 'rng'));
-    max = 8 + Math.floor((lvl + style.str) * 2) + b.rstr * 3 + perk(skills, 'Ranged', 'rmaxHit');
+    max = 8 + Math.floor((lvl + style.str) * 2) + b.rstr * 3 + perk(skills, 'Ranged', 'rmaxHit') + questFx(player, 'rmaxHit');
   } else {
     const lvl = skills.Strength.level * (1 + prayerFx(player, 'str'));
     max = 10 + Math.floor((lvl + style.str) * 2) + b.str * 3 + perk(skills, 'Strength', 'maxHit');
@@ -211,9 +258,9 @@ export function playerAccuracy(player, skills, mon, mods = {}) {
   const ranged = isRangedWeapon(player.equipment.weapon);
   const base = ranged ? skills.Ranged.level * (1 + prayerFx(player, 'rng')) : skills.Attack.level * (1 + prayerFx(player, 'att'));
   const lvl = base + style.att + 8;
-  const att = lvl * (64 + (ranged ? b.ranged : b.atk) * 3);
+  const att = lvl * Math.max(16, 64 + (ranged ? b.ranged : b.atk) * 3);
   const def = (mon.def + 8) * 64;
-  const bonus = (ranged ? perk(skills, 'Ranged', 'racc') : perk(skills, 'Attack', 'acc')) + (mods.acc || 0);
+  const bonus = (ranged ? perk(skills, 'Ranged', 'racc') + setFx(player, 'racc') : perk(skills, 'Attack', 'acc') + setFx(player, 'acc')) + (mods.acc || 0);
   return Math.min(0.98, hitChance(att, def) * (1 + bonus));
 }
 
@@ -221,7 +268,9 @@ export function monsterAccuracy(mon, player, skills) {
   const b = equipmentBonuses(player);
   const style = currentStyle(player);
   const att = (mon.att + 8) * 64;
-  const def = (skills.Defence.level * (1 + prayerFx(player, 'def')) + style.def + 8) * (64 + b.def * 3);
+  // Arrows are stopped by ranged defence, swords and fists by melee defence.
+  const armour = mon.ranged ? b.rdef : b.def;
+  const def = (skills.Defence.level * (1 + prayerFx(player, 'def')) + style.def + 8) * Math.max(16, 64 + armour * 3);
   return hitChance(att, def);
 }
 
@@ -230,9 +279,18 @@ export function rollPlayerHit(player, skills, mon, rng = Math.random, mods = {})
   let dmg = 0;
   if (rng() < playerAccuracy(player, skills, mon, mods)) {
     dmg = 1 + Math.floor(rng() * playerMaxHit(player, skills, mods));
-    if (!isRangedWeapon(player.equipment.weapon) && rng() < perk(skills, 'Strength', 'crit')) dmg = Math.floor(dmg * 1.5);
+    const ranged = isRangedWeapon(player.equipment.weapon);
+    const crit = ranged ? perk(skills, 'Ranged', 'rcrit') : perk(skills, 'Strength', 'crit');
+    if (rng() < crit) dmg = Math.floor(dmg * (1.5 + perk(skills, 'Strength', 'critMult')));
+    dmg = Math.floor(dmg * damageMult(player, skills, mon));
   }
   return Math.min(dmg, mon.hp);
+}
+// Quest bonuses against a monster type, and Executioner against weakened targets.
+export function damageMult(player, skills, mon) {
+  let m = 1 + questFx(player, 'dmgVs.' + mon.name);
+  if (mon.maxHp && mon.hp < mon.maxHp * 0.25 && !isRangedWeapon(player.equipment.weapon)) m += perk(skills, 'Strength', 'execute');
+  return m;
 }
 
 // XP for damage dealt: 1.2 per point to the style's skill(s), plus 0.4 Hitpoints.
@@ -254,7 +312,8 @@ export function rollMonsterHit(mon, player, skills, rng = Math.random) {
 // Damage you actually take after Defence perks, Protect from Melee and buffs.
 export function reduceIncoming(dmg, player, skills, buffs = {}) {
   if (dmg <= 0) return 0;
-  let m = 1 - perk(skills, 'Defence', 'dr');
+  // Damage reduction from Defence perks, quests and armour sets (capped so nothing gets silly).
+  let m = 1 - Math.min(0.3, perk(skills, 'Defence', 'dr') + questFx(player, 'dr') + setFx(player, 'dr'));
   m *= 1 - prayerFx(player, 'protect');
   if (buffs.fortify) m *= 0.5;
   if (buffs.rage) m *= 1.1;
@@ -272,7 +331,8 @@ export const LOOT_TABLES = {
     { item: 'Raw shrimp', chance: 0.2 },
     { item: 'Feather', chance: 0.2, qty: [2, 6] },
     { item: 'Bronze axe', chance: 0.04 },
-    { item: 'Bronze sword', chance: 0.06 }
+    { item: 'Bronze sword', chance: 0.06 },
+    { item: 'Amulet of accuracy', chance: 0.01 }
   ],
   Cow: [
     { item: 'Bones', chance: 1 },
@@ -288,7 +348,9 @@ export const LOOT_TABLES = {
     { item: 'Bronze arrows', chance: 0.1, qty: [5, 15] },
     { item: 'Iron pickaxe', chance: 0.04 },
     { item: 'Iron sword', chance: 0.04 },
-    { item: 'Bronze shield', chance: 0.08 }
+    { item: 'Bronze shield', chance: 0.08 },
+    { item: 'Holy symbol', chance: 0.02 },
+    { item: 'Red cape', chance: 0.03 }
   ],
   'Hill Giant': [
     { item: 'Big bones', chance: 1 },
@@ -298,7 +360,9 @@ export const LOOT_TABLES = {
     { item: 'Steel bar', chance: 0.08 },
     { item: 'Steel axe', chance: 0.04 },
     { item: 'Steel full helm', chance: 0.03 },
-    { item: 'Mithril ore', chance: 0.05 }
+    { item: 'Mithril ore', chance: 0.05 },
+    { item: 'Amulet of strength', chance: 0.02 },
+    { item: 'Warrior ring', chance: 0.01 }
   ],
   'Black Knight': [
     { item: 'Bones', chance: 1 },
@@ -308,11 +372,25 @@ export const LOOT_TABLES = {
     { item: 'Steel pickaxe', chance: 0.04 },
     { item: 'Mithril sword', chance: 0.02 },
     { item: 'Adamantite ore', chance: 0.02 },
-    { item: 'Steel platelegs', chance: 0.03 }
+    { item: 'Steel platelegs', chance: 0.03 },
+    { item: 'Amulet of defence', chance: 0.02 },
+    { item: 'Ring of regeneration', chance: 0.01 },
+    { item: 'Amulet of glory', chance: 0.005 }
+  ],
+  'Dark Archer': [
+    { item: 'Bones', chance: 1 },
+    { item: 'Coins', chance: 0.7, qty: [15, 60] },
+    { item: 'Iron arrows', chance: 0.5, qty: [5, 15] },
+    { item: 'Feather', chance: 0.3, qty: [5, 15] },
+    { item: 'Leather cowl', chance: 0.08 },
+    { item: 'Hard leather body', chance: 0.03 },
+    { item: 'Oak shortbow', chance: 0.04 },
+    { item: 'Archer ring', chance: 0.01 }
   ]
 };
 export const RARE_DROPS = new Set(['Bronze sword', 'Iron sword', 'Bronze shield', 'Bronze axe', 'Iron pickaxe', 'Steel axe', 'Steel full helm',
-  'Steel pickaxe', 'Mithril sword', 'Adamantite ore', 'Steel platelegs']);
+  'Steel pickaxe', 'Mithril sword', 'Adamantite ore', 'Steel platelegs', 'Amulet of accuracy', 'Holy symbol', 'Red cape', 'Amulet of strength',
+  'Warrior ring', 'Amulet of defence', 'Ring of regeneration', 'Amulet of glory', 'Hard leather body', 'Oak shortbow', 'Archer ring']);
 
 export function rollLoot(monName, rng = Math.random) {
   const drops = [];
@@ -326,7 +404,20 @@ export function rollLoot(monName, rng = Math.random) {
 }
 
 // ---- Shops ---------------------------------------------------------------
-export function sellPrice(item) { return Math.max(1, Math.floor(itemValue(item) * 0.6) || 1); }
+// Supply Run makes shops pay more; Farmer's Hides gives a discount when buying.
+export function sellPrice(item, player = null) {
+  const base = Math.max(1, Math.floor(itemValue(item) * 0.6) || 1);
+  return player ? Math.max(1, Math.floor(base * (1 + questFx(player, 'sellBonus')))) : base;
+}
+export function buyPrice(price, player = null) {
+  return player ? Math.max(1, Math.ceil(price * (1 - questFx(player, 'shopDiscount')))) : price;
+}
+// Shop entries can need a quest (`unlock`), all quests ('all') or a 99 skill (`skill99`).
+export function stockVisible(entry, player, skills) {
+  if (entry.unlock && !isDone(player, entry.unlock)) return false;
+  if (entry.skill99 && (!skills || skills[entry.skill99].level < 99)) return false;
+  return true;
+}
 export const SELL_PRICES = new Proxy({}, { get: (t, k) => sellPrice(k) });
 
 // `unlock` = quest id needed before the item shows up.
@@ -341,7 +432,14 @@ export const SHOP_STOCK = [
   { item: 'Feather', price: 2 },
   { item: 'Flax', price: 4 },
   { item: 'Cooked lobster', price: 80, unlock: 'cook' },
-  { item: 'Oak shortbow', price: 120, unlock: 'hides' }
+  { item: 'Oak shortbow', price: 120, unlock: 'hides' },
+  { item: 'Red cape', price: 20 }, { item: 'Blue cape', price: 20 },
+  { item: 'Amulet of accuracy', price: 200 }, { item: 'Holy symbol', price: 300 },
+  { item: 'Amulet of defence', price: 500 }, { item: 'Amulet of strength', price: 900 },
+  { item: "Miner's ring", price: 900 }, { item: "Forester's ring", price: 900 }, { item: "Angler's ring", price: 900 },
+  { item: 'Ring of regeneration', price: 2000, unlock: 'fallen' },
+  { item: 'Quest point cape', price: 99, unlock: 'all' },
+  ...SKILL_CAPE_SKILLS.map(sk => ({ item: `${sk} cape`, price: 99000, skill99: sk }))
 ];
 export const TOOL_STOCK = [
   { item: 'Bronze axe', price: 16 }, { item: 'Bronze pickaxe', price: 20 },
@@ -382,6 +480,7 @@ export function equip(player, skills, item, onLog) {
       if (skills[sk].level < lvl) { onLog(`You need a ${sk} level of ${lvl} to wear this.`, 'warn'); return false; }
     }
   }
+  if (info.questCape && !isDone(player, 'all')) { onLog('You need to complete every quest to wear this cape.', 'warn'); return false; }
   if (!player.equipment) player.equipment = {};
   const qty = slot === 'ammo' ? (player.inventory[item] || 0) : 1;
   if (!qty) return false;

@@ -1,11 +1,11 @@
 // RS-style side panel with tabs, plus the bank, shop and help windows and the combat-skill quick bar.
-import { ITEMS, RECIPES, iconFor, CRAFT_TABS, METALS, TOOL_TYPES } from './items.js';
-import { SKILLS, SKILL_ICONS, xpToNext, levelProgress, nextLevelXp, combatLevel, totalLevel, PERKS, maxPrayer } from './skills.js';
+import { ITEMS, RECIPES, iconFor, CRAFT_TABS, METALS, TOOL_TYPES, statLine, setDesc } from './items.js';
+import { SKILLS, SKILL_ICONS, xpToNext, levelProgress, nextLevelXp, combatLevel, totalLevel, PERKS, maxPrayer, perkTotals } from './skills.js';
 import { INV_SIZE, slotsUsed } from './playerState.js';
-import { stylesFor, currentStyle, equipmentBonuses, playerMaxHit, SHOP_STOCK, TOOL_STOCK, sellPrice, bestTool } from './gameplay.js';
-import { PRAYERS, isActive, drainPerTick } from './prayer.js';
+import { stylesFor, currentStyle, equipmentBonuses, playerMaxHit, playerAccuracy, monsterAccuracy, MONSTER_TYPES, SHOP_STOCK, TOOL_STOCK, sellPrice, buyPrice, stockVisible, bestTool } from './gameplay.js';
+import { PRAYERS, isActive, drainPerTick, prayerBonus } from './prayer.js';
 import { ABILITIES, unlocked } from './abilities.js';
-import { QUESTS, questStatus, questPoints, QUEST_POINTS_TOTAL } from './quests.js';
+import { QUESTS, questStatus, questPoints, QUEST_POINTS_TOTAL, activeQuestBonuses } from './quests.js';
 import { esc } from './ui.js';
 
 const TABS = [
@@ -24,14 +24,12 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
-<p><b>Stacking.</b> Identical items now share one slot, so the 28 slots count different items. Tap bones to bury one, or hold for Bury all / Drop all.</p>
-<p><b>Toolbelt.</b> Tools live on the toolbelt in Worn Equipment and don't take inventory space. Better axes and pickaxes gather faster. Bob's Tool Shop (north of the square) sells more.</p>
-<p><b>Crafting tabs.</b> Smithing (bars at the furnace, gear at the anvil), Crafting, Fletching and Cooking (range or a fire you light from logs). Tiers run bronze → rune.</p>
-<p><b>Combat skills.</b> Power Strike, Puncture, Rapid Volley and more unlock with your combat levels. Use them from the quick bar while fighting.</p>
-<p><b>Perks.</b> Every skill unlocks a passive bonus at levels 10, 20 … 90 and 99. See them in the Skills tab.</p>
-<p><b>Brightwater.</b> The town now has a bank, general store, tool shop, smithy, cookhouse and church.</p>
-<p><b>Quests.</b> Five quests (6 quest points) from town folk. Look for the blue dots on the minimap.</p>
-<p><b>Prayer.</b> Bury bones for Prayer XP and turn on prayers in the Prayer tab. Recharge at the church altar.</p>
+<p><b>New this update</b></p>
+<p><b>More perks.</b> Every skill now unlocks a perk every 5 levels (5, 10 … 95) and at 99. Small ones stack up; the gold ★ milestones at 25, 50, 75 and 99 change how the skill plays: Chain Chop and Rich Vein keep trees and rocks going, resources can go straight to your bank, Double Cook, critical hits, Riposte counters, Parry blocks, Bloodlust heals on kills, Double Shot, prayer point regen and more. Tap a skill in the Skills tab to see the full list and your running totals.</p>
+<p><b>Equipment bonuses.</b> Gear now has melee and ranged attack, strength, ranged strength, melee and ranged defence and prayer bonuses. Prayer bonus makes prayers last longer. Leather is good against arrows (watch out for the new Dark Archers west of the lake). New amulets, rings and capes: some are sold at the General Store, some drop from monsters, some come from quests. Wear a full matched metal set (helm, body, legs, shield) or a full leather set for a set bonus. Skill capes are for 99s and boost that skill's perks by 10%.</p>
+<p><b>Quest bonuses.</b> Every quest now gives a lasting bonus (more XP in a skill, extra max HP, damage against a monster type, shop discounts and more). There are 9 quests and 11 quest points now: Bob, the Merchant, Ranger Wyn and Sir Vyvin have new ones. Quest point milestones at 3, 6, 9 and 11 give extra bonuses, and finishing every quest earns the Quest point cape. See them all under Quest bonuses in the Quest tab.</p>
+<p><b>Earlier</b></p>
+<p><b>Stacking.</b> Identical items share one slot. <b>Toolbelt</b> in Worn Equipment. <b>Crafting tabs</b> for Smithing, Crafting, Fletching and Cooking. <b>Combat skills</b> on the quick bar. <b>Prayer</b>: bury bones, pray at the church altar.</p>
 <p>When you die you keep all your items and wake up in town.</p>`;
 
 // Tap and long-press on elements matching selector inside root.
@@ -82,6 +80,7 @@ export function createInventoryUI(api) {
   let qtyMode = 1;          // bank / shop quantity
   let selectedSkill = null;
   let selectedQuest = null;
+  let shopInfo = null;
   let craftTab = 'Smithing';
   let smithGroup = 'Smelting';
 
@@ -114,6 +113,16 @@ export function createInventoryUI(api) {
       <div class="hint">${hint}</div>`;
   }
 
+  function perkPanel(skill, k) {
+    const list = PERKS[skill] || [];
+    const got = list.filter(p => k.level >= p.level).length;
+    const next = list.find(p => k.level < p.level);
+    const totals = perkTotals(skills, skill);
+    return `<div class="perktotal"><b>Your ${skill} bonuses</b> (${got}/${list.length} perks)` +
+      (totals.length ? totals.map(t => `<div>• ${esc(t)}</div>`).join('') : '<div>None yet. First perk at level 5.</div>') +
+      (next ? `<div class="nextperk">Next: ${esc(next.name)} at level ${next.level}</div>` : '') + `</div>` +
+      `<div class="perks">${list.map(p => `<div class="perk ${k.level >= p.level ? 'got' : 'locked'} ${p.milestone ? 'big' : ''}"><span>${p.level}</span> ${k.level >= p.level ? '✔' : '🔒'} <b>${p.milestone ? '★ ' : ''}${esc(p.name)}</b>: ${esc(p.desc)}</div>`).join('')}</div>`;
+  }
   function renderSkills() {
     let html = `<div class="tab-head"><b>Skills</b><span>Total ${totalLevel(skills)}</span></div><div class="skillgrid">`;
     for (const s of SKILLS) {
@@ -126,7 +135,7 @@ export function createInventoryUI(api) {
       html += `<div class="skilldetail"><b>${selectedSkill}</b> level ${k.level}<br>XP: ${fmt(k.xp)}<br>` +
         (k.level >= 99 ? 'Maximum level!' : `Next level at: ${fmt(nextLevelXp(k))}<br>Remaining: ${fmt(xpToNext(k))}`) +
         `<div class="bar"><i style="width:${(levelProgress(k) * 100).toFixed(1)}%"></i></div>
-        <div class="perks"><b>Perks</b>${(PERKS[selectedSkill] || []).map(p => `<div class="perk ${k.level >= p.level ? 'got' : ''}"><span>${p.level}</span> <b>${esc(p.name)}</b>: ${esc(p.desc)}</div>`).join('')}</div></div>`;
+        ${perkPanel(selectedSkill, k)}</div>`;
     } else {
       html += '<div class="hint">Tap a skill to see its XP and perks</div>';
     }
@@ -152,11 +161,13 @@ export function createInventoryUI(api) {
   }
 
   const EQUIP_LAYOUT = [
-    [null, 'head', 'ammo'],
+    [null, 'head', null],
+    ['cape', 'neck', 'ammo'],
     ['weapon', 'body', 'shield'],
-    [null, 'legs', null]
+    [null, 'legs', 'ring']
   ];
-  const SLOT_ICON = { head: '⛑️', ammo: '➶', weapon: '🗡️', body: '👕', shield: '🛡️', legs: '👖' };
+  const SLOT_ICON = { head: '⛑️', ammo: '➶', weapon: '🗡️', body: '👕', shield: '🛡️', legs: '👖', neck: '📿', ring: '💍', cape: '🧣' };
+  const sgn = v => (v >= 0 ? '+' : '') + v;
   function renderEquip() {
     let html = '<div class="tab-head"><b>Worn Equipment</b></div><div class="equipgrid">';
     for (const row of EQUIP_LAYOUT) for (const slot of row) {
@@ -166,10 +177,25 @@ export function createInventoryUI(api) {
       else html += `<div class="slot empty" title="${slot}"><span class="ico ghost">${SLOT_ICON[slot]}</span></div>`;
     }
     const b = equipmentBonuses(player);
-    html += `</div><div class="bonuses">
-      <div>Attack <b>+${b.atk}</b></div><div>Strength <b>+${b.str}</b></div>
-      <div>Ranged <b>+${b.ranged}</b></div><div>Arrow str <b>+${b.rstr}</b></div>
-      <div>Defence <b>+${b.def}</b></div><div>Max hit <b>${playerMaxHit(player, skills)}</b></div></div>
+    const extras = [];
+    if (b.regen) extras.push(`HP regen +${Math.round(b.regen * 100)}%`);
+    for (const [sk, v] of Object.entries(b.gather)) extras.push(`${sk} speed +${Math.round(v * 100)}%`);
+    for (const [sk, v] of Object.entries(b.xp)) extras.push(`${sk} XP +${Math.round(v * 100)}%`);
+    if (b.capeSkill) extras.push(`${b.capeSkill} perks +10%`);
+    const st = b.set;
+    const setHtml = st ? `<div class="setbonus ${st.active ? 'on' : ''}">${st.active ? '✔' : '◻'} <b>${st.name} set</b> ${st.have}/${st.need}: ${esc(setDesc(st.fx))}${st.active ? '' : ' (wear the full set)'}</div>`
+      : '<div class="setbonus">Wear a full matched set (helm, body, legs, shield) for a set bonus</div>';
+    // Chance to hit a Black Knight / get hit by one, so bonuses mean something.
+    const bk = MONSTER_TYPES['Black Knight'];
+    html += `</div><div class="bonushead">Attack bonus</div><div class="bonuses">
+      <div>Melee <b>${sgn(b.atk)}</b></div><div>Ranged <b>${sgn(b.ranged)}</b></div></div>
+      <div class="bonushead">Defence bonus</div><div class="bonuses">
+      <div>Melee <b>${sgn(b.def)}</b></div><div>Ranged <b>${sgn(b.rdef)}</b></div></div>
+      <div class="bonushead">Other bonuses</div><div class="bonuses">
+      <div>Strength <b>${sgn(b.str)}</b></div><div>Ranged str <b>${sgn(b.rstr)}</b></div>
+      <div>Prayer <b>${sgn(b.prayer)}</b></div><div>Max hit <b>${playerMaxHit(player, skills)}</b></div></div>
+      ${extras.length ? `<div class="setbonus on">${extras.map(esc).join(' · ')}</div>` : ''}${setHtml}
+      <div class="hint">vs Black Knight: you hit ${Math.round(playerAccuracy(player, skills, bk) * 100)}% · it hits you ${Math.round(monsterAccuracy(bk, player, skills) * 100)}%</div>
       <div class="craftskill">Toolbelt</div><div class="toolgrid">`;
     for (const t of TOOL_TYPES) {
       const item = bestTool(player, skills, t.id);
@@ -183,7 +209,7 @@ export function createInventoryUI(api) {
     const max = maxPrayer(skills);
     const pp = player.prayerPoints || 0;
     const drain = drainPerTick(player, skills);
-    let html = `<div class="tab-head"><b>Prayer</b><span>${Math.ceil(pp)} / ${max}</span></div>
+    let html = `<div class="tab-head"><b>Prayer</b><span>${Math.ceil(pp)} / ${max} · bonus ${prayerBonus(player) >= 0 ? '+' : ''}${prayerBonus(player)}</span></div>
       <div class="bar praybar"><i style="width:${(Math.min(1, pp / max) * 100).toFixed(1)}%"></i></div><div class="praygrid">`;
     for (const p of PRAYERS) {
       const can = skills.Prayer.level >= p.level && (!p.quest || api.questDone(p.quest));
@@ -206,8 +232,14 @@ export function createInventoryUI(api) {
       const st = questStatus(player, qd.id);
       html += `<div class="journal"><b>${esc(qd.name)}</b>${qd.journal(player).map(l => `<div class="${l.done ? 'done' : ''}">${esc(l.text)}</div>`).join('')}
         ${st === 'complete' ? '<div class="qdone">QUEST COMPLETE!</div>' : ''}
-        <div class="rewards">Rewards: ${qd.points} quest point${qd.points > 1 ? 's' : ''}, ${qd.rewards.map(esc).join(', ')}</div></div>`;
+        <div class="rewards">Rewards: ${qd.points} quest point${qd.points > 1 ? 's' : ''}, ${qd.rewards.map(esc).join(', ')}</div>
+        <div class="qbonus ${st === 'complete' ? 'on' : ''}">★ Lasting bonus: ${esc(qd.bonus.desc)}${st === 'complete' ? ' (active)' : ''}</div></div>`;
     } else html += '<div class="hint">Red: not started · Yellow: in progress · Green: complete. Tap a quest for its journal.</div>';
+    const qb = activeQuestBonuses(player);
+    const on = qb.quests.filter(x => x.active);
+    html += `<div class="craftskill">Quest bonuses</div><div class="qbonuses">` +
+      (on.length ? on.map(x => `<div class="on">✔ <b>${esc(x.name)}</b>: ${esc(x.desc)}</div>`).join('') : '<div>Finish quests to earn lasting bonuses.</div>') +
+      qb.milestones.map(m => `<div class="${m.active ? 'on' : ''}">${m.active ? '✔' : '🔒'} <b>${m.qp} QP</b>: ${esc(m.desc)}</div>`).join('') + '</div>';
     return html;
   }
 
@@ -261,7 +293,7 @@ export function createInventoryUI(api) {
   }
   function shopStock() {
     const list = mode === 'tools' ? TOOL_STOCK : SHOP_STOCK;
-    return list.filter(s => !s.unlock || api.questDone(s.unlock));
+    return list.filter(s => stockVisible(s, player, skills));
   }
   function renderWindow() {
     if (!mode) { win.style.display = 'none'; return; }
@@ -281,9 +313,13 @@ export function createInventoryUI(api) {
         ${qtyBar('Buy/sell: ')}
         <div class="bankgrid">${shopStock().map(s => {
           const owned = ITEMS[s.item] && ITEMS[s.item].tool && player.tools && player.tools[s.item];
-          return itemCell(s.item, 1).replace('class="slot item"', `class="slot item shopitem ${owned ? 'owned' : ''}" data-price="${s.price}"`).replace(/<\/div>$/, `<span class="price">${s.price}</span>${owned ? '<span class="own">✔</span>' : ''}</div>`);
+          const price = buyPrice(s.price, player);
+          const stats = statLine(s.item);
+          return itemCell(s.item, 1).replace('class="slot item"', `class="slot item shopitem ${owned ? 'owned' : ''}" data-price="${price}"`).replace(`title="${esc(s.item)}"`, `title="${esc(s.item + (stats ? ': ' + stats : ''))}"`)
+            .replace(/<\/div>$/, `<span class="price">${qtyLabel(price)}</span>${owned ? '<span class="own">✔</span>' : ''}</div>`);
         }).join('')}</div>
-        <div class="hint">Tap stock to buy · tap your items to sell${mode === 'tools' ? ' · tools go straight onto your toolbelt (✔ = owned)' : ''}</div>`;
+        <div class="shopinfo">${shopInfo ? esc(shopInfo) : 'Hold an item to see its bonuses'}</div>
+        <div class="hint">Tap stock to buy · tap your items to sell${mode === 'tools' ? ' · tools go straight onto your toolbelt (✔ = owned)' : ''}${buyPrice(100, player) < 100 ? ` · quest discount ${100 - buyPrice(100, player)}%` : ''}</div>`;
     }
     if (win._html !== html) { win._html = html; win.innerHTML = html; }
   }
@@ -330,7 +366,12 @@ export function createInventoryUI(api) {
   bindPress(content, '.slot.tool', el => api.toolInfo(el.dataset.tool), el => api.toolInfo(el.dataset.tool));
   bindPress(content, '[data-prayer]', el => api.prayerToggle(el.dataset.prayer), el => api.prayerInfo(el.dataset.prayer));
   bindPress(win, '.slot.bankitem', el => api.withdraw(el.dataset.item, qtyMode), (el, x, y) => api.bankMenu(el.dataset.item, x, y));
-  bindPress(win, '.slot.shopitem', el => api.buy(el.dataset.item, +el.dataset.price, qtyMode), (el, x, y) => api.shopMenu(el.dataset.item, +el.dataset.price, x, y));
+  bindPress(win, '.slot.shopitem', el => api.buy(el.dataset.item, +el.dataset.price, qtyMode), (el, x, y) => {
+    const st = statLine(el.dataset.item);
+    shopInfo = `${el.dataset.item}: ${st || 'no bonuses'} · ${el.dataset.price} gp`;
+    renderWindow();
+    api.shopMenu(el.dataset.item, +el.dataset.price, x, y);
+  });
 
   content.addEventListener('click', e => {
     const sk = e.target.closest('[data-skill]');
@@ -362,6 +403,7 @@ export function createInventoryUI(api) {
 
   function open(m) {
     mode = m;
+    shopInfo = null;
     qtyMode = 1;
     if (m !== 'help') { tab = 'inv'; collapsed = false; }
     render();

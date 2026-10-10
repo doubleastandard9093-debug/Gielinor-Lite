@@ -131,7 +131,10 @@ export function setupUI(settings) {
   }
   function levelUp(skill, icon, level, perks = []) {
     queue.push(`<div class="lu-icon">${icon}</div><div><b>Congratulations!</b> You just advanced a ${esc(skill)} level.<br>Your ${esc(skill)} level is now ${level}.` +
-      perks.map(p => `<br><span class="lu-perk">New perk: ${esc(p.name)} (${esc(p.desc)})</span>`).join('') + '</div>');
+      // Milestones first; long lists (big XP jumps) are trimmed here but every perk is named in chat.
+      [...perks].sort((x, y) => (y.milestone ? 1 : 0) - (x.milestone ? 1 : 0)).slice(0, 4)
+        .map(p => `<br><span class="lu-perk">New perk: ${p.milestone ? '★ ' : ''}${esc(p.name)} (${esc(p.desc)})</span>`).join('') +
+      (perks.length > 4 ? `<br><span class="lu-perk">…and ${perks.length - 4} more (see chat)</span>` : '') + '</div>');
     if (!showing) nextBanner();
   }
   bannerEl.addEventListener('click', () => { nextBanner(); });

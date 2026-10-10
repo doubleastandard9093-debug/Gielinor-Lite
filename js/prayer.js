@@ -1,5 +1,7 @@
 // Prayers: unlocked by Prayer level, drain prayer points every game tick while on.
 import { perk, maxPrayer } from './skills.js';
+import { ITEMS } from './items.js';
+import { questFx } from './quests.js';
 
 // fx: att/str/def/rng = level boost, regen = extra HP regen speed, saveMat = chance to keep
 // materials when making things, gather = extra gathering success and XP, protect = melee damage cut.
@@ -43,10 +45,22 @@ export function togglePrayer(player, skills, id, questDone = () => true) {
   return null;
 }
 
+export function prayerBonus(player) {
+  let b = 0;
+  for (const item of Object.values(player.equipment || {})) if (item && ITEMS[item]) b += ITEMS[item].prayer || 0;
+  return b;
+}
+// Like RuneScape: each prayer bonus point makes prayers last ~3.3% longer.
+// Prayer perks and quest bonuses cut the drain further (never below 40%).
 export function drainPerTick(player, skills) {
   let d = 0;
   for (const id of player.activePrayers || []) d += prayerById(id).drain;
-  return d * (1 - perk(skills, 'Prayer', 'drainLess'));
+  const less = Math.min(0.6, perk(skills, 'Prayer', 'drainLess') + questFx(player, 'drainLess'));
+  return d * (1 - less) / (1 + Math.max(0, prayerBonus(player)) / 30);
+}
+// Faithful perk and Rest for the Fallen: prayer points slowly come back.
+export function ppRegenPerTick(player, skills) {
+  return perk(skills, 'Prayer', 'ppRegen') + questFx(player, 'ppRegen');
 }
 
 // Called every game tick. Returns true when points just ran out.

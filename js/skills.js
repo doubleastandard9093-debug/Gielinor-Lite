@@ -84,53 +84,93 @@ export function totalLevel(skills) {
 }
 
 // ---------------------------------------------------------------------------
-// Tiered perks: every skill unlocks a passive bonus at 10, 20 ... 90 and 99.
-// Odd milestones (10, 30, 50, 70, 90) give one bonus, even ones (20, 40, 60, 80)
-// another, and 99 gives a bigger boost to both.
+// Perks: every skill unlocks something every 5 levels (5 ... 95) and at 99.
+// Levels 25, 50, 75 and 99 are named milestone perks that change how the skill
+// plays; the others are small stat bumps that stack.
 // ---------------------------------------------------------------------------
-export const PERK_LEVELS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 99];
-const pct = v => Math.round(v * 100) + '%';
-function build(names, odd, even, cape) {
-  // odd/even/cape: [fx object, description]
-  return PERK_LEVELS.map((level, i) => {
-    const [fx, desc] = level === 99 ? cape : (i % 2 === 0 ? odd : even);
-    return { level, name: names[i], fx, desc };
+export const PERK_LEVELS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 99];
+export const MILESTONES = [25, 50, 75, 99];
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+
+// How each bonus reads in the Skills tab totals.
+const P = v => `${+(v * 100).toFixed(1)}%`;
+export const FX_LABEL = {
+  acc: v => `+${P(v)} melee accuracy`, abilityCd: v => `combat skills recharge ${P(v)} faster`, counter: v => `${P(v)} chance to counter-attack when a monster misses`,
+  quick: v => `${P(v)} chance your next swing comes a tick sooner`, maxHit: v => `+${v} melee max hit`, crit: v => `${P(v)} critical hit chance`,
+  critMult: v => `critical hits deal +${P(v)} more`, execute: v => `+${P(v)} damage to targets under 25% HP`, dr: v => `take ${P(v)} less damage`,
+  block: v => `${P(v)} chance to block a hit completely`, reflect: v => `reflect ${P(v)} of damage taken`, regen: v => `HP regenerates ${P(v)} faster`,
+  healBonus: v => `food heals ${P(v)} more`, killHeal: v => `heal ${P(v)} of max HP on each kill`, lowRegen: () => 'double HP regen below 30% HP',
+  maxHp: v => `+${Math.round(v)} max hitpoints`, racc: v => `+${P(v)} ranged accuracy`, ammoSave: v => `${P(v)} chance to keep an arrow`,
+  doubleShot: v => `${P(v)} chance of a free second arrow`, rcrit: v => `${P(v)} ranged critical chance`, rmaxHit: v => `+${v} ranged max hit`,
+  drainLess: v => `prayers drain ${P(v)} slower`, buryXp: v => `+${P(v)} XP from burying bones`, ppRegen: v => `regain ${(v / 0.6).toFixed(2)} prayer points/sec`,
+  buryRestore: v => `burying bones restores ${Math.round(v)} prayer points`, speed: v => `+${P(v)} gathering success`, double: v => `${P(v)} chance of double resources`,
+  chain: v => `${P(v)} chance the node isn't used up`, autoBank: v => `${P(v)} chance resources go straight to your bank`, xpBonus: v => `+${P(v)} XP`,
+  saveBar: v => `${P(v)} chance to save your bars/ore`, saveMat: v => `${P(v)} chance to save materials`, fastMake: () => 'make items 1 tick faster',
+  doubleMake: v => `${P(v)} chance of a free extra item`, extraArrows: v => `+${Math.round(v)} arrows per batch`, burnLess: v => v >= 1 ? 'never burn food' : `burn ${P(v)} less often`
+};
+function describe(fx) { return Object.entries(fx).map(([k, v]) => FX_LABEL[k] ? FX_LABEL[k](v) : k).join(', '); }
+
+// small: [nameA, fxA, nameB, fxB]; big: { 25: [name, fx], 50: ..., 75: ..., 99: ... }
+function build(small, big) {
+  let ia = 0, ib = 0;
+  return PERK_LEVELS.map(level => {
+    let name, fx, milestone = false;
+    if (big[level]) { [name, fx] = big[level]; milestone = true; }
+    else if (level % 10 === 5) { name = `${small[0]} ${ROMAN[ia++]}`; fx = small[1]; }
+    else { name = `${small[2]} ${ROMAN[ib++]}`; fx = small[3]; }
+    return { level, name, fx, milestone, desc: describe(fx) };
   });
 }
 export const PERKS = {
-  Attack: build(['Steady Hand', 'Battle Focus', 'Keen Edge', 'Swift Recovery', 'Precision', 'Veteran', 'True Strike', 'War Cry', 'Weapon Master', 'Attack Cape'],
-    [{ acc: 0.03 }, '+3% melee accuracy'], [{ abilityCd: 0.05 }, 'combat skills recharge 5% faster'], [{ acc: 0.05, abilityCd: 0.05 }, '+5% accuracy, 5% faster recharge']),
-  Strength: build(['Brawn', 'Crushing Blow', 'Muscle', 'Heavy Hitter', 'Might', 'Savage Blow', 'Titan Grip', 'Executioner', 'Juggernaut', 'Strength Cape'],
-    [{ maxHit: 2 }, '+2 melee max hit'], [{ crit: 0.02 }, '+2% chance of a critical hit (x1.5)'], [{ maxHit: 5, crit: 0.03 }, '+5 max hit, +3% critical chance']),
-  Defence: build(['Tough Hide', 'Bracing', 'Iron Will', 'Stalwart', 'Bulwark', 'Unyielding', 'Fortress', 'Rampart', 'Impervious', 'Defence Cape'],
-    [{ dr: 0.02 }, 'take 2% less damage'], [{ dr: 0.02 }, 'take 2% less damage'], [{ dr: 0.04 }, 'take 4% less damage']),
-  Hitpoints: build(['Hardy', 'Second Wind', 'Vigour', 'Hearty Meal', 'Resilience', 'Lifeblood', 'Vitality', 'Well Fed', 'Undying', 'Hitpoints Cape'],
-    [{ regen: 0.15 }, 'hitpoints regenerate 15% faster'], [{ healBonus: 0.05 }, 'food heals 5% more'], [{ regen: 0.25, healBonus: 0.1 }, '25% faster regen, food heals 10% more']),
-  Ranged: build(['Keen Eye', 'Fletcher\'s Thrift', 'Steady Aim', 'Quiver Craft', 'Deadeye', 'Arrow Saver', 'Eagle Sight', 'Recycler', 'Marksman', 'Ranged Cape'],
-    [{ racc: 0.03, rmaxHit: 1 }, '+3% ranged accuracy, +1 max hit'], [{ ammoSave: 0.08 }, '8% chance to keep an arrow'], [{ racc: 0.05, rmaxHit: 3, ammoSave: 0.1 }, '+5% accuracy, +3 max hit, 10% arrow saving']),
-  Prayer: build(['Devout', 'Blessed Rites', 'Faithful', 'Gravedigger', 'Pious', 'Sacred Burial', 'Zealot', 'Bone Collector', 'Saint', 'Prayer Cape'],
-    [{ drainLess: 0.05 }, 'prayers drain 5% slower'], [{ buryXp: 0.05 }, '+5% XP from burying bones'], [{ drainLess: 0.1, buryXp: 0.1 }, '10% slower drain, +10% bury XP']),
-  Mining: build(['Keen Pick', 'Rich Vein', 'Steady Strikes', 'Prospector', 'Deep Delver', 'Motherlode', 'Stonebreaker', 'Gem Sense', 'Master Miner', 'Mining Cape'],
-    [{ speed: 0.04 }, 'mine 4% faster'], [{ double: 0.05 }, '5% chance of double ore'], [{ speed: 0.06, double: 0.05 }, 'mine 6% faster, +5% double ore']),
-  Woodcutting: build(['Sharp Edge', 'Bountiful Bough', 'Steady Swing', 'Woodsman\'s Luck', 'Lumberjack', 'Heartwood', 'Timber!', 'Forest Friend', 'Master Feller', 'Woodcutting Cape'],
-    [{ speed: 0.04 }, 'chop 4% faster'], [{ double: 0.05 }, '5% chance of double logs'], [{ speed: 0.06, double: 0.05 }, 'chop 6% faster, +5% double logs']),
-  Fishing: build(['Patient Angler', 'Double Catch', 'Quick Reflexes', 'Bountiful Waters', 'Expert Caster', 'Teeming Shoals', 'Lure Master', 'Fisher King', 'Master Fisher', 'Fishing Cape'],
-    [{ speed: 0.04 }, 'fish 4% faster'], [{ double: 0.05 }, '5% chance of double catch'], [{ speed: 0.06, double: 0.05 }, 'fish 6% faster, +5% double catch']),
-  Smithing: build(['Apprentice', 'Efficient Hammer', 'Journeyman', 'Hot Forge', 'Artisan', 'Bar Saver', 'Master Smith', 'Smith\'s Insight', 'Grandmaster', 'Smithing Cape'],
-    [{ saveBar: 0.03 }, '3% chance to save a bar or ore'], [{ xpBonus: 0.03 }, '+3% Smithing XP'], [{ saveBar: 0.05, xpBonus: 0.05 }, '+5% bar saving, +5% XP']),
-  Crafting: build(['Nimble Fingers', 'Tanner\'s Eye', 'Fine Stitching', 'Thrifty', 'Artisan', 'Patternmaker', 'Master Crafter', 'Leatherworker', 'Grand Artisan', 'Crafting Cape'],
-    [{ saveMat: 0.03 }, '3% chance to save materials'], [{ xpBonus: 0.03 }, '+3% Crafting XP'], [{ saveMat: 0.05, xpBonus: 0.05 }, '+5% material saving, +5% XP']),
-  Cooking: build(['Kitchen Hand', 'Hearty Portions', 'Line Cook', 'Seasoned', 'Sous Chef', 'Rich Broth', 'Head Chef', 'Feast Maker', 'Master Chef', 'Cooking Cape'],
-    [{ burnLess: 0.1 }, 'burn food 10% less often'], [{ healBonus: 0.05 }, 'food you eat heals 5% more'], [{ burnLess: 1 }, 'never burn food']),
-  Fletching: build(['Whittler', 'Thrifty Knife', 'Bowyer', 'Careful Cuts', 'Fletcher', 'Waste Not', 'Master Bowyer', 'Arrowsmith', 'Grand Fletcher', 'Fletching Cape'],
-    [{ extraArrows: 1 }, '+1 arrow per batch'], [{ saveMat: 0.03 }, '3% chance to save materials'], [{ extraArrows: 3, saveMat: 0.05 }, '+3 arrows per batch, +5% saving'])
+  Attack: build(['Steady Hand', { acc: 0.01 }, 'Battle Rhythm', { abilityCd: 0.01 }], {
+    25: ['Riposte', { counter: 0.1 }], 50: ['Battle Focus', { abilityCd: 0.08 }], 75: ['Swift Strikes', { quick: 0.1 }], 99: ['Attack Mastery', { acc: 0.04, counter: 0.05 }] }),
+  Strength: build(['Brawn', { maxHit: 1 }, 'Killer Instinct', { crit: 0.005 }], {
+    25: ['Critical Strikes', { crit: 0.04 }], 50: ['Executioner', { execute: 0.25 }], 75: ['Brutal', { critMult: 0.25 }], 99: ['Strength Mastery', { maxHit: 4, crit: 0.02 }] }),
+  Defence: build(['Tough Hide', { dr: 0.005 }, 'Bracing', { dr: 0.005 }], {
+    25: ['Parry', { block: 0.05 }], 50: ['Iron Skin', { dr: 0.03 }], 75: ['Retribution', { reflect: 0.1 }], 99: ['Defence Mastery', { dr: 0.03, block: 0.03 }] }),
+  Hitpoints: build(['Hardy', { regen: 0.03 }, 'Hearty Eater', { healBonus: 0.01 }], {
+    25: ['Bloodlust', { killHeal: 0.03 }], 50: ['Second Wind', { lowRegen: 1 }], 75: ['Iron Constitution', { maxHp: 20 }], 99: ['Hitpoints Mastery', { regen: 0.2, killHeal: 0.02 }] }),
+  Ranged: build(['Keen Eye', { racc: 0.01 }, 'Thrifty Quiver', { ammoSave: 0.01 }], {
+    25: ['Arrow Retrieval', { ammoSave: 0.1 }], 50: ['Double Shot', { doubleShot: 0.08 }], 75: ['Deadeye', { rcrit: 0.06 }], 99: ['Ranged Mastery', { racc: 0.04, rmaxHit: 3 }] }),
+  Prayer: build(['Devout', { drainLess: 0.01 }, 'Blessed Rites', { buryXp: 0.01 }], {
+    25: ['Faithful', { ppRegen: 0.03 }], 50: ['Blessed Burial', { buryRestore: 2 }], 75: ['Zealot', { drainLess: 0.1 }], 99: ['Prayer Mastery', { ppRegen: 0.03, buryXp: 0.1 }] }),
+  Mining: build(['Keen Pick', { speed: 0.01 }, 'Lucky Strike', { double: 0.01 }], {
+    25: ['Rich Vein', { chain: 0.15 }], 50: ['Ore Cart', { autoBank: 0.05 }], 75: ['Motherlode', { double: 0.08 }], 99: ['Mining Mastery', { speed: 0.04, autoBank: 0.05 }] }),
+  Woodcutting: build(['Sharp Edge', { speed: 0.01 }, 'Bountiful Bough', { double: 0.01 }], {
+    25: ['Chain Chop', { chain: 0.15 }], 50: ["Forester's Cart", { autoBank: 0.05 }], 75: ['Heartwood', { double: 0.08 }], 99: ['Woodcutting Mastery', { speed: 0.04, autoBank: 0.05 }] }),
+  Fishing: build(['Patient Angler', { speed: 0.01 }, 'Double Catch', { double: 0.01 }], {
+    25: ['Barbarian Grip', { xpBonus: 0.05 }], 50: ['Fish Barrel', { autoBank: 0.05 }], 75: ['Double Haul', { double: 0.08 }], 99: ['Fishing Mastery', { speed: 0.04, autoBank: 0.05 }] }),
+  Smithing: build(['Bar Saver', { saveBar: 0.01 }, "Smith's Insight", { xpBonus: 0.01 }], {
+    25: ['Hot Forge', { fastMake: 1 }], 50: ['Double Smelt', { doubleMake: 0.1 }], 75: ['Master Smith', { saveBar: 0.05 }], 99: ['Smithing Mastery', { xpBonus: 0.05, doubleMake: 0.05 }] }),
+  Crafting: build(['Nimble Fingers', { saveMat: 0.01 }, "Artisan's Eye", { xpBonus: 0.01 }], {
+    25: ['Quick Hands', { fastMake: 1 }], 50: ['Masterwork', { doubleMake: 0.08 }], 75: ['Thrifty', { saveMat: 0.05 }], 99: ['Crafting Mastery', { xpBonus: 0.05, doubleMake: 0.05 }] }),
+  Cooking: build(['Careful Cook', { burnLess: 0.02 }, 'Hearty Portions', { healBonus: 0.01 }], {
+    25: ['Double Cook', { doubleMake: 0.08 }], 50: ['Quick Chef', { fastMake: 1 }], 75: ['Gourmet', { healBonus: 0.1 }], 99: ['Cooking Mastery', { burnLess: 1 }] }),
+  Fletching: build(['Whittler', { extraArrows: 1 }, 'Careful Cuts', { saveMat: 0.01 }], {
+    25: ['Quick Knife', { fastMake: 1 }], 50: ['Twin Bows', { doubleMake: 0.08 }], 75: ['Arrowsmith', { extraArrows: 3 }], 99: ['Fletching Mastery', { xpBonus: 0.05, doubleMake: 0.05 }] })
 };
 
+// Wearing a skill cape boosts that skill's perks by 10% (main.js sets skills._boost).
+export function setPerkBoost(skills, boosts) {
+  Object.defineProperty(skills, '_boost', { value: boosts, enumerable: false, writable: true, configurable: true });
+}
 export function perk(skills, skill, key) {
   const lvl = skills[skill] ? skills[skill].level : 1;
   let v = 0;
   for (const p of PERKS[skill] || []) { if (p.level > lvl) break; if (p.fx[key]) v += p.fx[key]; }
-  return v;
+  const boost = skills._boost && skills._boost[skill];
+  return boost ? v * (1 + boost) : v;
+}
+// Sum of every unlocked bonus for one skill, for the Skills tab.
+export function perkTotals(skills, skill) {
+  const out = {};
+  for (const p of PERKS[skill] || []) {
+    if (p.level > skills[skill].level) break;
+    for (const [k, v] of Object.entries(p.fx)) out[k] = (out[k] || 0) + v;
+  }
+  const boost = skills._boost && skills._boost[skill];
+  if (boost) for (const k of Object.keys(out)) out[k] *= 1 + boost;
+  return Object.entries(out).map(([k, v]) => FX_LABEL[k] ? FX_LABEL[k](v) : k);
 }
 export function perksBetween(skill, fromLvl, toLvl) {
   return (PERKS[skill] || []).filter(p => p.level > fromLvl && p.level <= toLvl);

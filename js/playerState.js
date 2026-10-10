@@ -20,7 +20,7 @@ export function createPlayerState() {
     maxMana: 100,
     gold: 0,
     inventory: {},
-    equipment: { weapon: null, body: null, legs: null, shield: null, head: null, ammo: null },
+    equipment: { weapon: null, body: null, legs: null, shield: null, head: null, ammo: null, neck: null, ring: null, cape: null },
     tools: Object.fromEntries(STARTER_TOOLS.map(t => [t, true])),
     prayerPoints: 10,
     activePrayers: [],
@@ -78,8 +78,9 @@ export function removeItem(player, item, qty = 1) {
   return true;
 }
 
-export function recalcMaxHp(player, skills) {
-  let bonus = 0;
+// extra = max HP from perks and quest bonuses (worked out by main.js).
+export function recalcMaxHp(player, skills, extra = 0) {
+  let bonus = Math.round(extra);
   if (player.skillTrees.Defence.fortify) bonus += 5;
   if (player.skillTrees.Hitpoints.vitality) bonus += 10;
   player.maxHp = skills.Hitpoints.level * 10 + bonus;

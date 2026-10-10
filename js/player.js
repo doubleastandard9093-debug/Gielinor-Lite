@@ -72,6 +72,18 @@ export function createPlayer(scene) {
   helm.visible = false;
   playerGroup.add(helm);
 
+  // Cape hangs off the back; amulet is a small gem at the neck.
+  const capeMat = lam(0xc03030);
+  const cape = box(0.7, 1.0, 0.05, capeMat);
+  cape.position.set(0, 1.0, -0.26);
+  cape.visible = false;
+  playerGroup.add(cape);
+  const neckMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+  const neck = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.04), neckMat);
+  neck.position.set(0, 1.35, 0.24);
+  neck.visible = false;
+  playerGroup.add(neck);
+
   playerGroup.position.set(0, 0, 0);
   scene.add(playerGroup);
 
@@ -86,7 +98,7 @@ export function createPlayer(scene) {
     animT: 0,
     actionAnim: 0,      // 0..1 swing timer for chopping/attacking
     actionKind: null,
-    parts: { body, bodyMat, leftArm, rightArm, leftLeg, rightLeg, legMat, helm, helmMat, hair, sword, swordMat, bow, bowMat, shield, shieldMat }
+    parts: { body, bodyMat, leftArm, rightArm, leftLeg, rightLeg, legMat, helm, helmMat, hair, sword, swordMat, bow, bowMat, shield, shieldMat, cape, capeMat, neck, neckMat }
   };
 }
 
@@ -111,6 +123,13 @@ export function applyEquipmentLook(pm, equipment) {
   p.helm.visible = !!equipment.head;
   p.hair.visible = !equipment.head;
   if (equipment.head) p.helmMat.color.setHex(metalColor(equipment.head, 0x7a4a24));
+  if (p.cape) {
+    const c = equipment.cape;
+    p.cape.visible = !!c;
+    if (c) p.capeMat.color.setHex(/Blue|Quest/.test(c) ? 0x3050c0 : / cape$/.test(c) && c !== 'Red cape' ? 0xd4af37 : 0xc03030);
+    p.neck.visible = !!equipment.neck;
+    if (equipment.neck) p.neckMat.color.setHex(/strength/.test(equipment.neck) ? 0xd04a4a : /defence/.test(equipment.neck) ? 0x4ad08a : /accuracy/.test(equipment.neck) ? 0x4a8ad0 : /Holy/.test(equipment.neck) ? 0xe0e0e0 : 0xffd700);
+  }
 }
 
 // Push a point out of any building it overlaps (circle of radius r vs boxes).

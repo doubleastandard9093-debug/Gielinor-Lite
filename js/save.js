@@ -4,7 +4,7 @@ import { ITEMS, isTool, STARTER_TOOLS } from './items.js';
 import { PRAYERS } from './prayer.js';
 import { questPoints } from './quests.js';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 const KEY = 'gielinor3d';
 
 export function getSaveData(skills, player, playerMesh) {
@@ -52,7 +52,7 @@ export function migrateSave(saved) {
   };
   p.inventory = cleanBag(p.inventory);
   p.bank = cleanBag(p.bank);
-  p.equipment = Object.assign({ weapon: null, body: null, legs: null, shield: null, head: null, ammo: null }, p.equipment || {});
+  p.equipment = Object.assign({ weapon: null, body: null, legs: null, shield: null, head: null, ammo: null, neck: null, ring: null, cape: null }, p.equipment || {});
   if (!p.equipment.ammo) p.ammoCount = 0;
   p.settings = Object.assign({}, DEFAULT_SETTINGS, p.settings || {});
   if (typeof p.runEnergy !== 'number') p.runEnergy = 100;
@@ -98,6 +98,7 @@ export function migrateSave(saved) {
   if (typeof p.prayerPoints !== 'number' || !(p.prayerPoints >= 0)) p.prayerPoints = saved.skills.Prayer.level * 10;
   p.prayerPoints = Math.min(p.prayerPoints, saved.skills.Prayer.level * 10);
   if (fromVersion < 4) notes.push('New in this update: stacking items, a toolbelt, quests, prayer and combat skills. See Settings → What\'s new.');
+  if (fromVersion < 5) notes.push('New: perks every 5 levels, gear bonuses with jewellery, capes and armour sets, and lasting quest bonuses. See Settings → What\'s new.');
   saved.version = SAVE_VERSION;
   return notes;
 }
