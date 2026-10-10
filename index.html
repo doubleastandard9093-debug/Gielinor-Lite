@@ -58,6 +58,7 @@ button:hover { background: #666; }
     <div class="panel">
       <strong>Player</strong><br>
       HP: <span id="hp">10/10</span><br>
+      Gold: <span id="gold">0</span> gp<br>
       <div class="skill"><span>Combat Lvl</span><span id="combatLvl">3</span></div>
     </div>
     <h2>Skills</h2>
@@ -133,6 +134,7 @@ function addXP(skill, amount) {
 const player = {
   x: 24, y: 18,
   hp: 10, maxHp: 10,
+  gold: 0,
   inventory: {}, // item: count
   equipment: { weapon: null, body: null, legs: null, shield: null },
   moving: false
@@ -267,12 +269,12 @@ function generateWorld() {
     nodes.push({ x: cx, y: cy, type: 'fish', fish, hp: 1, maxHp: 1, respawn: 0 });
   }
 
-  // Monsters
+  // Monsters with loot tables
   const monsterTypes = [
-    { name: 'Goblin', level: 2, hp: 15, atk: 2, def: 1, xp: 10 },
-    { name: 'Cow', level: 2, hp: 20, atk: 1, def: 2, xp: 8, drop: 'Cowhide' },
-    { name: 'Guard', level: 8, hp: 40, atk: 6, def: 5, xp: 25 },
-    { name: 'Hill Giant', level: 15, hp: 70, atk: 10, def: 8, xp: 45 }
+    { name: 'Goblin', level: 2, hp: 15, atk: 2, def: 1, xp: 10, loot: ['Bones', 'Coins', 'Bronze dagger'] },
+    { name: 'Cow', level: 2, hp: 20, atk: 1, def: 2, xp: 8, loot: ['Cowhide', 'Bones', 'Raw beef'] },
+    { name: 'Guard', level: 8, hp: 40, atk: 6, def: 5, xp: 25, loot: ['Bones', 'Coins', 'Iron sword'] },
+    { name: 'Hill Giant', level: 15, hp: 70, atk: 10, def: 8, xp: 45, loot: ['Big bones', 'Coins', 'Iron platebody'] }
   ];
   for (let i = 0; i < 14; i++) {
     const m = monsterTypes[Math.floor(Math.random() * monsterTypes.length)];
@@ -282,7 +284,25 @@ function generateWorld() {
       monsters.push({ ...m, x, y, hp: m.hp, maxHp: m.hp, respawn: 0 });
     }
   }
+
+  // Shop NPC (fixed location near start)
+  nodes.push({ x: 26, y: 18, type: 'shop', hp: 1, maxHp: 1, respawn: 0, name: 'Merchant' });
 }
+generateWorld();
+
+// Sell prices for the merchant
+const SELL_PRICES = {
+  'Copper ore': 3, 'Tin ore': 3, 'Iron ore': 10, 'Coal': 15,
+  'Logs': 2, 'Oak logs': 5, 'Willow logs': 8,
+  'Raw shrimp': 5, 'Raw trout': 12, 'Raw salmon': 18,
+  'Flax': 4, 'Cowhide': 8, 'Bones': 2, 'Big bones': 5, 'Raw beef': 6,
+  'Bronze bar': 8, 'Iron bar': 18, 'Steel bar': 30,
+  'Cooked shrimp': 4, 'Cooked trout': 10, 'Cooked salmon': 15,
+  'Bronze sword': 15, 'Iron sword': 40, 'Steel sword': 80,
+  'Wooden shield': 10, 'Bronze shield': 20, 'Bronze platebody': 50, 'Iron platebody': 100,
+  'Leather body': 25, 'Shortbow': 20, 'Oak shortbow': 45,
+  'Bronze arrows': 8, 'Iron arrows': 15, 'Bronze dagger': 10
+};
 generateWorld();
 
 // Input
@@ -416,21 +436,82 @@ function render() {
       const sx = (x - cameraX) * TILE;
       const sy = (y - cameraY) * TILE;
       const t = map[y][x];
-      if (t === 0) ctx.fillStyle = '#3a5f3a';
-      else if (t === 1) ctx.fillStyle = '#1a3a1a';
-      else if (t === 2) ctx.fillStyle = '#555';
-      else if (t === 3) ctx.fillStyle = '#1a4a7a';
-      else ctx.fillStyle = '#3a5f3a';
-      ctx.fillRect(sx, sy, TILE, TILE);
-      // Node indicator
+      // Grass with slight variation
+      if (t === 0) {
+        ctx.fillStyle = (x + y) % 2 === 0 ? '#3d6b3d' : '#356235';
+        ctx.fillRect(sx, sy, TILE, TILE);
+        // Subtle grass texture
+        ctx.fillStyle = 'rgba(0,0,0,0.05)';
+        ctx.fillRect(sx + 4, sy + 6, 3, 3);
+        ctx.fillRect(sx + 18, sy + 14, 2, 2);
+      } else if (t === 1) {
+        ctx.fillStyle = '#2a4a2a';
+        ctx.fillRect(sx, sy, TILE, TILE);
+      } else if (t === 2) {
+        ctx.fillStyle = '#4a4a4a';
+        ctx.fillRect(sx, sy, TILE, TILE);
+      } else if (t === 3) {
+        // Water with gradient feel
+        const grad = ctx.createLinearGradient(sx, sy, sx, sy + TILE);
+        grad.addColorStop(0, '#1a5a9a');
+        grad.addColorStop(1, '#0a3a6a');
+        ctx.fillStyle = grad;
+        ctx.fillRect(sx, sy, TILE, TILE);
+      } else {
+        ctx.fillStyle = '#3d6b3d';
+        ctx.fillRect(sx, sy, TILE, TILE);
+      }
+
+      // Node visuals
       const node = nodes.find(n => n.x === x && n.y === y && n.hp > 0);
       if (node) {
-        if (node.type === 'tree') { ctx.fillStyle = '#0a2a0a'; ctx.fillRect(sx+8, sy+4, 16, 24); }
-        else if (node.type === 'rock') { ctx.fillStyle = '#777'; ctx.fillRect(sx+6, sy+10, 20, 14); }
-        else if (node.type === 'fish') { ctx.fillStyle = '#88c'; ctx.beginPath(); ctx.arc(sx+16, sy+16, 6, 0, Math.PI*2); ctx.fill(); }
+        if (node.type === 'tree') {
+          // Trunk
+          ctx.fillStyle = '#5a3a1a';
+          ctx.fillRect(sx + 13, sy + 16, 6, 14);
+          // Canopy
+          ctx.fillStyle = node.treeType === 'willow' ? '#1a5a1a' : (node.treeType === 'oak' ? '#2a6a2a' : '#0a3a0a');
+          ctx.beginPath();
+          ctx.arc(sx + 16, sy + 12, 10, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (node.type === 'rock') {
+          ctx.fillStyle = '#6a6a6a';
+          ctx.beginPath();
+          ctx.moveTo(sx + 8, sy + 22);
+          ctx.lineTo(sx + 16, sy + 8);
+          ctx.lineTo(sx + 24, sy + 22);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = '#444';
+          ctx.stroke();
+        } else if (node.type === 'fish') {
+          ctx.fillStyle = '#66aaff';
+          ctx.beginPath();
+          ctx.ellipse(sx + 16, sy + 16, 7, 4, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(sx + 20, sy + 14, 2, 2);
+        } else if (node.type === 'flax') {
+          ctx.fillStyle = '#88cc44';
+          ctx.fillRect(sx + 10, sy + 12, 2, 12);
+          ctx.fillRect(sx + 16, sy + 10, 2, 14);
+          ctx.fillRect(sx + 20, sy + 13, 2, 11);
+        } else if (node.type === 'shop') {
+          // Merchant
+          ctx.fillStyle = '#8b4513';
+          ctx.fillRect(sx + 12, sy + 14, 8, 12);
+          ctx.fillStyle = '#d4af37';
+          ctx.beginPath();
+          ctx.arc(sx + 16, sy + 10, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.font = '8px sans-serif';
+          ctx.fillText('Shop', sx + 4, sy - 2);
+        }
       }
     }
   }
+
   // Monsters
   monsters.forEach(m => {
     if (m.hp <= 0) return;
@@ -438,32 +519,40 @@ function render() {
     const sy = (m.y - cameraY) * TILE;
     ctx.fillStyle = '#c44';
     ctx.beginPath();
-    ctx.arc(sx + 16, sy + 16, 10, 0, Math.PI*2);
+    ctx.arc(sx + 16, sy + 16, 11, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = '#800';
+    ctx.lineWidth = 2;
+    ctx.stroke();
     ctx.fillStyle = '#fff';
     ctx.font = '9px sans-serif';
-    ctx.fillText(m.name, sx, sy - 2);
+    ctx.fillText(m.name, sx + 2, sy - 2);
     // HP bar
     ctx.fillStyle = '#000';
-    ctx.fillRect(sx+4, sy+24, 24, 4);
+    ctx.fillRect(sx + 4, sy + 26, 24, 4);
     ctx.fillStyle = '#0f0';
-    ctx.fillRect(sx+4, sy+24, 24 * (m.hp / m.maxHp), 4);
+    ctx.fillRect(sx + 4, sy + 26, 24 * (m.hp / m.maxHp), 4);
   });
+
   // Player
   const psx = (player.x - cameraX) * TILE;
   const psy = (player.y - cameraY) * TILE;
   ctx.fillStyle = '#ffd700';
   ctx.beginPath();
-  ctx.arc(psx + 16, psy + 16, 9, 0, Math.PI*2);
+  ctx.arc(psx + 16, psy + 16, 10, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = '#000';
   ctx.lineWidth = 2;
   ctx.stroke();
+  // Simple face
+  ctx.fillStyle = '#000';
+  ctx.fillRect(psx + 13, psy + 14, 2, 2);
+  ctx.fillRect(psx + 17, psy + 14, 2, 2);
   // Player HP bar
   ctx.fillStyle = '#000';
-  ctx.fillRect(psx+4, psy-6, 24, 4);
+  ctx.fillRect(psx + 4, psy - 6, 24, 4);
   ctx.fillStyle = '#0f0';
-  ctx.fillRect(psx+4, psy-6, 24 * (player.hp / player.maxHp), 4);
+  ctx.fillRect(psx + 4, psy - 6, 24 * (player.hp / player.maxHp), 4);
 
   // Target marker
   if (targetX !== null && targetY !== null) {
@@ -472,12 +561,6 @@ function render() {
     ctx.strokeStyle = '#ff0';
     ctx.lineWidth = 2;
     ctx.strokeRect(tsx + 4, tsy + 4, TILE - 8, TILE - 8);
-    ctx.beginPath();
-    ctx.moveTo(tsx + 8, tsy + TILE/2);
-    ctx.lineTo(tsx + TILE - 8, tsy + TILE/2);
-    ctx.moveTo(tsx + TILE/2, tsy + 8);
-    ctx.lineTo(tsx + TILE/2, tsy + TILE - 8);
-    ctx.stroke();
   }
 }
 
@@ -491,7 +574,31 @@ function interact() {
   }
   if (nearbyNodes.length) {
     const n = nearbyNodes[0];
+    if (n.type === 'shop') {
+      openShop();
+      return;
+    }
     gather(n);
+  }
+}
+
+function openShop() {
+  log('Merchant: "What would you like to sell?"');
+  // Simple sell: click any inventory item while shop is open, or use buttons
+  document.getElementById('crafting').innerHTML = '<strong>Merchant Shop</strong><br>Click an item below to sell it.<br>' +
+    Object.entries(player.inventory).map(([item, qty]) => {
+      const price = SELL_PRICES[item] || 1;
+      return `<button onclick="sellItem('${item}')">${item} x${qty} (${price}gp each)</button>`;
+    }).join(' ') || 'Nothing to sell.';
+}
+
+function sellItem(item) {
+  const price = SELL_PRICES[item] || 1;
+  if (removeItem(item, 1)) {
+    player.gold += price;
+    log(`Sold ${item} for ${price} gold. Total: ${player.gold}gp`);
+    updateUI();
+    openShop(); // refresh shop list
   }
 }
 
@@ -568,9 +675,16 @@ function attackMonster(mon) {
     addXP('Hitpoints', mon.xp);
     addXP('Attack', mon.xp);
     log(`You defeat the ${mon.name}!`);
-    if (mon.drop) {
-      addItem(mon.drop, 1);
-      log(`You receive a ${mon.drop}.`);
+    // Loot
+    const gold = 5 + mon.level * 3 + Math.floor(Math.random() * 10);
+    player.gold += gold;
+    log(`You find ${gold} gold.`);
+    if (mon.loot && mon.loot.length) {
+      const drop = mon.loot[Math.floor(Math.random() * mon.loot.length)];
+      if (drop !== 'Coins') {
+        addItem(drop, 1);
+        log(`You receive a ${drop}.`);
+      }
     }
     mon.respawn = 300;
   } else {
@@ -670,6 +784,7 @@ function updateUI() {
   ).join(' ') || 'Gather materials first';
   // HP
   document.getElementById('hp').textContent = `${player.hp}/${player.maxHp}`;
+  document.getElementById('gold').textContent = player.gold || 0;
   const cb = Math.floor((skills.Attack.level + skills.Strength.level + skills.Defence.level + skills.Hitpoints.level + skills.Ranged.level) / 4);
   document.getElementById('combatLvl').textContent = cb;
   recalcMaxHp();
@@ -804,9 +919,9 @@ if (!localStorage.getItem('gielinorLite')) {
   addItem('Cooked shrimp', 5);
   log('You start with a bronze sword and some food.');
 }
-log('Tap trees, rocks, water, or flax to gather. Fight monsters for combat XP.');
-log('Craft better gear in the Crafting panel, then equip it from Inventory.');
-log('Start with woodcutting or mining â everything scales from there.');
+log('Tap trees, rocks, water, or flax to gather. Fight monsters for loot and gold.');
+log('Near the Merchant (gold icon) tap Interact to sell items.');
+log('Fish at water spots, then cook the fish for healing food.');
 
 // Catch errors so the game doesn't silently fail
 window.onerror = function(msg, url, line) {
