@@ -1,3 +1,17 @@
+import { isStackable } from './items.js';
+
+export const INV_SIZE = 28;
+
+export const DEFAULT_SETTINGS = {
+  run: true,
+  autoRetaliate: true,
+  showDpad: false,
+  autoLoot: false,   // send drops straight to the pack instead of the ground
+  shadows: null,     // null = pick automatically (off on phones)
+  chatFilter: 'all',
+  chatCollapsed: false
+};
+
 export function createPlayerState() {
   return {
     hp: 100,
@@ -6,7 +20,11 @@ export function createPlayerState() {
     maxMana: 100,
     gold: 0,
     inventory: {},
-    equipment: { weapon: null, body: null, legs: null, shield: null },
+    equipment: { weapon: null, body: null, legs: null, shield: null, ammo: null },
+    ammoCount: 0,
+    runEnergy: 100,
+    attackStyle: 0,
+    settings: { ...DEFAULT_SETTINGS },
     skillTrees: {
       Attack: { powerStrike: false, criticalHit: false, dualWield: false },
       Strength: { heavyBlow: false, intimidate: false, berserk: false },
@@ -23,6 +41,29 @@ export function createPlayerState() {
     },
     bank: {}
   };
+}
+
+// Slots used in the 28-slot pack. Stackable items (arrows, feathers) take one slot;
+// everything else takes one slot per item, like RuneScape.
+export function slotsUsed(player) {
+  let n = 0;
+  for (const [item, qty] of Object.entries(player.inventory)) n += isStackable(item) ? 1 : qty;
+  return n;
+}
+
+export function freeSlots(player) {
+  return Math.max(0, INV_SIZE - slotsUsed(player));
+}
+
+export function canAdd(player, item, qty = 1) {
+  if (isStackable(item)) return !!player.inventory[item] || freeSlots(player) >= 1;
+  return freeSlots(player) >= qty;
+}
+
+// How many of this item fit right now.
+export function roomFor(player, item, qty) {
+  if (isStackable(item)) return canAdd(player, item) ? qty : 0;
+  return Math.min(qty, freeSlots(player));
 }
 
 export function addItem(player, item, qty = 1) {

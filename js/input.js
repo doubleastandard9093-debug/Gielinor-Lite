@@ -1,74 +1,119 @@
-import * as THREE from 'three';
-
-export function setupInput(renderer, camera, ground, player, onLog) {
+// Touch, mouse and keyboard input for the game canvas.
+// Tap = walk/act, long-press or right-click = options menu,
+// one-finger drag = rotate camera, pinch or scroll = zoom.
+export function setupInput(canvas, handlers) {
   const keys = {};
-  const raycaster = new THREE.Raycaster();
-  const mouse = new THREE.Vector2();
+  const pointers = new Map();
+  let longTimer = null;
+  let dragging = false;
+  let consumed = false;
+  let pinchDist = 0;
+  const DRAG_PX = 10;
+  const LONG_MS = 480;
 
-  document.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
-  document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+  const keyMap = { arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right' };
+  document.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (k === 'escape') { handlers.onEscape && handlers.onEscape(); return; }
+    if (keyMap[k]) { keys[keyMap[k]] = true; e.preventDefault(); return; }
+    if ('wasd'.includes(k) && k.length === 1) keys[k] = true;
+    if (handlers.onKey) handlers.onKey(k, e);
+  });
+  document.addEventListener('keyup', e => {
+    const k = e.key.toLowerCase();
+    if (keyMap[k]) keys[keyMap[k]] = false;
+    else keys[k] = false;
+  });
+  window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
-  function getPointer(e) {
-    const rect = renderer.domElement.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
-  }
+  function clearLong() { if (longTimer) { clearTimeout(longTimer); longTimer = null; } }
 
-  function onPointer(e) {
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  canvas.addEventListener('pointerdown', e => {
     e.preventDefault();
-    getPointer(e);
-    raycaster.setFromCamera(mouse, camera);
-    const hits = raycaster.intersectObject(ground);
-    if (hits.length) {
-      player.target = hits[0].point.clone();
-      player.target.y = 0;
-      onLog('Moving...');
+    canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, button: e.button, type: e.pointerType });
+    handlers.onAnyPointer && handlers.onAnyPointer();
+    if (pointers.size === 1) {
+      dragging = false;
+      consumed = false;
+      if (e.pointerType === 'mouse' && e.button === 2) {
+        consumed = true;
+        handlers.onContext(e.clientX, e.clientY);
+        return;
+      }
+      clearLong();
+      if (e.pointerType !== 'mouse') {
+        longTimer = setTimeout(() => {
+          longTimer = null;
+          if (!dragging && pointers.size === 1) { consumed = true; handlers.onContext(e.clientX, e.clientY); }
+        }, LONG_MS);
+      }
+    } else if (pointers.size === 2) {
+      clearLong();
+      consumed = true;
+      const [a, b] = [...pointers.values()];
+      pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
     }
-  }
+  }, { passive: false });
 
-  // Touch and mouse
-  renderer.domElement.addEventListener('click', onPointer);
-  renderer.domElement.addEventListener('touchstart', onPointer, { passive: false });
-  renderer.domElement.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
-
-  // On-screen D-pad for mobile
-  const dpad = document.createElement('div');
-  dpad.id = 'dpad';
-  dpad.style.cssText = `
-    position: absolute; bottom: 100px; left: 10px; display: grid;
-    grid-template-columns: 50px 50px 50px; grid-template-rows: 50px 50px 50px;
-    gap: 2px; pointer-events: auto; z-index: 10;
-  `;
-  dpad.innerHTML = `
-    <div></div><button data-dir="up">▲</button><div></div>
-    <button data-dir="left">◀</button><div></div><button data-dir="right">▶</button>
-    <div></div><button data-dir="down">▼</button><div></div>
-  `;
-  document.body.appendChild(dpad);
-
-  dpad.querySelectorAll('button').forEach(btn => {
-    btn.style.cssText = 'background:#333;color:#fff;border:1px solid #666;font-size:18px;';
-    const dir = btn.dataset.dir;
-    const move = () => {
-      if (dir === 'up') keys['w'] = true;
-      if (dir === 'down') keys['s'] = true;
-      if (dir === 'left') keys['a'] = true;
-      if (dir === 'right') keys['d'] = true;
-    };
-    const stop = () => {
-      if (dir === 'up') keys['w'] = false;
-      if (dir === 'down') keys['s'] = false;
-      if (dir === 'left') keys['a'] = false;
-      if (dir === 'right') keys['d'] = false;
-    };
-    btn.addEventListener('touchstart', e => { e.preventDefault(); move(); }, { passive: false });
-    btn.addEventListener('touchend', stop);
-    btn.addEventListener('mousedown', move);
-    btn.addEventListener('mouseup', stop);
-    btn.addEventListener('mouseleave', stop);
+  canvas.addEventListener('pointermove', e => {
+    const p = pointers.get(e.pointerId);
+    if (!p) { handlers.onHover && handlers.onHover(e.clientX, e.clientY); return; }
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinchDist > 0 && d > 0) handlers.onZoom(pinchDist / d);
+      pinchDist = d;
+      return;
+    }
+    if (consumed && !dragging) return;
+    if (!dragging && Math.hypot(p.x - p.sx, p.y - p.sy) > DRAG_PX) { dragging = true; clearLong(); }
+    if (dragging) handlers.onRotate(-dx * 0.008, dy * 0.006);
   });
 
-  return keys;
+  function end(e) {
+    const p = pointers.get(e.pointerId);
+    if (!p) return;
+    pointers.delete(e.pointerId);
+    clearLong();
+    if (pointers.size === 0) {
+      if (!dragging && !consumed && !(p.type === 'mouse' && p.button !== 0)) handlers.onTap(p.sx, p.sy);
+      dragging = false;
+      consumed = false;
+    }
+  }
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', e => { consumed = true; end(e); });
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    handlers.onZoom(e.deltaY > 0 ? 1.1 : 1 / 1.1);
+  }, { passive: false });
+
+  // Optional on-screen D-pad (turn on in Settings). Moves relative to the camera.
+  const dpad = document.createElement('div');
+  dpad.id = 'dpad';
+  dpad.innerHTML = `
+    <div></div><button data-k="w">▲</button><div></div>
+    <button data-k="a">◀</button><div></div><button data-k="d">▶</button>
+    <div></div><button data-k="s">▼</button><div></div>`;
+  document.body.appendChild(dpad);
+  dpad.querySelectorAll('button').forEach(btn => {
+    const k = btn.dataset.k;
+    const on = e => { e.preventDefault(); keys[k] = true; handlers.onAnyPointer && handlers.onAnyPointer(); handlers.onDpad && handlers.onDpad(); };
+    const off = () => { keys[k] = false; };
+    btn.addEventListener('pointerdown', on);
+    btn.addEventListener('pointerup', off);
+    btn.addEventListener('pointerleave', off);
+    btn.addEventListener('pointercancel', off);
+  });
+
+  return {
+    keys,
+    setDpadVisible(v) { dpad.style.display = v ? 'grid' : 'none'; }
+  };
 }
