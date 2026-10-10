@@ -4,7 +4,7 @@ export function createInventoryUI(player, skills, onEquip, onLog) {
   const panel = document.createElement('div');
   panel.id = 'advancedInv';
   panel.style.cssText = `
-    position: absolute; top: 10px; right: 10px; width: 260px;
+    position: absolute; top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right)); width: min(260px, calc(100vw - 100px));
     background: rgba(10,10,20,0.85); color: #eee; padding: 8px;
     border-radius: 8px; border: 1px solid #c9a227; font-size: 12px;
     pointer-events: auto; max-height: 70vh; overflow-y: auto;

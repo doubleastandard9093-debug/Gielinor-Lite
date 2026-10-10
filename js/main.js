@@ -146,11 +146,11 @@ setInterval(() => {
 
 // Save buttons
 const saveBar = document.createElement('div');
-saveBar.style.cssText = 'position:absolute;top:10px;left:10px;display:flex;gap:4px;pointer-events:auto;z-index:10;';
+saveBar.style.cssText = 'position:absolute;top:calc(10px + env(safe-area-inset-top));left:calc(10px + env(safe-area-inset-left));display:flex;flex-direction:column;gap:4px;pointer-events:auto;z-index:10;';
 saveBar.innerHTML = `
-  <button id="saveBtn" style="padding:6px 10px;font-size:11px;">Save</button>
-  <button id="exportBtn" style="padding:6px 10px;font-size:11px;">Export</button>
-  <button id="importBtn" style="padding:6px 10px;font-size:11px;">Import</button>
+  <button id="saveBtn" style="padding:8px 10px;font-size:12px;min-width:64px;">Save</button>
+  <button id="exportBtn" style="padding:8px 10px;font-size:12px;min-width:64px;">Export</button>
+  <button id="importBtn" style="padding:8px 10px;font-size:12px;min-width:64px;">Import</button>
 `;
 document.body.appendChild(saveBar);
 
