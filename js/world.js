@@ -5,6 +5,23 @@ import { MONSTER_TYPES } from './gameplay.js';
 export const WORLD_HALF = 40;
 export const SPAWN = { x: 0, z: 0 };
 export const LAKE = { x: -20, z: 16, r: 7 };
+export const TOWN_NAME = 'Brightwater';
+export const PATHS = [[0, 0, 13, -12], [0, 0, -15, -13], [0, 0, -15, 12], [0, 0, 20, 17], [0, 0, 0, 24], [0, 0, 0, -27], [0, 0, 5, -7.4]];
+// Buildings: [x, z, width(x), depth(z), wall colour, roof colour, name, examine]
+export const BUILDINGS = [
+  [-9.6, -2, 4, 6, 0x9a9488, 0x6a2a2a, 'Bank of Brightwater', 'Your money is safe here.'],
+  [11.6, 0, 4, 6, 0xc8b48a, 0x3a5a8a, 'General Store', 'The Merchant trades here.'],
+  [5, -10, 4, 4, 0xb89a6a, 0x8a4a2a, "Bob's Brilliant Tools", 'Axes, pickaxes and fishing gear.'],
+  [-4, -12, 5, 7, 0xd8d0c0, 0x4a4a5a, 'Church of Saradomin', 'A peaceful place of worship.'],
+  [7, 11.5, 5, 4, 0x6a5a4a, 0x3a3a3a, "Doric's Smithy", 'You can hear hammering inside.'],
+  [-8, 10.5, 4, 4, 0xc8b48a, 0x8a3a2a, 'Cookhouse', 'Something smells delicious.'],
+  [13, -6, 3, 3, 0xd0c0a0, 0x7a3a2a, 'House', 'A cosy cottage.'],
+  [12.5, 7, 3, 3, 0xc0b090, 0x5a4a3a, 'House', 'A cosy cottage.'],
+  [-12, 5.5, 3, 3, 0xd0c0a0, 0x3a5a3a, 'House', 'A cosy cottage.'],
+  [-13, -5, 3, 3, 0xc0b090, 0x7a3a2a, 'House', 'A cosy cottage.']
+];
+// Solid areas the player can't walk through (filled in by createWorld).
+export const colliders = [];
 
 // Shared geometry and materials keep memory and draw setup low on phones.
 const G = {
@@ -13,6 +30,7 @@ const G = {
   cone7: new THREE.ConeGeometry(1, 1, 7),
   sphere: new THREE.SphereGeometry(1, 8, 6),
   cyl: new THREE.CylinderGeometry(1, 1, 1, 8),
+  cone4: new THREE.ConeGeometry(0.71, 1, 4),
   ring: new THREE.RingGeometry(0.35, 0.55, 16)
 };
 const matCache = new Map();
@@ -20,6 +38,39 @@ function mat(color, opts) {
   const key = color + (opts ? JSON.stringify(opts) : '');
   if (!matCache.has(key)) matCache.set(key, new THREE.MeshLambertMaterial({ color, ...(opts || {}) }));
   return matCache.get(key);
+}
+
+// Bake all the plain-coloured parts of a static model into one mesh (one draw call)
+// using vertex colours. Glowing (unlit) parts stay separate.
+const vcMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+function mergeStatic(group) {
+  group.updateMatrixWorld(true);
+  const inv = group.matrixWorld.clone().invert();
+  const pos = [], nor = [], col = [], drop = [];
+  const m = new THREE.Matrix4(), c = new THREE.Color();
+  group.traverse(o => {
+    if (!o.isMesh || !o.material.isMeshLambertMaterial) return;
+    const g = (o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone());
+    m.multiplyMatrices(inv, o.matrixWorld);
+    g.applyMatrix4(m);
+    pos.push(...g.attributes.position.array);
+    nor.push(...g.attributes.normal.array);
+    c.copy(o.material.color);
+    for (let i = 0; i < g.attributes.position.count; i++) col.push(c.r, c.g, c.b);
+    g.dispose();
+    drop.push(o);
+  });
+  if (drop.length < 2) return;
+  for (const o of drop) o.parent.remove(o);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geo, vcMat);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  group.add(mesh);
 }
 
 function part(geo, color, sx, sy, sz, x, y, z, shadow = true) {
@@ -73,7 +124,7 @@ export function createWorld(scene) {
     m.receiveShadow = true;
     scene.add(m);
   }
-  path(0, 0, 13, -12); path(0, 0, -15, -13); path(0, 0, -15, 12); path(0, 0, 20, 17); path(0, 0, 0, 24);
+  for (const pth of PATHS) path(...pth);
   const plaza = new THREE.Mesh(new THREE.CircleGeometry(4.5, 20), new THREE.MeshLambertMaterial({ color: 0x9a9a8a }));
   plaza.rotation.x = -Math.PI / 2; plaza.position.y = 0.03; plaza.receiveShadow = true;
   scene.add(plaza);
@@ -87,38 +138,44 @@ export function createWorld(scene) {
   scene.add(water);
 
   const occupied = [];
-  function free(x, z, r = 1.6) {
-    if (Math.hypot(x, z) < 6) return false;
+  function free(x, z, r = 1.6, townR = 6) {
+    if (Math.hypot(x, z) < townR) return false;
     if (insideLake(x, z, 2.2)) return false;
     if (Math.abs(x) > WORLD_HALF - 2 || Math.abs(z) > WORLD_HALF - 2) return false;
     for (const o of occupied) if (Math.hypot(o.x - x, o.z - z) < r + o.r) return false;
     return true;
   }
-  function place(cx, cz, spread, r, tries = 40) {
+  function place(cx, cz, spread, r, tries = 40, townR = 6) {
     for (let i = 0; i < tries; i++) {
       const x = cx + (rng() - 0.5) * spread * 2;
       const z = cz + (rng() - 0.5) * spread * 2;
-      if (free(x, z, r)) { occupied.push({ x, z, r }); return { x, z }; }
+      if (free(x, z, r, townR)) { occupied.push({ x, z, r }); return { x, z }; }
     }
     return null;
   }
   // Reserve the areas used by monsters and buildings.
-  occupied.push({ x: 13, z: -13, r: 5 }, { x: -18, z: -16, r: 7 }, { x: 0, z: 27, r: 4 }, { x: 8, z: 0, r: 1.5 }, { x: -6, z: -2, r: 2 });
+  occupied.push({ x: 13, z: -13, r: 5 }, { x: -18, z: -16, r: 7 }, { x: 0, z: 27, r: 4 }, { x: 8, z: 0, r: 1.5 }, { x: -6, z: -2, r: 2 },
+    { x: -2, z: -31, r: 6 }, { x: -16, z: -33, r: 5 });
+  for (const pth of PATHS) for (let t = 0.1; t <= 1; t += 0.1) occupied.push({ x: pth[0] + (pth[2] - pth[0]) * t, z: pth[1] + (pth[3] - pth[1]) * t, r: 0.6 });
 
   // ---- Trees ----
   const TREE_STYLE = {
     Tree:   { trunk: 0x5a3a14, leaf: 0x2d6a25, h: 2.2, r: 1.05, seg: G.cone5 },
     Oak:    { trunk: 0x4a3010, leaf: 0x3d7a1f, h: 2.0, r: 1.45, seg: G.sphere },
-    Willow: { trunk: 0x5a4a2a, leaf: 0x6f9a3a, h: 2.8, r: 1.3,  seg: G.cone7 }
+    Willow: { trunk: 0x5a4a2a, leaf: 0x6f9a3a, h: 2.8, r: 1.3,  seg: G.cone7 },
+    Maple:  { trunk: 0x5a3a1a, leaf: 0xc0602a, h: 2.0, r: 1.4,  seg: G.sphere },
+    Yew:    { trunk: 0x3a2a14, leaf: 0x1f4a2a, h: 3.2, r: 1.5,  seg: G.cone7 },
+    Magic:  { trunk: 0x6a6a7a, leaf: 0x5a8ae0, h: 3.0, r: 1.2,  seg: G.cone5 }
   };
   function createTree(x, z, kind) {
     const st = TREE_STYLE[kind];
     const root = new THREE.Group();
     const full = new THREE.Group();
     full.add(part(G.box, st.trunk, 0.4, 1.7, 0.4, 0, 0.85, 0));
-    const leaves = part(st.seg, st.leaf, st.r, kind === 'Oak' ? 1.2 : st.h, st.r, 0, kind === 'Oak' ? 2.5 : 2.5, 0);
+    const round = st.seg === G.sphere;
+    const leaves = part(st.seg, st.leaf, st.r, round ? 1.2 : st.h, st.r, 0, 2.5, 0);
     full.add(leaves);
-    if (kind === 'Oak') full.add(part(G.sphere, st.leaf, 0.9, 0.8, 0.9, 0.6, 3.1, 0.2));
+    if (round) full.add(part(G.sphere, st.leaf, 0.9, 0.8, 0.9, 0.6, 3.1, 0.2));
     const stump = new THREE.Group();
     stump.add(part(G.cyl, st.trunk, 0.32, 0.35, 0.32, 0, 0.17, 0));
     stump.visible = false;
@@ -134,7 +191,7 @@ export function createWorld(scene) {
   }
 
   // ---- Rocks ----
-  const ORE_COLOR = { Copper: 0xc07a3a, Tin: 0xc8c8c8, Iron: 0x7a3a2a, Coal: 0x151515 };
+  const ORE_COLOR = { Copper: 0xc07a3a, Tin: 0xc8c8c8, Iron: 0x7a3a2a, Coal: 0x151515, Mithril: 0x5a6ad0, Adamantite: 0x3a9a5a, Runite: 0x3ab8d0 };
   function createRock(x, z, ore) {
     const root = new THREE.Group();
     const rockMesh = part(G.box, 0x6a6560, 1.0, 0.7, 0.85, 0, 0.35, 0);
@@ -189,6 +246,7 @@ export function createWorld(scene) {
     g.add(part(G.box, 0x5a3a1a, 0.1, 2.4, 0.1, 1.2, 1.2, 1.4));
     g.position.set(x, 0, z);
     g.rotation.y = -Math.PI / 2;
+    mergeStatic(g);
     scene.add(g);
     pickables.push(g);
     return tag(g, { mesh: g, type: 'shop', alive: true, x, z, name: 'Merchant', radius: 1.2 });
@@ -204,6 +262,7 @@ export function createWorld(scene) {
     g.add(part(G.box, 0x8a2a2a, 3.2, 0.15, 1.7, 0, 2.75, -0.2));        // awning
     g.position.set(x, 0, z);
     g.rotation.y = Math.PI / 2;
+    mergeStatic(g);
     scene.add(g);
     pickables.push(g);
     return tag(g, { mesh: g, type: 'bank', alive: true, x, z, name: 'Bank booth', radius: 1.3 });
@@ -217,6 +276,7 @@ export function createWorld(scene) {
     }
     g.add(part(G.box, 0x3a2a1a, 1.0, 1.8, 0.1, 0, 0.9, 2.2, false));
     g.position.set(x, 0, z);
+    mergeStatic(g);
     scene.add(g);
   }
 
@@ -242,6 +302,127 @@ export function createWorld(scene) {
     rail(cx + w / 2, cz - d / 4 - 0.8, 0.08, d / 2 - 1.6); rail(cx + w / 2, cz + d / 4 + 0.8, 0.08, d / 2 - 1.6);
   }
 
+
+  // ---- Town of Brightwater ----
+  function createBuilding([x, z, w, d, wall, roof, name, examine]) {
+    const g = new THREE.Group();
+    const h = 2.6;
+    g.add(part(G.box, wall, w, h, d, 0, h / 2, 0));
+    const r = new THREE.Mesh(G.cone4, mat(roof));
+    r.scale.set(w * 0.78, 1.6, d * 0.78);
+    r.rotation.y = Math.PI / 4;
+    r.position.y = h + 0.8;
+    r.castShadow = true;
+    g.add(r);
+    // door and windows on the side facing the town square
+    const toCentre = Math.abs(x) > Math.abs(z) ? [Math.sign(-x), 0] : [0, Math.sign(-z)];
+    const fx = toCentre[0] * (w / 2 + 0.01), fz = toCentre[1] * (d / 2 + 0.01);
+    const door = part(G.box, 0x3a2414, toCentre[0] ? 0.05 : 0.8, 1.5, toCentre[0] ? 0.8 : 0.05, fx, 0.75, fz, false);
+    g.add(door);
+    if (name === 'Church of Saradomin') g.add(part(G.cone4, 0x4a4a5a, 0.7, 2.6, 0.7, 0, h + 2.4, d / 2 - 0.8));
+    g.position.set(x, 0, z);
+    mergeStatic(g);
+    scene.add(g);
+    pickables.push(g);
+    colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+    occupied.push({ x, z, r: Math.max(w, d) * 0.75 + 1 });
+    return tag(g, { mesh: g, type: 'building', name, examine, alive: true, x, z, radius: Math.max(w, d) / 2 });
+  }
+
+  // Generic humanoid NPC. look: { body, legs, hat, skin, beard, apron }
+  function createNpc(x, z, npc, name, look, faceX = 0, faceZ = 0) {
+    const g = new THREE.Group();
+    g.add(part(G.box, look.body, 0.7, 0.9, 0.42, 0, 1.0, 0));
+    g.add(part(G.box, look.skin || 0xd4a574, 0.5, 0.48, 0.48, 0, 1.68, 0));
+    g.add(part(G.box, look.legs || 0x3a2a1a, 0.6, 0.55, 0.36, 0, 0.28, 0));
+    g.add(part(G.box, look.skin || 0xd4a574, 0.16, 0.65, 0.16, -0.45, 1.0, 0));
+    g.add(part(G.box, look.skin || 0xd4a574, 0.16, 0.65, 0.16, 0.45, 1.0, 0));
+    if (look.hat) g.add(part(G.box, look.hat, look.hatW || 0.56, look.hatH || 0.18, look.hatW || 0.56, 0, 2.0 + (look.hatH || 0.18) / 2 - 0.08, 0));
+    if (look.beard) g.add(part(G.box, look.beard, 0.42, 0.25, 0.1, 0, 1.5, 0.26, false));
+    if (look.apron) g.add(part(G.box, look.apron, 0.6, 0.8, 0.05, 0, 0.9, 0.23, false));
+    g.position.set(x, 0, z);
+    g.rotation.y = Math.atan2(faceX - x, faceZ - z);
+    mergeStatic(g);
+    scene.add(g);
+    pickables.push(g);
+    return tag(g, { mesh: g, type: 'npc', npc, name, alive: true, x, z, radius: 0.6 });
+  }
+
+  function createStation(x, z, kind) {
+    const g = new THREE.Group();
+    let name;
+    if (kind === 'furnace') {
+      name = 'Furnace';
+      g.add(part(G.box, 0x5a5048, 1.4, 1.6, 1.2, 0, 0.8, 0));
+      g.add(part(G.box, 0x4a4038, 0.6, 1.2, 0.6, 0, 2.0, -0.2));
+      const glow = new THREE.Mesh(G.box, new THREE.MeshBasicMaterial({ color: 0xff7a1a }));
+      glow.scale.set(0.6, 0.4, 0.05); glow.position.set(0, 0.6, 0.61);
+      g.add(glow);
+    } else if (kind === 'anvil') {
+      name = 'Anvil';
+      g.add(part(G.box, 0x5a3a1a, 0.5, 0.5, 0.5, 0, 0.25, 0));
+      g.add(part(G.box, 0x2a2a30, 0.9, 0.25, 0.4, 0, 0.62, 0));
+      g.add(part(G.box, 0x2a2a30, 0.3, 0.12, 0.25, 0.55, 0.68, 0));
+    } else {
+      name = 'Range';
+      g.add(part(G.box, 0x4a4a50, 1.4, 0.9, 0.9, 0, 0.45, 0));
+      g.add(part(G.box, 0x2a2a2a, 1.3, 0.06, 0.8, 0, 0.93, 0));
+      g.add(part(G.box, 0x4a4a50, 0.3, 1.4, 0.3, -0.5, 1.6, -0.3));
+      const glow = new THREE.Mesh(G.box, new THREE.MeshBasicMaterial({ color: 0xff5a1a }));
+      glow.scale.set(0.8, 0.25, 0.05); glow.position.set(0, 0.35, 0.46);
+      g.add(glow);
+    }
+    g.position.set(x, 0, z);
+    mergeStatic(g);
+    scene.add(g);
+    pickables.push(g);
+    return tag(g, { mesh: g, type: 'station', kind, name, alive: true, x, z, radius: 0.8 });
+  }
+
+  function createAltar(x, z) {
+    const g = new THREE.Group();
+    g.add(part(G.box, 0xe8e0d0, 1.6, 0.9, 0.8, 0, 0.45, 0));
+    g.add(part(G.box, 0x6a2a8a, 1.7, 0.08, 0.9, 0, 0.92, 0));
+    g.add(part(G.box, 0xd4af37, 0.1, 0.5, 0.1, 0, 1.2, 0, false));
+    g.add(part(G.box, 0xd4af37, 0.34, 0.1, 0.1, 0, 1.3, 0, false));
+    g.position.set(x, 0, z);
+    mergeStatic(g);
+    scene.add(g);
+    pickables.push(g);
+    return tag(g, { mesh: g, type: 'altar', name: 'Altar', alive: true, x, z, radius: 0.9 });
+  }
+
+  function createWell(x, z) {
+    const g = new THREE.Group();
+    g.add(part(G.cyl, 0x8a8478, 0.8, 0.7, 0.8, 0, 0.35, 0));
+    g.add(part(G.cyl, 0x2a4a7a, 0.62, 0.05, 0.62, 0, 0.66, 0, false));
+    g.add(part(G.box, 0x5a3a1a, 0.1, 1.6, 0.1, -0.7, 0.8, 0));
+    g.add(part(G.box, 0x5a3a1a, 0.1, 1.6, 0.1, 0.7, 0.8, 0));
+    g.add(part(G.cone4, 0x7a3a2a, 1.1, 0.6, 0.8, 0, 1.85, 0));
+    g.position.set(x, 0, z);
+    mergeStatic(g);
+    scene.add(g);
+    pickables.push(g);
+    colliders.push({ minX: x - 0.8, maxX: x + 0.8, minZ: z - 0.8, maxZ: z + 0.8 });
+    return tag(g, { mesh: g, type: 'building', name: 'Well', examine: 'The town well. The water looks clean.', alive: true, x, z, radius: 0.8 });
+  }
+
+  // Straight fence (instanced posts: one draw call per fence line).
+  function fenceLine(x1, z1, x2, z2) {
+    const len = Math.hypot(x2 - x1, z2 - z1);
+    const n = Math.max(2, Math.round(len / 1.5) + 1);
+    const inst = new THREE.InstancedMesh(G.box, mat(0x6a4a2a), n);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(0.15, 1.0, 0.15), p = new THREE.Vector3();
+    for (let i = 0; i < n; i++) { const t = i / (n - 1); p.set(x1 + (x2 - x1) * t, 0.5, z1 + (z2 - z1) * t); m4.compose(p, q, sc); inst.setMatrixAt(i, m4); }
+    inst.castShadow = true;
+    scene.add(inst);
+    const rail = new THREE.Mesh(G.box, mat(0x7a5a3a));
+    rail.scale.set(0.08, 0.1, len);
+    rail.position.set((x1 + x2) / 2, 0.75, (z1 + z2) / 2);
+    rail.rotation.y = Math.atan2(x2 - x1, z2 - z1);
+    scene.add(rail);
+  }
+
   // ---- Monsters ----
   function createMonster(typeName, x, z, roam, bounds = null) {
     const t = MONSTER_TYPES[typeName];
@@ -262,12 +443,19 @@ export function createWorld(scene) {
       body.rotation.y = -Math.PI / 2; // face +z
     } else {
       const c = t.color;
-      const skin = typeName === 'Goblin' ? 0x6aa040 : 0xd4a574;
+      const skin = typeName === 'Goblin' ? 0x6aa040 : typeName === 'Hill Giant' ? 0xb08a5a : typeName === 'Black Knight' ? 0x1a1a22 : 0xd4a574;
       body.add(part(G.box, c, 0.7, 0.8, 0.42, 0, 1.0, 0));
       body.add(part(G.box, skin, 0.48, 0.45, 0.45, 0, 1.65, 0));
       if (typeName === 'Goblin') {
         body.add(part(G.box, skin, 0.12, 0.25, 0.08, 0.3, 1.75, 0, false));
         body.add(part(G.box, skin, 0.12, 0.25, 0.08, -0.3, 1.75, 0, false));
+      } else if (typeName === 'Hill Giant') {
+        body.add(part(G.box, 0x5a3a1a, 0.18, 1.1, 0.18, 0.55, 0.9, 0.3)); // club
+        body.add(part(G.box, 0x5a3a1a, 0.32, 0.4, 0.32, 0.55, 0.4, 0.3));
+      } else if (typeName === 'Black Knight') {
+        body.add(part(G.box, 0x2a2a34, 0.56, 0.5, 0.56, 0, 1.68, 0));
+        body.add(part(G.box, 0x111111, 0.4, 0.06, 0.02, 0, 1.7, 0.29, false));
+        body.add(part(G.box, 0x777780, 0.08, 1.0, 0.14, 0.5, 0.9, 0.35)); // sword
       } else {
         body.add(part(G.box, 0x9a9aa8, 0.54, 0.25, 0.54, 0, 1.92, 0));
         body.add(part(G.box, 0x6a5a3a, 0.06, 2.2, 0.06, 0.5, 1.2, 0.15)); // spear
@@ -287,13 +475,32 @@ export function createWorld(scene) {
     pickables.push(root);
     return tag(root, {
       ...t, mesh: root, body, legs, maxHp: t.hp, hp: t.hp, alive: true,
-      x, z, spawnX: x, spawnZ: z, roam, bounds, radius: 0.7,
+      x, z, spawnX: x, spawnZ: z, roam, bounds, radius: 0.7 * Math.max(1, t.scale * 0.8),
       state: 'idle', target: null, wanderAt: 0, nextAttackTick: 0, deathT: 0, respawnAt: 0, lastHitAt: -1e9
     });
   }
 
   // ---- Populate ----
-  for (let i = 0; i < 26; i++) { const p = place(0, 0, 36, 1.6); if (p) nodes.push(createTree(p.x, p.z, 'Tree')); }
+  // Town first so trees keep clear of it
+  const buildings = BUILDINGS.map(createBuilding);
+  buildings.push(createWell(3, 3.2));
+  nodes.push(createMerchant(8, 0));
+  nodes.push(createBank(-6, -2));
+  nodes.push(createNpc(5, -7.4, 'bob', 'Bob', { body: 0x3a6a3a, hat: 0x5a3a1a, beard: 0x8a6a4a, apron: 0x6a4a2a }, 0, 0));
+  nodes.push(createStation(5.3, 8.6, 'furnace'));
+  nodes.push(createStation(8, 8.6, 'anvil'));
+  nodes.push(createNpc(9.9, 9.2, 'doric', 'Doric', { body: 0x6a3a2a, beard: 0xc06a2a, apron: 0x3a3a3a, skin: 0xd09a74 }, 8, 8.6));
+  nodes.push(createStation(-7.2, 7.7, 'range'));
+  nodes.push(createNpc(-5.3, 7.8, 'cook', 'Cook', { body: 0xf0f0f0, hat: 0xffffff, hatH: 0.45, hatW: 0.5, apron: 0xe0e0e0 }, 0, 0));
+  nodes.push(createAltar(-4, -7.6));
+  nodes.push(createNpc(-1.8, -7.6, 'priest', 'Father Elric', { body: 0x2a2a3a, legs: 0x2a2a3a, hat: null, beard: 0xdddddd, apron: 0xd4af37 }, 0, 0));
+  nodes.push(createNpc(-1.8, 13, 'captain', 'Captain Rhea', { body: 0x8a2a2a, legs: 0x3a3a4a, hat: 0x9a9aa8, hatH: 0.28, skin: 0xc89a74 }, 0, 0));
+  nodes.push(createNpc(-10.8, -16, 'farmer', 'Farmer Gil', { body: 0x6a8a3a, legs: 0x4a5a8a, hat: 0xd8c070, hatW: 0.8, hatH: 0.12 }, 0, 0));
+  fenceLine(-8, -16.5, 0, -16.5);
+  fenceLine(10.5, 9.2, 14.5, 9.2);
+  fenceLine(10.5, -8.2, 15, -8.2);
+
+  for (let i = 0; i < 26; i++) { const p = place(0, 0, 36, 1.6, 40, 16); if (p) nodes.push(createTree(p.x, p.z, 'Tree')); }
   for (let i = 0; i < 7; i++) { const p = place(26, -24, 8, 2); if (p) nodes.push(createTree(p.x, p.z, 'Oak')); }
   for (let i = 0; i < 5; i++) {
     const a = 0.6 + i * 0.75;
@@ -301,14 +508,16 @@ export function createWorld(scene) {
     occupied.push({ x, z, r: 1.4 });
     nodes.push(createTree(x, z, 'Willow'));
   }
-  const mine = [['Copper', 4], ['Tin', 4], ['Iron', 3], ['Coal', 2]];
-  for (const [ore, n] of mine) for (let i = 0; i < n; i++) { const p = place(22, 20, 5, 1.0); if (p) nodes.push(createRock(p.x, p.z, ore)); }
-  const spots = [['Net', 3.6], ['Net', 4.3], ['Net', 5.0], ['Lure', -0.6], ['Lure', 0.2]];
+  for (let i = 0; i < 4; i++) { const p = place(31, 4, 5, 2); if (p) nodes.push(createTree(p.x, p.z, 'Maple')); }
+  for (let i = 0; i < 3; i++) { const p = place(-31, -1, 4, 2.2); if (p) nodes.push(createTree(p.x, p.z, 'Yew')); }
+  for (let i = 0; i < 2; i++) { const p = place(10, -33, 3, 2); if (p) nodes.push(createTree(p.x, p.z, 'Magic')); }
+  const mine = [['Copper', 4], ['Tin', 4], ['Iron', 3], ['Coal', 3], ['Mithril', 2], ['Adamantite', 1]];
+  for (const [ore, n] of mine) for (let i = 0; i < n; i++) { const p = place(22, 20, 5.5, 1.0); if (p) nodes.push(createRock(p.x, p.z, ore)); }
+  for (const [ore, n] of [['Runite', 1], ['Adamantite', 1], ['Mithril', 1], ['Coal', 2]]) for (let i = 0; i < n; i++) { const p = place(-9, -28, 3, 1.0); if (p) nodes.push(createRock(p.x, p.z, ore)); }
+  const spots = [['Net', 3.6], ['Net', 4.3], ['Net', 5.0], ['Lure', -0.6], ['Lure', 0.2], ['Cage', 1.2], ['Harpoon', 2.0]];
   for (const [kind, a] of spots) {
     nodes.push(createFish(LAKE.x + Math.cos(a) * (LAKE.r - 0.6), LAKE.z + Math.sin(a) * (LAKE.r - 0.6), kind));
   }
-  nodes.push(createMerchant(8, 0));
-  nodes.push(createBank(-6, -2));
   createTower(0, 29);
   fence(-18, -16, 12, 10);
 
@@ -317,8 +526,10 @@ export function createWorld(scene) {
   for (let i = 0; i < 4; i++) monsters.push(createMonster('Cow', -18 + (rng() - 0.5) * 8, -16 + (rng() - 0.5) * 6, 3.5, field));
   monsters.push(createMonster('Guard', -2, 25, 2.5));
   monsters.push(createMonster('Guard', 2.5, 25, 2.5));
+  for (const [x, z] of [[-3, -31], [1.5, -33], [-1, -28.5]]) monsters.push(createMonster('Hill Giant', x, z, 3));
+  for (const [x, z] of [[-16, -32], [-18, -35]]) monsters.push(createMonster('Black Knight', x, z, 2.5));
 
-  return { ground, nodes, monsters, pickables };
+  return { ground, nodes, monsters, pickables, buildings };
 }
 
 // Pile of items on the ground. Shared look, one small mesh each.

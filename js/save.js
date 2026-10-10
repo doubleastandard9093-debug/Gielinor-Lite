@@ -1,8 +1,10 @@
 import { normalizeSkills } from './skills.js';
 import { DEFAULT_SETTINGS, INV_SIZE } from './playerState.js';
-import { isStackable } from './items.js';
+import { ITEMS, isTool, STARTER_TOOLS } from './items.js';
+import { PRAYERS } from './prayer.js';
+import { questPoints } from './quests.js';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 const KEY = 'gielinor3d';
 
 export function getSaveData(skills, player, playerMesh) {
@@ -21,6 +23,11 @@ export function getSaveData(skills, player, playerMesh) {
       runEnergy: player.runEnergy,
       attackStyle: player.attackStyle || 0,
       settings: player.settings,
+      tools: player.tools || {},
+      prayerPoints: player.prayerPoints,
+      activePrayers: player.activePrayers || [],
+      quests: player.quests || {},
+      questPoints: player.questPoints || 0,
       skillTrees: player.skillTrees,
       bank: player.bank || {}
     },
@@ -45,33 +52,52 @@ export function migrateSave(saved) {
   };
   p.inventory = cleanBag(p.inventory);
   p.bank = cleanBag(p.bank);
-  p.equipment = Object.assign({ weapon: null, body: null, legs: null, shield: null, ammo: null }, p.equipment || {});
+  p.equipment = Object.assign({ weapon: null, body: null, legs: null, shield: null, head: null, ammo: null }, p.equipment || {});
   if (!p.equipment.ammo) p.ammoCount = 0;
   p.settings = Object.assign({}, DEFAULT_SETTINGS, p.settings || {});
   if (typeof p.runEnergy !== 'number') p.runEnergy = 100;
   if (typeof p.attackStyle !== 'number') p.attackStyle = 0;
   if (typeof p.gold !== 'number') p.gold = Number(p.gold) || 0;
 
-  // Old saves had no inventory limit. Anything past 28 slots goes to the bank.
-  let used = 0;
-  let moved = 0;
+  const fromVersion = Number(saved.version) || 1;
+
+  // Toolbelt (v4). Older saves get the starter tools, and any tools in the pack move onto the belt.
+  if (!p.tools || typeof p.tools !== 'object') {
+    p.tools = Object.fromEntries(STARTER_TOOLS.map(t => [t, true]));
+    if (fromVersion < 4) notes.push('New: a toolbelt with starter tools (axe, pickaxe, net, hammer, knife, needle, tinderbox). See Worn Equipment.');
+  }
+  for (const item of Object.keys(p.tools)) if (!isTool(item)) delete p.tools[item];
   for (const item of Object.keys(p.inventory)) {
-    const qty = p.inventory[item];
-    if (isStackable(item)) {
-      if (used < INV_SIZE) { used++; continue; }
-      p.bank[item] = (p.bank[item] || 0) + qty; delete p.inventory[item]; moved += qty; continue;
-    }
-    const keep = Math.max(0, Math.min(qty, INV_SIZE - used));
-    used += keep;
-    if (keep < qty) {
-      p.bank[item] = (p.bank[item] || 0) + (qty - keep);
-      moved += qty - keep;
-      if (keep) p.inventory[item] = keep; else delete p.inventory[item];
+    if (isTool(item)) {
+      const extra = p.inventory[item] - (p.tools[item] ? 0 : 1);
+      p.tools[item] = true;
+      if (extra > 0) p.bank[item] = (p.bank[item] || 0) + extra;
+      delete p.inventory[item];
     }
   }
-  if (moved) notes.push(`Your pack now holds 28 items. ${moved} extra item${moved === 1 ? ' was' : 's were'} moved to your bank.`);
+  // Drop items that no longer exist so the pack never shows broken slots.
+  for (const bag of [p.inventory, p.bank]) for (const item of Object.keys(bag)) if (!ITEMS[item]) delete bag[item];
+  for (const [slot, item] of Object.entries(p.equipment)) if (item && !ITEMS[item]) p.equipment[slot] = null;
+
+  // Every identical item stacks now, so the 28 slots count different items.
+  // Anything past 28 different items goes to the bank.
+  const keys = Object.keys(p.inventory);
+  if (keys.length > INV_SIZE) {
+    let moved = 0;
+    for (const item of keys.slice(INV_SIZE)) { p.bank[item] = (p.bank[item] || 0) + p.inventory[item]; moved++; delete p.inventory[item]; }
+    notes.push(`Your pack holds 28 different items. ${moved} kind${moved === 1 ? ' was' : 's were'} moved to your bank.`);
+  }
+
+  // Prayer and quests (v4)
+  if (!Array.isArray(p.activePrayers)) p.activePrayers = [];
+  p.activePrayers = p.activePrayers.filter(id => PRAYERS.some(x => x.id === id));
+  if (!p.quests || typeof p.quests !== 'object') p.quests = {};
+  p.questPoints = questPoints(p);
 
   saved.skills = normalizeSkills(saved.skills || {});
+  if (typeof p.prayerPoints !== 'number' || !(p.prayerPoints >= 0)) p.prayerPoints = saved.skills.Prayer.level * 10;
+  p.prayerPoints = Math.min(p.prayerPoints, saved.skills.Prayer.level * 10);
+  if (fromVersion < 4) notes.push('New in this update: stacking items, a toolbelt, quests, prayer and combat skills. See Settings → What\'s new.');
   saved.version = SAVE_VERSION;
   return notes;
 }
@@ -83,7 +109,7 @@ export function applySaveData(data, skills, player, playerMesh) {
     const notes = migrateSave(saved);
     Object.assign(skills, saved.skills);
     const p = saved.player;
-    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank']) {
+    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints']) {
       if (p[k] !== undefined) player[k] = p[k];
     }
     if (p.skillTrees) {

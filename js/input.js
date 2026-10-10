@@ -114,6 +114,6 @@ export function setupInput(canvas, handlers) {
 
   return {
     keys,
-    setDpadVisible(v) { dpad.style.display = v ? 'grid' : 'none'; }
+    setDpadVisible(v) { dpad.style.display = v ? 'grid' : 'none'; document.body.classList.toggle('dpad-on', !!v); }
   };
 }

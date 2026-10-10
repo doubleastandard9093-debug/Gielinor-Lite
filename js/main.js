@@ -1,19 +1,23 @@
 import * as THREE from 'three';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, IS_TOUCH } from './scene.js';
 import { createWorld, createPileMesh, SPAWN } from './world.js';
-import { createPlayer, updatePlayer, applyEquipmentLook, faceToward } from './player.js';
+import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt } from './player.js';
 import { createCameraRig, rotateRig, zoomRig, updateRig } from './camera.js';
 import { setupInput } from './input.js';
 import { setupUI } from './ui.js';
 import { createOverlays } from './overlays.js';
 import { createMinimap } from './minimap.js';
-import { createSkills, addXP, combatLevel, SKILL_ICONS } from './skills.js';
-import { createPlayerState, addItem, removeItem, recalcMaxHp, roomFor, canAdd, slotsUsed } from './playerState.js';
-import { RECIPES, ITEMS, canCraft, recipeOutputQty, examineItem, isRangedWeapon, slotFor, isStackable } from './items.js';
+import { createSkills, addXP, combatLevel, SKILL_ICONS, perk, perksBetween, maxPrayer } from './skills.js';
+import { createPlayerState, addItem, removeItem, recalcMaxHp, roomFor, canAdd } from './playerState.js';
+import { RECIPES, ITEMS, canCraft, hasInputs, recipeOutputQty, examineItem, isRangedWeapon, slotFor, isTool, toolType, TOOL_TYPES, WOODS } from './items.js';
 import {
   TICK_MS, gatherTick, gatherInfo, TREES, ROCKS, FISH_SPOTS, rollPlayerHit, rollMonsterHit, combatXp, rollLoot, RARE_DROPS,
-  attackSpeedTicks, attackRange, equip, unequip, eat, sellPrice
+  attackSpeedTicks, attackRange, equip, unequip, eat, sellPrice, bestTool, addTool, ownsToolType, toolName,
+  burnChance, saveChance, makeXp, buryXp, reduceIncoming
 } from './gameplay.js';
+import { PRAYERS, prayerById, togglePrayer, drainTick, prayerFx, rechargePrayer } from './prayer.js';
+import { ABILITIES, abilityById, unlocked as abilityUnlocked, cooldownTicks } from './abilities.js';
+import { QUESTS, questForNpc, questStatus, isDone, onKill, onBury, onPray, NPC_INFO, questPoints } from './quests.js';
 import { createInventoryUI } from './inventoryUI.js';
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from './save.js';
 
@@ -25,7 +29,7 @@ const camera = createCamera();
 const renderer = createRenderer();
 document.body.prepend(renderer.domElement);
 const { dirLight } = createLights(scene);
-const { nodes, monsters, pickables, ground } = createWorld(scene);
+const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);
 const pm = createPlayer(scene);
 const skills = createSkills();
 const player = createPlayerState();
@@ -53,12 +57,24 @@ const piles = [];
 let dirty = true;
 const markDirty = () => { dirty = true; };
 
+// Combat skill state
+const cooldowns = {};        // ability id -> tick when ready
+let queuedAbility = null;    // fires on your next swing
+let queuedAt = 0;
+const buffs = { fortifyUntil: 0, rageUntil: 0 };
+const fires = [];
+
 function giveXP(skill, amount) {
   if (amount <= 0) return;
-  addXP(skills, skill, amount, (s, l) => {
-    ui.levelUp(s, SKILL_ICONS[s], l);
+  addXP(skills, skill, amount, (s, l, old) => {
+    const perks = perksBetween(s, old, l);
+    ui.levelUp(s, SKILL_ICONS[s], l, perks);
     log(`Congratulations, you just advanced a ${s} level. You are now level ${l}.`, 'skill');
-    if (s === 'Hitpoints') { const old = player.maxHp; recalcMaxHp(player, skills); player.hp += player.maxHp - old; }
+    for (const p of perks) log(`New ${s} perk unlocked: ${p.name} (${p.desc}).`, 'skill');
+    for (const a of ABILITIES) if (a.skill === s && a.level > old && a.level <= l) log(`New combat skill unlocked: ${a.name}. It's on your quick bar.`, 'skill');
+    for (const pr of PRAYERS) if (s === 'Prayer' && pr.level > old && pr.level <= l) log(`You can now use the prayer ${pr.name}.`, 'skill');
+    if (s === 'Hitpoints') { const oldMax = player.maxHp; recalcMaxHp(player, skills); player.hp += player.maxHp - oldMax; }
+    if (s === 'Prayer') player.prayerPoints = Math.min(maxPrayer(skills), (player.prayerPoints || 0) + (l - old) * 10);
   });
   ui.xpDrop(skill, SKILL_ICONS[skill], amount);
   markDirty();
@@ -102,11 +118,33 @@ const invUI = createInventoryUI({
   },
   craft(name, n) {
     const recipe = RECIPES.find(r => r.name === name);
-    if (!recipe) return;
-    startAction({ kind: 'craft', recipe, left: n, wait: 0 });
-    craftOne();
+    if (recipe) startCraft(recipe, n);
   },
-  setting(act) { setting(act); }
+  setting(act) { setting(act); },
+  tick: () => tick,
+  cooldowns: () => cooldowns,
+  cooldownOf: a => cooldownTicks(skills, a),
+  queued: () => queuedAbility,
+  useAbility(id) { useAbility(id); },
+  questDone: id => isDone(player, id),
+  recipeState,
+  arrowQty: r => recipeOutputQty(r) + perk(skills, 'Fletching', 'extraArrows'),
+  toolInfo(type) {
+    const t = TOOL_TYPES.find(x => x.id === type);
+    const owned = Object.keys(player.tools || {}).filter(i => toolType(i) === type);
+    const best = bestTool(player, skills, type);
+    if (!owned.length) log(`${t.name}: none on your toolbelt. Bob's Tool Shop sells one.`, 'examine');
+    else log(`${t.name}: using ${best || 'nothing (level too low)'}. Owned: ${owned.join(', ')}.`, 'examine');
+  },
+  prayerToggle(id) {
+    const msg = togglePrayer(player, skills, id, q => isDone(player, q));
+    if (msg) log(msg, 'warn');
+    markDirty();
+  },
+  prayerInfo(id) {
+    const p = prayerById(id);
+    log(`${p.name} (Prayer ${p.level}${p.quest ? ', needs Rest for the Fallen' : ''}): ${p.desc}.`, 'examine');
+  }
 });
 
 function afterEquip() {
@@ -117,8 +155,10 @@ function afterEquip() {
 function useItem(item) {
   const info = ITEMS[item];
   if (!info) return;
+  if (info.type === 'bones') { startBury(item, 1); return; }
+  if (info.type === 'tool') { beltFromInventory(item); return; }
   if (info.type === 'food') {
-    if (eat(player, item, log)) {
+    if (eat(player, item, log, skills)) {
       if (tick - lastCombatTick < 8) nextPlayerAttack = Math.max(nextPlayerAttack, tick + 2); // eating delays your next hit
       markDirty();
     }
@@ -127,8 +167,27 @@ function useItem(item) {
   } else {
     // No direct use: show what it's for
     const r = RECIPES.find(rc => rc.inputs[item] && canCraft(skills, player.inventory, rc));
-    log(examineItem(item) + (r ? ` (Craft tab: ${r.name})` : ''), 'examine');
+    log(examineItem(item) + (r ? ` (Craft tab: ${r.name})` : WOODS.includes(item) ? ' (Hold for Light)' : ''), 'examine');
   }
+}
+
+function beltFromInventory(item) {
+  if (addTool(player, item)) {
+    removeItem(player, item, 1);
+    log(`You put the ${item} on your toolbelt.`, 'game');
+  } else log(`You already have a ${item} on your toolbelt. You could sell this one.`, 'game');
+  markDirty();
+}
+// Tools you pick up, buy or get as rewards go on the belt if you don't have one yet.
+function giveItem(item, qty = 1) {
+  if (isTool(item) && addTool(player, item)) {
+    log(`The ${item} goes on your toolbelt.`, 'game');
+    if (qty > 1) addItem(player, item, qty - 1);
+    return true;
+  }
+  if (!canAdd(player, item)) { player.bank[item] = (player.bank[item] || 0) + qty; log(`Your pack is full, so the ${item} was sent to your bank.`, 'warn'); return true; }
+  addItem(player, item, qty);
+  return true;
 }
 
 function itemMenu(item, x, y, mode) {
@@ -141,12 +200,18 @@ function itemMenu(item, x, y, mode) {
     opts.push({ action: 'Value', target: item, color: c, fn: () => log(`${item}: shop will buy for ${sellPrice(item)} coins.`, 'game') });
     for (const q of [1, 5, 'All']) opts.push({ action: `Sell ${q}`, target: item, color: c, fn: () => sell(item, q) });
   } else {
+    const have = player.inventory[item] || 0;
     if (info.type === 'food') opts.push({ action: 'Eat', target: item, color: c, fn: () => useItem(item) });
+    else if (info.type === 'bones') {
+      opts.push({ action: 'Bury', target: item, color: c, fn: () => startBury(item, 1) });
+      if (have > 1) opts.push({ action: 'Bury all', target: `${item} (${have})`, color: c, fn: () => startBury(item, Infinity) });
+    } else if (info.type === 'tool') opts.push({ action: 'Add to toolbelt', target: item, color: c, fn: () => beltFromInventory(item) });
     else if (slotFor(item)) opts.push({ action: info.type === 'weapon' ? 'Wield' : 'Wear', target: item, color: c, fn: () => useItem(item) });
-    const recipes = RECIPES.filter(r => r.inputs[item] && canCraft(skills, player.inventory, r)).slice(0, 3);
-    for (const r of recipes) opts.push({ action: r.name.split(' ')[0], target: r.output, color: c, fn: () => { startAction({ kind: 'craft', recipe: r, left: Infinity, wait: 0 }); craftOne(); } });
-    opts.push({ action: 'Drop', target: item, color: c, fn: () => dropItem(item, isStackable(item) ? player.inventory[item] : 1) });
-    if (!isStackable(item) && (player.inventory[item] || 0) > 1) opts.push({ action: 'Drop all', target: item, color: c, fn: () => dropItem(item, player.inventory[item]) });
+    if (WOODS.includes(item)) opts.push({ action: 'Light', target: item, color: c, fn: () => startAction({ kind: 'light', item, wait: 2 }) });
+    const recipes = RECIPES.filter(r => r.inputs[item] && skills[r.skill].level >= r.level && hasInputs(player.inventory, r)).slice(0, 3);
+    for (const r of recipes) opts.push({ action: r.name.split(' ')[0] + ' all', target: r.output, color: c, fn: () => startCraft(r, Infinity) });
+    opts.push({ action: 'Drop', target: have > 1 ? `${item} (1)` : item, color: c, fn: () => dropItem(item, 1) });
+    if (have > 1) opts.push({ action: 'Drop all', target: `${item} (${have})`, color: c, fn: () => dropItem(item, player.inventory[item]) });
   }
   opts.push({ action: 'Examine', target: item, color: c, fn: () => log(examineItem(item), 'examine') });
   ui.showMenu(x, y, opts);
@@ -170,6 +235,11 @@ function deposit(item, q) {
 }
 function withdraw(item, q) {
   const have = player.bank[item] || 0;
+  if (have && isTool(item) && addTool(player, item)) {
+    player.bank[item]--; if (player.bank[item] <= 0) delete player.bank[item];
+    log(`The ${item} goes on your toolbelt.`, 'game');
+    markDirty(); return;
+  }
   let n = Math.min(qtyOf(have, q), roomFor(player, item, qtyOf(have, q)));
   if (!n) { log("You don't have enough inventory space.", 'warn'); return; }
   player.bank[item] -= n;
@@ -198,6 +268,16 @@ function depositWorn() {
 
 // ---- Shop ----
 function buy(item, price, q) {
+  if (isTool(item)) {
+    if (player.tools[item]) { log(`You already have a ${item} on your toolbelt.`, 'game'); return; }
+    if (player.gold < price) { log("You don't have enough coins.", 'warn'); return; }
+    player.gold -= price;
+    addTool(player, item);
+    const info = ITEMS[item];
+    const needs = info.req ? Object.entries(info.req).find(([sk, l]) => skills[sk].level < l) : null;
+    log(`You buy a ${item} for ${price} coins. It goes on your toolbelt.${needs ? ` (You need ${needs[0]} ${needs[1]} to use it.)` : ''}`, 'game');
+    markDirty(); return;
+  }
   let bought = 0;
   for (let i = 0; i < q; i++) {
     if (player.gold < price) { if (!bought) log("You don't have enough coins.", 'warn'); break; }
@@ -261,6 +341,7 @@ function toggleRun() {
 }
 
 const minimap = createMinimap({
+  onPrayerOrb: () => invUI.showTab('prayer'),
   onWalk: (x, z) => { stopAction(); walkTo(x, z); },
   onCompass: () => { rig.targetYaw = Math.round(rig.targetYaw / (Math.PI * 2)) * Math.PI * 2; },
   onRunToggle: toggleRun
@@ -291,6 +372,7 @@ function pick(cx, cy, all = false) {
   pickList.length = 0;
   for (const p of pickables) if (p.visible) pickList.push(p);
   for (const p of piles) pickList.push(p.mesh);
+  for (const f of fires) pickList.push(f.mesh);
   const ents = [];
   const hits = raycaster.intersectObjects(pickList, true);
   for (const h of hits) {
@@ -311,7 +393,7 @@ function pick(cx, cy, all = false) {
     };
     for (const m of monsters) if (m.alive) consider(m, m.mesh.position.x, 0.9, m.mesh.position.z);
     for (const p of piles) consider(p, p.x, 0.15, p.z);
-    for (const n of nodes) if (n.type === 'fish' || n.type === 'rock') consider(n, n.x, 0.4, n.z);
+    for (const n of nodes) if (n.type === 'fish' || n.type === 'rock' || n.type === 'npc') consider(n, n.x, n.type === 'npc' ? 1.2 : 0.4, n.z);
     near.sort((a, b) => a.d - b.d);
     for (const n of near) ents.push(n.ent);
   }
@@ -343,13 +425,21 @@ function levelColor(lvl) {
   if (d === 0) return '#ffff00'; if (d > -3) return '#c0ff00'; if (d > -6) return '#80ff00'; return '#00ff00';
 }
 const EXAMINE = {
-  Tree: 'A commonly found tree. I can chop it down.', Oak: 'A beautiful old oak.', Willow: 'A droopy tree.',
-  Rocks: 'A rocky outcrop.', Net: 'I can see small fish swimming in the water. (Net: shrimp)',
-  Lure: 'I can see fish leaping in the water. (Lure: trout at 20, salmon at 30 Fishing)',
+  Tree: 'A commonly found tree. I can chop it down.', Oak: 'A beautiful old oak. (Woodcutting 15)', Willow: 'A droopy tree. (Woodcutting 30)',
+  Maple: 'A tree with bright autumn leaves. (Woodcutting 45)', Yew: 'A tough old yew. (Woodcutting 60)', Magic: 'The tree shimmers with magic. (Woodcutting 75)',
+  Rocks: 'A rocky outcrop.', Net: 'I can see small fish swimming in the water. (Net: shrimp. Needs a small fishing net)',
+  Lure: 'I can see fish leaping in the water. (Lure: trout at 20, salmon at 30 Fishing. Needs a fly fishing rod)',
+  Cage: 'Lobsters lurk below. (Cage: lobster at 40 Fishing. Needs a lobster pot)',
+  Harpoon: 'Big fish swim here. (Harpoon: swordfish at 50, shark at 76 Fishing. Needs a harpoon)',
   Merchant: 'A trader of general goods.', 'Bank booth': 'The bank teller will serve you here.',
-  Goblin: 'An ugly green creature.', Cow: 'Converts grass to beef.', Guard: 'He tries to keep order around here.'
+  Goblin: 'An ugly green creature.', Cow: 'Converts grass to beef.', Guard: 'He tries to keep order around here.',
+  'Hill Giant': 'A very large foe. Drops big bones.', 'Black Knight': 'A sinister knight in black armour.',
+  Furnace: 'Smelts ore into bars.', Anvil: 'Used with a hammer to smith bars into gear.', Range: 'A hot range for cooking food.',
+  Fire: 'Hot! You can cook on it.', Altar: 'An altar to Saradomin. Pray here to recharge your prayer points.'
 };
 function entExamine(ent) {
+  if (ent.type === 'building') return `${ent.name}: ${ent.examine}`;
+  if (ent.type === 'npc') return (NPC_INFO[ent.npc] || {}).examine || `It's ${ent.name}.`;
   if (ent.type === 'tree' && !ent.alive) return 'This tree has been cut down.';
   if (ent.type === 'rock' && !ent.alive) return 'There is currently no ore available in this rock.';
   if (ent.type === 'fish') return EXAMINE[ent.kind];
@@ -377,10 +467,23 @@ function optionsFor(ent) {
       { action: 'Prospect', target: 'Rocks', color: cy, fn: () => log(ent.alive ? `This rock contains ${ent.ore.toLowerCase()}. (Mining ${ROCKS[ent.ore].level})` : 'There is currently no ore available in this rock.', 'examine') }, ex];
     case 'fish': return [{ action: FISH_SPOTS[ent.kind].verb, target: 'Fishing spot', color: cy, fn: () => startAction({ kind: 'gather', node: ent }) }, ex];
     case 'shop': return [
-      { action: 'Trade', target: 'Merchant', color: '#ffff00', fn: () => startAction({ kind: 'shop', node: ent }) },
-      { action: 'Talk-to', target: 'Merchant', color: '#ffff00', fn: () => log('Merchant: "Welcome! I buy and sell all sorts. Tap Trade to see my wares."', 'game') },
+      { action: 'Trade', target: 'Merchant', color: '#ffff00', fn: () => startAction({ kind: 'shop', node: ent, shop: 'shop' }) },
+      { action: 'Talk-to', target: 'Merchant', color: '#ffff00', fn: () => startAction({ kind: 'talk', node: ent }) },
       { ...ex, color: '#ffff00' }];
     case 'bank': return [{ action: 'Bank', target: 'Bank booth', color: cy, fn: () => startAction({ kind: 'bank', node: ent }) }, ex];
+    case 'npc': {
+      const o = [{ action: 'Talk-to', target: ent.name, color: '#ffff00', fn: () => startAction({ kind: 'talk', node: ent }) }];
+      if (ent.npc === 'bob') o.push({ action: 'Trade', target: ent.name, color: '#ffff00', fn: () => startAction({ kind: 'shop', node: ent, shop: 'tools' }) });
+      const qd = questForNpc(ent.npc);
+      if (qd) o.push({ action: 'Quest', target: `${qd.name} (${questStatus(player, qd.id)})`, color: '#3ad0ff', fn: () => { invUI.showTab('quests'); } });
+      return [...o, { ...ex, color: '#ffff00' }];
+    }
+    case 'station': {
+      const verb = { furnace: 'Smelt', anvil: 'Smith', range: 'Cook' }[ent.kind];
+      return [{ action: verb, target: ent.name, color: cy, fn: () => startAction({ kind: 'station', node: ent }) }, ex];
+    }
+    case 'altar': return [{ action: 'Pray-at', target: 'Altar', color: cy, fn: () => startAction({ kind: 'altar', node: ent }) }, ex];
+    case 'building': return [ex];
   }
   return [ex];
 }
@@ -389,6 +492,14 @@ function onTap(x, y) {
   ui.hideMenu();
   const hit = pick(x, y);
   if (!hit) return;
+  if (ui.inDialogue) ui.closeDialogue();
+  if (hit.ent && hit.ent.type === 'building') {
+    // Tapping a wall walks toward that spot; you'll slide around the building.
+    ui.tapMarker(x, y, false);
+    stopAction();
+    if (hit.point) walkTo(hit.point.x, hit.point.z);
+    return;
+  }
   if (hit.ent) {
     ui.tapMarker(x, y, true);
     optionsFor(hit.ent)[0].fn();
@@ -449,6 +560,12 @@ function takeFromPile(pile, only) {
   let full = false;
   for (const item of Object.keys(pile.items)) {
     if (only && item !== only) continue;
+    if (isTool(item) && !player.tools[item]) {
+      addTool(player, item);
+      got.push(`${item} (to toolbelt)`);
+      pile.items[item]--; if (pile.items[item] <= 0) delete pile.items[item];
+      if (!pile.items[item]) continue;
+    }
     const qty = pile.items[item];
     if (item === 'Coins') { player.gold += qty; got.push(`${qty} coins`); delete pile.items[item]; continue; }
     const n = roomFor(player, item, qty);
@@ -467,7 +584,7 @@ function takeFromPile(pile, only) {
 
 // ---- Gathering ----
 const SKILL_VERB = { Woodcutting: 'You swing your axe at the tree.', Mining: 'You swing your pick at the rock.', Fishing: 'You attempt to catch a fish.' };
-const GOT = { 'Logs': 'You get some logs.', 'Oak logs': 'You get some oak logs.', 'Willow logs': 'You get some willow logs.' };
+const GOT = item => WOODS.includes(item) ? `You get some ${item.toLowerCase()}.` : null;
 function depleteNode(node, ms) {
   node.alive = false;
   node.full.visible = false;
@@ -490,12 +607,12 @@ function doGatherTick(a) {
   a.wait = 1; // try every 2 ticks
   pm.actionAnim = 1; pm.actionKind = 'tool';
   const r = gatherTick(node, skills, player);
-  if (!a.started) { a.started = true; const info = gatherInfo(node); if (info && !r?.error) log(SKILL_VERB[info.skill], 'skill'); }
+  if (!a.started) { a.started = true; const info = gatherInfo(node); if (info && !r?.error) log(SKILL_VERB[info.skill].replace('your axe', 'your ' + (bestTool(player, skills, 'axe') || 'axe').toLowerCase()).replace('your pick', 'your ' + (bestTool(player, skills, 'pickaxe') || 'pickaxe').toLowerCase()), 'skill'); }
   if (!r) return;
   if (r.error) { log(r.error, 'warn'); stopAction(); return; }
-  addItem(player, r.item, 1);
+  addItem(player, r.item, r.qty || 1);
   giveXP(r.skill, r.xp);
-  log(GOT[r.item] || (node.type === 'rock' ? `You manage to mine some ${r.item.replace(' ore', '').toLowerCase()}.` : `You catch some ${r.item.replace('Raw ', '')}.`), 'skill');
+  log((GOT(r.item) || (node.type === 'rock' ? `You manage to mine some ${r.item.replace(' ore', '').toLowerCase()}.` : `You catch some ${r.item.replace('Raw ', '').toLowerCase()}.`)) + (r.qty > 1 ? ' Your perk doubles it!' : ''), 'skill');
   if (r.depleted) {
     depleteNode(node, node.type === 'tree' ? TREES[node.kind].respawn : ROCKS[node.ore].respawn);
     stopAction();
@@ -506,28 +623,160 @@ function doGatherTick(a) {
 }
 
 // ---- Crafting ----
+function stationsOf(kind) {
+  const list = nodes.filter(n => n.type === 'station' && n.kind === kind);
+  if (kind === 'range') list.push(...fires);
+  return list;
+}
+function nearestStation(kind) {
+  let best = null, bd = Infinity;
+  for (const n of stationsOf(kind)) { const d = distTo(n); if (d < bd) { bd = d; best = n; } }
+  return best;
+}
+function recipeState(r) {
+  const level = skills[r.skill].level >= r.level;
+  const inputs = hasInputs(player.inventory, r);
+  const tool = !r.tool || !!bestTool(player, skills, r.tool);
+  return { level, inputs, tool, ok: level && inputs && tool };
+}
+function startCraft(recipe, n) {
+  const st = recipeState(recipe);
+  if (!st.level) { log(`You need a ${recipe.skill} level of ${recipe.level} to do that.`, 'warn'); return; }
+  if (!st.tool) { log(`You need ${toolName(recipe.tool)} on your toolbelt.`, 'warn'); return; }
+  if (!st.inputs) { log("You don't have the materials for that.", 'warn'); return; }
+  let station = null;
+  if (recipe.station) {
+    station = nearestStation(recipe.station);
+    if (!station) { log('There is nowhere nearby to do that.', 'warn'); return; }
+    if (!inRange(station, 1.2)) log(`You head to the ${station.name.toLowerCase()}.`, 'game');
+  }
+  startAction({ kind: 'craft', recipe, left: n, wait: 0, station, node: station });
+  if (!station || inRange(station, 1.2)) craftOne();
+}
 function craftOne() {
   const a = action;
   if (!a || a.kind !== 'craft') return;
   const r = a.recipe;
-  if (skills[r.skill].level < r.level) { log(`You need a ${r.skill} level of ${r.level} to do that.`, 'warn'); stopAction(); return; }
-  if (!canCraft(skills, player.inventory, r)) { if (!a.made) log(`You don't have the materials for that.`, 'warn'); stopAction(); return; }
-  // Inputs free their slots first, so check room afterwards.
-  for (const [item, qty] of Object.entries(r.inputs)) removeItem(player, item, qty);
-  const outQty = recipeOutputQty(r);
-  if (!canAdd(player, r.output, outQty)) {
-    for (const [item, qty] of Object.entries(r.inputs)) addItem(player, item, qty);
+  const st = recipeState(r);
+  if (!st.level) { log(`You need a ${r.skill} level of ${r.level} to do that.`, 'warn'); stopAction(); return; }
+  if (!st.tool) { log(`You need ${toolName(r.tool)} on your toolbelt.`, 'warn'); stopAction(); return; }
+  if (!st.inputs) { if (!a.made) log(`You don't have the materials for that.`, 'warn'); else log(`You run out of materials.`, 'game'); stopAction(); return; }
+  if (a.station && (!a.station.alive || (a.station.isFire && !fires.includes(a.station)))) { log('The fire has gone out.', 'warn'); stopAction(); return; }
+  const burnt = Math.random() < burnChance(r, skills);
+  const output = burnt ? 'Burnt food' : r.output;
+  let outQty = burnt ? 1 : recipeOutputQty(r);
+  if (!burnt && ITEMS[r.output].type === 'ammo') outQty += perk(skills, 'Fletching', 'extraArrows');
+  const saved = !burnt && Math.random() < saveChance(r, skills, player);
+  if (!saved) for (const [item, qty] of Object.entries(r.inputs)) removeItem(player, item, qty);
+  if (!canAdd(player, output)) {
+    if (!saved) for (const [item, qty] of Object.entries(r.inputs)) addItem(player, item, qty);
     log("You don't have enough inventory space.", 'warn'); stopAction(); return;
   }
-  addItem(player, r.output, outQty);
-  giveXP(r.skill, r.xp);
+  addItem(player, output, outQty);
   a.made = (a.made || 0) + 1;
-  log(`You make ${outQty > 1 ? outQty + ' ' : ''}${r.output}.`, 'skill');
+  if (burnt) log(`You accidentally burn the ${r.output.replace('Cooked ', '').toLowerCase()}.`, 'warn');
+  else {
+    giveXP(r.skill, makeXp(r, skills));
+    log(`You make ${outQty > 1 ? outQty + ' ' : ''}${output}.${saved ? ' You manage to save your materials!' : ''}`, 'skill');
+  }
   pm.actionAnim = 1; pm.actionKind = 'tool';
   a.left--;
   a.wait = 2;
   if (a.left <= 0) stopAction();
+  else if (!hasInputs(player.inventory, r)) { if (a.left !== Infinity || a.made > 1) log(`You have run out of materials.`, 'game'); stopAction(); }
   markDirty();
+}
+
+// ---- Prayer: burying bones ----
+function startBury(item, n) {
+  if (!player.inventory[item]) return;
+  if (action && action.kind === 'bury' && action.item === item) { action.left = n === Infinity ? Infinity : action.left; return; }
+  startAction({ kind: 'bury', item, left: n, wait: 0 });
+  buryOne();
+}
+function buryOne() {
+  const a = action;
+  if (!a || a.kind !== 'bury') return;
+  if (!removeItem(player, a.item, 1)) { stopAction(); return; }
+  pm.actionAnim = 1; pm.actionKind = 'tool';
+  log(`You dig a hole in the ground... You bury the ${a.item.toLowerCase()}.`, 'skill');
+  giveXP('Prayer', buryXp(a.item, skills));
+  for (const m of onBury(player)) log(m, 'game');
+  a.left--;
+  a.wait = 1;
+  if (a.left <= 0 || !player.inventory[a.item]) stopAction();
+  markDirty();
+}
+
+// ---- Fires (light logs with your tinderbox; cook on them) ----
+const fireGeo = new THREE.ConeGeometry(0.35, 0.8, 6);
+const fireMat = new THREE.MeshBasicMaterial({ color: 0xff8a1a });
+const logGeo = new THREE.BoxGeometry(0.9, 0.15, 0.15);
+const logMat = new THREE.MeshLambertMaterial({ color: 0x5a3a1a });
+function lightFire(a) {
+  if (!bestTool(player, skills, 'tinderbox')) { log('You need a tinderbox on your toolbelt.', 'warn'); stopAction(); return; }
+  const x = pm.mesh.position.x, z = pm.mesh.position.z;
+  if (Math.hypot(x, z) < 4.5 || fires.some(f => Math.hypot(f.x - x, f.z - z) < 1.2) || nodes.some(n => n.type === 'station' && Math.hypot(n.x - x, n.z - z) < 1.5)) {
+    log("You can't light a fire here.", 'warn'); stopAction(); return;
+  }
+  if (!removeItem(player, a.item, 1)) { stopAction(); return; }
+  const g = new THREE.Group();
+  const l1 = new THREE.Mesh(logGeo, logMat); l1.rotation.y = 0.5; l1.position.y = 0.08;
+  const l2 = new THREE.Mesh(logGeo, logMat); l2.rotation.y = -0.6; l2.position.y = 0.08;
+  const fl = new THREE.Mesh(fireGeo, fireMat); fl.position.y = 0.5;
+  g.add(l1, l2, fl);
+  g.position.set(x, 0, z);
+  scene.add(g);
+  const fire = { mesh: g, flame: fl, type: 'station', kind: 'range', name: 'Fire', isFire: true, alive: true, x, z, radius: 0.5, expires: performance.now() + 60000 };
+  g.userData.entity = fire;
+  fires.push(fire);
+  log('The fire catches and the logs begin to burn.', 'game');
+  // step aside like RuneScape
+  for (const [dx, dz] of [[-1, 0], [1, 0], [0, 1], [0, -1]]) if (!blockedAt(x + dx, z + dz)) { walkTo(x + dx, z + dz); break; }
+  stopAction();
+  markDirty();
+}
+function removeFire(f) {
+  scene.remove(f.mesh);
+  const i = fires.indexOf(f);
+  if (i >= 0) fires.splice(i, 1);
+}
+
+// ---- Talking ----
+const NPC_FACE = { cook: '👨‍🍳', priest: '🧔', doric: '🧔‍♂️', captain: '💂‍♀️', farmer: '👨‍🌾', bob: '👷', merchant: '🧑‍💼' };
+const questHelpers = {
+  has: (item, n) => (player.inventory[item] || 0) >= n,
+  take: (item, n) => { removeItem(player, item, n); markDirty(); },
+  give: (item, n) => { giveItem(item, n); markDirty(); },
+  xp: (skill, n) => giveXP(skill, n),
+  gold: n => { player.gold += n; markDirty(); },
+  tool: item => { if (!addTool(player, item)) giveItem(item, 1); else log(`The ${item} goes on your toolbelt.`, 'game'); },
+  log: t => log(t, 'game'),
+  questComplete(qd) {
+    log(`Congratulations! Quest complete: ${qd.name}. You gain ${qd.points} quest point${qd.points > 1 ? 's' : ''}.`, 'skill');
+    ui.banner(`<div class="lu-icon">📜</div><div><b>Quest complete!</b><br>${qd.name}<br><small>${qd.rewards.join(' · ')}</small></div>`);
+    updateQuestMarks();
+    markDirty();
+  }
+};
+function talkTo(ent) {
+  const name = ent.name;
+  const face = NPC_FACE[ent.npc] || (ent.type === 'shop' ? NPC_FACE.merchant : '🙂');
+  const qd = questForNpc(ent.npc);
+  let script;
+  if (qd) script = qd.talk(player, questHelpers);
+  else if (ent.npc === 'bob') script = [
+    ['npc', "Welcome to Bob's Brilliant Tools! Axes, pickaxes, fishing gear: it all goes straight on your toolbelt."],
+    { choose: [['Let\'s trade.', [{ run: () => { invUI.open('tools'); } }]], ['Just looking.', [['npc', 'Better tools gather faster. Come back any time!']]]] }
+  ];
+  else script = [
+    ['npc', 'Welcome! I buy and sell all sorts of things.'],
+    { choose: [['Let\'s trade.', [{ run: () => invUI.open('shop') }]], ['No thanks.', [['npc', 'Suit yourself.']]]] }
+  ];
+  ui.dialogue(name, face, script, () => { updateQuestMarks(); markDirty(); });
+}
+function updateQuestMarks() {
+  for (const n of nodes) if (n.type === 'npc') { const qd = questForNpc(n.npc); n.questMark = !!qd && !isDone(player, qd.id); }
 }
 
 // ---- Combat ----
@@ -540,19 +789,72 @@ function distTo(ent) {
   return Math.hypot(ent.mesh.position.x - pm.mesh.position.x, ent.mesh.position.z - pm.mesh.position.z);
 }
 
+function useArrow() {
+  if (!player.equipment.ammo || player.ammoCount <= 0) return false;
+  if (Math.random() < perk(skills, 'Ranged', 'ammoSave')) return true; // perk: arrow saved
+  player.ammoCount--;
+  if (player.ammoCount <= 0) { player.equipment.ammo = null; player.ammoCount = 0; }
+  return true;
+}
+
+// Combat skills (quick bar)
+function useAbility(id) {
+  const a = abilityById(id);
+  if (!a) return;
+  if (!abilityUnlocked(skills, a)) { log(`You need ${a.skill} level ${a.level} to use ${a.name}.`, 'warn'); return; }
+  const left = (cooldowns[id] || 0) - tick;
+  if (left > 0) { log(`${a.name} is recharging (${Math.ceil(left * 0.6)}s).`, 'warn'); return; }
+  const ranged = isRangedWeapon(player.equipment.weapon);
+  if (a.style === 'melee' && ranged) { log(`${a.name} needs a melee weapon.`, 'warn'); return; }
+  if (a.style === 'ranged' && !ranged) { log(`${a.name} needs a bow.`, 'warn'); return; }
+  const cd = cooldownTicks(skills, a);
+  if (id === 'fortify') { buffs.fortifyUntil = tick + 10; cooldowns[id] = tick + cd; log('You brace yourself. (Fortify: 50% less damage)', 'combat'); }
+  else if (id === 'rage') { buffs.rageUntil = tick + 15; cooldowns[id] = tick + cd; log('You fly into a rage! (Berserk)', 'combat'); }
+  else if (id === 'rejuv') {
+    const heal = Math.round(player.maxHp * 0.2);
+    player.hp = Math.min(player.maxHp, player.hp + heal);
+    cooldowns[id] = tick + cd;
+    log(`You feel rejuvenated. (+${heal} hitpoints)`, 'combat');
+  } else {
+    if (!action || action.kind !== 'attack' || !action.mon.alive) { log('Attack something first, then use that.', 'warn'); return; }
+    queuedAbility = id; queuedAt = tick;
+    if (inRange(action.mon, attackRange(player))) nextPlayerAttack = Math.min(nextPlayerAttack, tick + 1);
+    log(`${a.name} is ready: it fires on your next attack.`, 'combat');
+  }
+  markDirty();
+  invUI.renderBar();
+}
+
 function playerAttack(mon, now) {
   const ranged = isRangedWeapon(player.equipment.weapon);
+  const special = queuedAbility;
+  queuedAbility = null;
+  if (special) cooldowns[special] = tick + cooldownTicks(skills, abilityById(special));
   if (ranged) {
-    if (!player.equipment.ammo || player.ammoCount <= 0) { log('There is no ammo left in your quiver.', 'warn'); stopAction(); return; }
-    player.ammoCount--;
-    if (player.ammoCount <= 0) { player.equipment.ammo = null; player.ammoCount = 0; }
+    if (!useArrow()) { log('There is no ammo left in your quiver.', 'warn'); stopAction(); return; }
     arrowFlight = { from: pm.mesh.position.clone().setY(1.3), mon, t: 0 };
   }
   pm.actionAnim = 1; pm.actionKind = ranged ? 'bow' : 'melee';
-  const dmg = rollPlayerHit(player, skills, mon);
-  mon.hp -= dmg;
+  const rage = tick < buffs.rageUntil;
+  const base = { acc: rage ? 0.2 : 0, dmg: rage ? 0.2 : 0 };
+  const swings = [];
+  if (special === 'power') swings.push({ acc: base.acc + 0.25, dmg: base.dmg + 0.6 });
+  else if (special === 'puncture') swings.push({ acc: base.acc + 0.1, dmg: base.dmg }, { acc: base.acc + 0.1, dmg: base.dmg });
+  else if (special === 'bash') swings.push({ acc: base.acc + 0.3, dmg: base.dmg - 0.5 });
+  else if (special === 'snipe') swings.push({ acc: base.acc + 0.3, dmg: base.dmg + 1.0 });
+  else if (special === 'volley') { swings.push({ ...base, acc: base.acc - 0.15 }); for (let i = 0; i < 2; i++) if (useArrow()) swings.push({ ...base, acc: base.acc - 0.15 }); }
+  else swings.push(base);
+  if (special) log(`${abilityById(special).name}!`, 'combat');
+  let dmg = 0;
+  swings.forEach((mods, i) => {
+    if (mon.hp <= 0) return;
+    const d = rollPlayerHit(player, skills, mon, Math.random, mods);
+    mon.hp -= d;
+    dmg += d;
+    overlays.splat(mon, d, now + i * 150);
+  });
+  if (special === 'bash') { mon.stunUntil = tick + 5; log(`The ${mon.name} is stunned!`, 'combat'); }
   mon.lastHitAt = now;
-  overlays.splat(mon, dmg, now);
   const xp = combatXp(player, dmg);
   for (const [s, v] of Object.entries(xp)) giveXP(s, v);
   lastCombatTick = tick;
@@ -568,6 +870,7 @@ function killMonster(mon, now) {
   mon.state = 'dead';
   mon.respawnAt = 0;
   log(`You have defeated the ${mon.name}.`, 'combat');
+  for (const m of onKill(player, mon.name)) log(m, 'game');
   if (action && action.mon === mon) stopAction();
   const drops = rollLoot(mon.name);
   const x = mon.mesh.position.x, z = mon.mesh.position.z;
@@ -581,7 +884,7 @@ function killMonster(mon, now) {
 }
 
 function monsterAttack(mon, now) {
-  const dmg = rollMonsterHit(mon, player, skills);
+  const dmg = reduceIncoming(rollMonsterHit(mon, player, skills), player, skills, { fortify: tick < buffs.fortifyUntil, rage: tick < buffs.rageUntil });
   player.hp = Math.max(0, player.hp - dmg);
   playerEnt.lastHitAt = now;
   overlays.splat(playerEnt, dmg, now);
@@ -604,6 +907,9 @@ function playerDied() {
   recalcMaxHp(player, skills);
   player.hp = player.maxHp;
   player.runEnergy = 100;
+  player.activePrayers = [];
+  queuedAbility = null;
+  buffs.fortifyUntil = buffs.rageUntil = 0;
   for (const m of monsters) if (m.state === 'fight') m.state = 'return';
   log('You wake up back in town. You keep all of your items.', 'game');
 }
@@ -615,8 +921,18 @@ function inRange(ent, range) { return distTo(ent) <= range + (ent.radius || 0.5)
 
 function gameTick(now) {
   tick++;
-  // Hitpoint regen and run energy
-  if (tick % 6 === 0 && player.hp < player.maxHp && player.hp > 0) { player.hp++; markDirty(); }
+  // Hitpoint regen (faster with Hitpoints perks and Rapid Heal) and run energy
+  if (player.hp < player.maxHp && player.hp > 0) {
+    player.regenAcc = (player.regenAcc || 0) + (1 + perk(skills, 'Hitpoints', 'regen') + prayerFx(player, 'regen')) / 6;
+    while (player.regenAcc >= 1) { player.regenAcc--; player.hp = Math.min(player.maxHp, player.hp + 1); markDirty(); }
+  }
+  // Prayer drain
+  if (player.activePrayers.length) {
+    if (drainTick(player, skills)) log('You have run out of prayer points. Recharge them at an altar.', 'warn');
+    if (tick % 3 === 0 || !player.activePrayers.length) markDirty();
+  }
+  if (queuedAbility && tick - queuedAt > 12) queuedAbility = null;
+  for (let i = fires.length - 1; i >= 0; i--) if (now > fires[i].expires) { removeFire(fires[i]); }
   if (!(player.settings.run && pm.moving)) player.runEnergy = Math.min(100, player.runEnergy + 0.45);
 
   // Respawns
@@ -635,7 +951,7 @@ function gameTick(now) {
     const d = distTo(m);
     const leash = Math.hypot(m.mesh.position.x - m.spawnX, m.mesh.position.z - m.spawnZ);
     if (d > 13 || leash > 16) { m.state = 'return'; continue; }
-    if (d <= 1.7 && tick >= m.nextAttackTick) {
+    if (d <= 1.7 + (m.radius - 0.7) && tick >= m.nextAttackTick && !(m.stunUntil > tick)) {
       m.nextAttackTick = tick + m.speed;
       monsterAttack(m, now);
     }
@@ -654,7 +970,12 @@ function gameTick(now) {
       playerAttack(mon, now);
     }
   } else if (a.kind === 'craft') {
+    if (a.station && !inRange(a.station, 1.2)) return;
     if (a.wait > 0) a.wait--; else craftOne();
+  } else if (a.kind === 'bury') {
+    if (a.wait > 0) a.wait--; else buryOne();
+  } else if (a.kind === 'light') {
+    if (a.wait > 0) { a.wait--; pm.actionAnim = 1; pm.actionKind = 'tool'; } else lightFire(a);
   }
 }
 
@@ -665,7 +986,8 @@ function updateAction() {
   let ent = a.node || a.mon || a.pile;
   if (!ent) return;
   if (a.kind === 'pickup' && !piles.includes(a.pile)) { stopAction(); return; }
-  const range = a.kind === 'attack' ? attackRange(player) : a.kind === 'pickup' ? 0.15 : a.kind === 'gather' ? 0.9 : 1.0;
+  if (a.kind === 'craft' && !a.station) return;
+  const range = a.kind === 'attack' ? attackRange(player) : a.kind === 'pickup' ? 0.15 : a.kind === 'gather' ? 0.9 : a.kind === 'craft' ? 1.2 : 1.0;
   const ex = ent.mesh.position.x, ez = ent.mesh.position.z;
   if (!inRange(ent, range)) {
     pm.target = { x: ex, z: ez };
@@ -676,7 +998,21 @@ function updateAction() {
   faceToward(pm, ex, ez);
   if (a.kind === 'pickup') { takeFromPile(a.pile, a.item); stopAction(); }
   else if (a.kind === 'bank') { invUI.open('bank'); stopAction(); }
-  else if (a.kind === 'shop') { log('Merchant: "Have a look at my wares."', 'game'); invUI.open('shop'); stopAction(); }
+  else if (a.kind === 'shop') { log(`${ent.name}: "Have a look at my wares."`, 'game'); invUI.open(a.shop || 'shop'); stopAction(); }
+  else if (a.kind === 'talk') { stopAction(); talkTo(ent); }
+  else if (a.kind === 'altar') {
+    stopAction();
+    pm.actionAnim = 1; pm.actionKind = 'tool';
+    const got = rechargePrayer(player, skills);
+    log(got > 0 ? 'You pray to Saradomin. You recharge your prayer points.' : 'You already have full prayer points.', 'game');
+    for (const m of onPray(player)) log(m, 'game');
+    markDirty();
+  } else if (a.kind === 'station') {
+    stopAction();
+    const sub = ent.kind === 'range' ? 'Cooking' : 'Smithing';
+    invUI.showTab('craft', sub);
+    log(ent.kind === 'furnace' ? 'Choose a bar to smelt from the Smithing tab.' : ent.kind === 'anvil' ? 'Choose what to smith from the Smithing tab.' : 'Choose what to cook from the Cooking tab.', 'game');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -717,6 +1053,7 @@ function updateMonsters(dt, now) {
       if (d > stop) {
         const step = Math.min(d - stop, speed * dt);
         pos.x += dx / d * step; pos.z += dz / d * step;
+        if (m.state !== 'idle') resolveCollisions(pos);
         moving = step > 0.001;
         m.mesh.rotation.y = Math.atan2(dx, dz);
       } else if (m.state === 'fight') {
@@ -730,6 +1067,9 @@ function updateMonsters(dt, now) {
   }
 }
 
+function updateFires(now) {
+  for (const f of fires) { const s = 0.85 + Math.sin(now * 0.02 + f.x) * 0.15; f.flame.scale.set(s, 0.9 + Math.sin(now * 0.031) * 0.2, s); }
+}
 function updateFish(dt) {
   for (const n of nodes) {
     if (n.type !== 'fish') continue;
@@ -754,7 +1094,12 @@ function updateArrow(dt) {
   arrowMesh.lookAt(to.x, 1, to.z);
 }
 
-const ACTION_LABEL = { gather: n => ({ tree: '🪓 Woodcutting', rock: '⛏️ Mining', fish: '🎣 Fishing' })[n.node.type], attack: a => `⚔️ Fighting ${a.mon.name}`, craft: a => `🔨 ${a.recipe.name}`, pickup: () => '✋ Picking up', bank: () => '🏦 Going to bank', shop: () => '🛒 Going to Merchant' };
+const ACTION_LABEL = {
+  gather: n => ({ tree: '🪓 Woodcutting', rock: '⛏️ Mining', fish: '🎣 Fishing' })[n.node.type], attack: a => `⚔️ Fighting ${a.mon.name}`,
+  craft: a => `${SKILL_ICONS[a.recipe.skill]} ${a.recipe.name}${a.left !== Infinity && a.left > 1 ? ` (${a.left})` : ''}`, pickup: () => '✋ Picking up', bank: () => '🏦 Going to bank',
+  shop: a => `🛒 Going to ${a.node.name}`, talk: a => `💬 Talking to ${a.node.name}`, altar: () => '🙏 Going to the altar', station: a => `Going to the ${a.node.name.toLowerCase()}`,
+  bury: () => '🦴 Burying bones', light: () => '🔥 Lighting a fire'
+};
 function updateStatus() {
   let html = '';
   if (hoverText && !IS_TOUCH) html = hoverText;
@@ -772,6 +1117,10 @@ function afterLoad() {
   inputCtl.setDpadVisible(!!player.settings.showDpad);
   setShadows(renderer, dirLight, shadowsOn());
   rig.fx = pm.mesh.position.x; rig.fz = pm.mesh.position.z;
+  resolveCollisions(pm.mesh.position);
+  player.questPoints = questPoints(player);
+  player.prayerPoints = Math.min(player.prayerPoints || 0, maxPrayer(skills));
+  updateQuestMarks();
   for (const note of applySaveData.lastNotes || []) log(note, 'warn');
   applySaveData.lastNotes = [];
   markDirty();
@@ -787,6 +1136,7 @@ if (loaded) {
   player.gold = 25;
   log('Welcome to Gielinor.', 'game');
   log('You have been given a sword, a shield and some food. Tap them to equip or eat.', 'game');
+  log('Your starter tools are on your toolbelt (Worn Equipment tab). Talk to the townsfolk for quests.', 'game');
 }
 log('Tap to walk or act. Hold for more options. Drag to turn the camera, pinch to zoom.', 'game');
 afterLoad();
@@ -863,6 +1213,7 @@ function animate(now) {
 
   updateMonsters(dt, now);
   updateFish(dt);
+  updateFires(now);
   updateArrow(dt);
   updateRig(rig, camera, pm.mesh.position.x, pm.mesh.position.z, dt);
   followLight(dirLight, rig.fx, rig.fz);
@@ -871,17 +1222,26 @@ function animate(now) {
   overlays.update(camera, barEnts, now);
   if (frame % 3 === 0) {
     minimap.draw(pm.mesh.position.x, pm.mesh.position.z, rig.yaw, nodes, monsters, piles);
-    minimap.setOrbs(player.hp, player.maxHp, player.runEnergy, player.settings.run);
+    minimap.setOrbs(player.hp, player.maxHp, player.runEnergy, player.settings.run, player.prayerPoints, maxPrayer(skills), player.activePrayers.length > 0);
     updateStatus();
   }
   if (dirty || frame % 30 === 0) { dirty = false; invUI.render(); }
+  else if (frame % 10 === 5) invUI.renderBar();
   if (frame % 10 === 1) updateViewOffset();
 }
 requestAnimationFrame(animate);
 
 // Handy for testing in the browser console.
+// Number keys 1-8 fire combat skills on desktop.
+window.addEventListener('keydown', e => {
+  if (e.target && e.target.tagName === 'INPUT') return;
+  const n = +e.key;
+  if (n >= 1 && n <= 8) { const list = ABILITIES.filter(a => abilityUnlocked(skills, a)); if (list[n - 1]) useAbility(list[n - 1].id); }
+});
+
 window.gielinor = {
-  renderer, player, skills, monsters, nodes, piles, pm, rig,
+  renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, giveXP, useAbility, talkTo, startCraft, stopAction,
+  get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };

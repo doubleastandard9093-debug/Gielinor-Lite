@@ -1,12 +1,13 @@
-import { WORLD_HALF, LAKE } from './world.js';
+import { WORLD_HALF, LAKE, PATHS, BUILDINGS } from './world.js';
 
 // Rotating minimap with compass, hitpoints orb and run orb. Tap the map to walk there.
-export function createMinimap({ onWalk, onCompass, onRunToggle }) {
+export function createMinimap({ onWalk, onCompass, onRunToggle, onPrayerOrb }) {
   const wrap = document.createElement('div');
   wrap.id = 'minimapWrap';
   wrap.innerHTML = `
     <div id="orbs">
       <div class="orb" id="hpOrb" title="Hitpoints"><span class="orb-ico">❤️</span><b>10</b></div>
+      <div class="orb" id="prayOrb" title="Prayer points - tap for prayers"><span class="orb-ico">🙏</span><b>10</b></div>
       <div class="orb" id="runOrb" title="Run energy - tap to toggle run"><span class="orb-ico">🏃</span><b>100</b></div>
     </div>
     <div id="minimap"><canvas></canvas><div id="compass" title="Face north">N</div></div>`;
@@ -15,6 +16,8 @@ export function createMinimap({ onWalk, onCompass, onRunToggle }) {
   const ctx = canvas.getContext('2d');
   const hpOrb = wrap.querySelector('#hpOrb');
   const runOrb = wrap.querySelector('#runOrb');
+  const prayOrb = wrap.querySelector('#prayOrb');
+  prayOrb.addEventListener('click', () => onPrayerOrb && onPrayerOrb());
   const compass = wrap.querySelector('#compass');
   compass.addEventListener('click', e => { e.stopPropagation(); onCompass(); });
   runOrb.addEventListener('click', () => onRunToggle());
@@ -28,7 +31,7 @@ export function createMinimap({ onWalk, onCompass, onRunToggle }) {
   const W = u => (u + WORLD_HALF + 5) * 4;
   b.fillStyle = '#3f7a35'; b.fillRect(0, 0, S, S);
   b.strokeStyle = '#8a7650'; b.lineWidth = 6; b.lineCap = 'round';
-  for (const [x1, z1, x2, z2] of [[0, 0, 13, -12], [0, 0, -15, -13], [0, 0, -15, 12], [0, 0, 20, 17], [0, 0, 0, 24]]) {
+  for (const [x1, z1, x2, z2] of PATHS) {
     b.beginPath(); b.moveTo(W(x1), W(z1)); b.lineTo(W(x2), W(z2)); b.stroke();
   }
   b.fillStyle = '#9a9a8a'; b.beginPath(); b.arc(W(0), W(0), 18, 0, Math.PI * 2); b.fill();
@@ -36,6 +39,10 @@ export function createMinimap({ onWalk, onCompass, onRunToggle }) {
   b.fillStyle = '#2f6fb0'; b.beginPath(); b.arc(W(LAKE.x), W(LAKE.z), LAKE.r * 4, 0, Math.PI * 2); b.fill();
   b.strokeStyle = '#6a4a2a'; b.lineWidth = 2; b.strokeRect(W(-24), W(-21), 48, 40);
   b.fillStyle = '#8a8478'; b.beginPath(); b.arc(W(0), W(29), 9, 0, Math.PI * 2); b.fill();
+  for (const [x, z, w, d] of BUILDINGS) {
+    b.fillStyle = '#d8d0c0'; b.fillRect(W(x - w / 2), W(z - d / 2), w * 4, d * 4);
+    b.strokeStyle = '#5a4a3a'; b.lineWidth = 1.5; b.strokeRect(W(x - w / 2), W(z - d / 2), w * 4, d * 4);
+  }
   b.strokeStyle = '#000'; b.lineWidth = 4; b.strokeRect(0, 0, S, S);
 
   let size = 0;
@@ -61,7 +68,8 @@ export function createMinimap({ onWalk, onCompass, onRunToggle }) {
   });
 
   const DOT = {
-    tree: '#1f5a1a', rock: '#8a8a8a', fish: '#7fd0ff', monster: '#ffff00', shop: '#ffb000', bank: '#ffd700', pile: '#ff3030'
+    tree: '#1f5a1a', rock: '#8a8a8a', fish: '#7fd0ff', monster: '#ffff00', shop: '#ffb000', bank: '#ffd700', pile: '#ff3030',
+    npc: '#ffffff', quest: '#3ad0ff', station: '#ff7a1a', altar: '#c080ff'
   };
 
   function draw(px, pz, yaw, nodes, monsters, piles) {
@@ -95,6 +103,9 @@ export function createMinimap({ onWalk, onCompass, onRunToggle }) {
       else if (n.type === 'fish') dot(n.x, n.z, DOT.fish, r);
       else if (n.type === 'shop') dot(n.x, n.z, DOT.shop, r * 1.6);
       else if (n.type === 'bank') dot(n.x, n.z, DOT.bank, r * 1.6);
+      else if (n.type === 'npc') dot(n.x, n.z, n.questMark ? DOT.quest : DOT.shop, r * 1.4);
+      else if (n.type === 'station') dot(n.x, n.z, DOT.station, r * 1.3);
+      else if (n.type === 'altar') dot(n.x, n.z, DOT.altar, r * 1.5);
     }
     for (const p of piles) dot(p.x, p.z, DOT.pile, r);
     for (const mo of monsters) if (mo.alive) dot(mo.mesh.position.x, mo.mesh.position.z, DOT.monster, r);
@@ -103,7 +114,11 @@ export function createMinimap({ onWalk, onCompass, onRunToggle }) {
     compass.style.transform = `rotate(${yaw}rad)`;
   }
 
-  function setOrbs(hp, maxHp, energy, running) {
+  function setOrbs(hp, maxHp, energy, running, pp = 0, maxPp = 10, praying = false) {
+    const pb = prayOrb.lastChild, pv = String(Math.ceil(pp));
+    if (pb.textContent !== pv) pb.textContent = pv;
+    prayOrb.style.setProperty('--fill', (Math.min(1, pp / maxPp) * 100).toFixed(0) + '%');
+    prayOrb.classList.toggle('on', praying);
     const hb = hpOrb.lastChild, rb = runOrb.lastChild;
     const hv = String(hp), rv = String(Math.floor(energy));
     if (hb.textContent !== hv) hb.textContent = hv;

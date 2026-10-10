@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { WORLD_HALF, insideLake, LAKE } from './world.js';
+import { WORLD_HALF, insideLake, LAKE, colliders } from './world.js';
 
 export const WALK_SPEED = 3.3;  // world units per second
 export const RUN_SPEED = 6.2;
 
-const METAL = { Bronze: 0xb87333, Iron: 0x9a9a9a, Steel: 0xd0d8e0, Wooden: 0x8a5a2a, Oak: 0xc49a5a, Leather: 0x7a4a24 };
+const METAL = { Bronze: 0xb87333, Iron: 0x9a9a9a, Steel: 0xd0d8e0, Mithril: 0x5a6ad0, Adamant: 0x3a9a5a, Rune: 0x3ab8d0, Wooden: 0x8a5a2a, Oak: 0xc49a5a, Willow: 0x9aaa5a, Maple: 0xc0702a, Yew: 0x6a4a2a, Magic: 0x5a8ae0, Leather: 0x7a4a24, Hard: 0x5a3a1a, Shortbow: 0x8a5a2a };
 
 export function createPlayer(scene) {
   const playerGroup = new THREE.Group();
@@ -66,6 +66,12 @@ export function createPlayer(scene) {
   shield.visible = false;
   leftArm.add(shield);
 
+  const helmMat = lam(0xb87333);
+  const helm = box(0.62, 0.4, 0.62, helmMat);
+  helm.position.y = 1.92;
+  helm.visible = false;
+  playerGroup.add(helm);
+
   playerGroup.position.set(0, 0, 0);
   scene.add(playerGroup);
 
@@ -80,7 +86,7 @@ export function createPlayer(scene) {
     animT: 0,
     actionAnim: 0,      // 0..1 swing timer for chopping/attacking
     actionKind: null,
-    parts: { body, bodyMat, leftArm, rightArm, leftLeg, rightLeg, sword, swordMat, bow, bowMat, shield, shieldMat }
+    parts: { body, bodyMat, leftArm, rightArm, leftLeg, rightLeg, legMat, helm, helmMat, hair, sword, swordMat, bow, bowMat, shield, shieldMat }
   };
 }
 
@@ -101,6 +107,37 @@ export function applyEquipmentLook(pm, equipment) {
   p.shield.visible = !!equipment.shield && !isBow;
   if (equipment.shield) p.shieldMat.color.setHex(metalColor(equipment.shield, 0x8a5a2a));
   p.bodyMat.color.setHex(equipment.body ? metalColor(equipment.body, 0x6b4423) : 0x6b4423);
+  p.legMat.color.setHex(equipment.legs ? metalColor(equipment.legs, 0x3a2a1a) : 0x3a2a1a);
+  p.helm.visible = !!equipment.head;
+  p.hair.visible = !equipment.head;
+  if (equipment.head) p.helmMat.color.setHex(metalColor(equipment.head, 0x7a4a24));
+}
+
+// Push a point out of any building it overlaps (circle of radius r vs boxes).
+const PR = 0.35;
+export function resolveCollisions(pos) {
+  for (const b of colliders) {
+    if (pos.x <= b.minX - PR || pos.x >= b.maxX + PR || pos.z <= b.minZ - PR || pos.z >= b.maxZ + PR) continue;
+    const pl = pos.x - (b.minX - PR), pr = (b.maxX + PR) - pos.x, pt = pos.z - (b.minZ - PR), pb = (b.maxZ + PR) - pos.z;
+    const m = Math.min(pl, pr, pt, pb);
+    if (m === pl) pos.x = b.minX - PR; else if (m === pr) pos.x = b.maxX + PR; else if (m === pt) pos.z = b.minZ - PR; else pos.z = b.maxZ + PR;
+  }
+}
+export function blockedAt(x, z) {
+  return colliders.some(b => x > b.minX - PR && x < b.maxX + PR && z > b.minZ - PR && z < b.maxZ + PR);
+}
+
+function stepTo(pos, dx, dz, step) {
+  pos.x += dx * step;
+  pos.z += dz * step;
+  pos.x = Math.max(-WORLD_HALF + 1, Math.min(WORLD_HALF - 1, pos.x));
+  pos.z = Math.max(-WORLD_HALF + 1, Math.min(WORLD_HALF - 1, pos.z));
+  if (insideLake(pos.x, pos.z, -0.3)) {
+    const ax = pos.x - LAKE.x, az = pos.z - LAKE.z, d = Math.hypot(ax, az) || 1;
+    pos.x = LAKE.x + (ax / d) * (LAKE.r - 0.3);
+    pos.z = LAKE.z + (az / d) * (LAKE.r - 0.3);
+  }
+  resolveCollisions(pos);
 }
 
 // Turn toward a point smoothly.
@@ -140,18 +177,28 @@ export function updatePlayer(pm, keys, dt, running, camYaw) {
     if (pm.target) step = Math.min(step, Math.hypot(pm.target.x - pos.x, pm.target.z - pos.z) - pm.stopDist + 0.01);
     step = Math.max(0, step);
     const ox = pos.x, oz = pos.z;
-    pos.x += dx * step;
-    pos.z += dz * step;
-    // Stay on land and inside the map
-    pos.x = Math.max(-WORLD_HALF + 1, Math.min(WORLD_HALF - 1, pos.x));
-    pos.z = Math.max(-WORLD_HALF + 1, Math.min(WORLD_HALF - 1, pos.z));
-    if (insideLake(pos.x, pos.z, -0.3)) {
-      const ax = pos.x - LAKE.x, az = pos.z - LAKE.z, d = Math.hypot(ax, az) || 1;
-      pos.x = LAKE.x + (ax / d) * (LAKE.r - 0.3);
-      pos.z = LAKE.z + (az / d) * (LAKE.r - 0.3);
-    }
+    stepTo(pos, dx, dz, step);
     moved = Math.hypot(pos.x - ox, pos.z - oz);
-    if (moved < step * 0.2 && pm.target) pm.target = null; // blocked (lake edge)
+    // Walked into a wall: try turning a little each way and keep whichever gets closest to the target.
+    if (moved < step * 0.5 && step > 0.001) {
+      const goal = pm.target || { x: ox + dx * 10, z: oz + dz * 10 };
+      const tryDir = a => {
+        const c = Math.cos(a), sn = Math.sin(a);
+        const ndx = dx * c - dz * sn, ndz = dx * sn + dz * c;
+        const t = { x: ox, z: oz };
+        stepTo(t, ndx, ndz, step);
+        const mv = Math.hypot(t.x - ox, t.z - oz);
+        return mv >= step * 0.5 ? { ...t, dx: ndx, dz: ndz, d: Math.hypot(goal.x - t.x, goal.z - t.z) } : null;
+      };
+      // Pick a side once (whichever gets closer) and keep sliding that way along the wall.
+      let side = pm.steerSide;
+      if (!side) { const l = tryDir(0.8), r = tryDir(-0.8); side = !l ? -1 : !r ? 1 : (l.d <= r.d ? 1 : -1); }
+      let best = null;
+      for (const a of [0.8 * side, 1.5 * side, -0.8 * side, -1.5 * side]) { best = tryDir(a); if (best) { pm.steerSide = Math.sign(a); break; } }
+      if (best) { pos.x = best.x; pos.z = best.z; dx = best.dx; dz = best.dz; moved = Math.hypot(pos.x - ox, pos.z - oz); }
+      else pos.set(ox, pos.y, oz), stepTo(pos, dx, dz, step);
+    } else if (moved >= step * 0.9) pm.steerSide = 0;
+    if (moved < step * 0.2 && pm.target) pm.target = null; // truly blocked
     pm.facing = Math.atan2(dx, dz);
   }
   pm.moving = moved > 0.0005;

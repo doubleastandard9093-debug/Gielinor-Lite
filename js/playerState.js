@@ -1,4 +1,4 @@
-import { isStackable } from './items.js';
+import { STARTER_TOOLS } from './items.js';
 
 export const INV_SIZE = 28;
 
@@ -20,7 +20,12 @@ export function createPlayerState() {
     maxMana: 100,
     gold: 0,
     inventory: {},
-    equipment: { weapon: null, body: null, legs: null, shield: null, ammo: null },
+    equipment: { weapon: null, body: null, legs: null, shield: null, head: null, ammo: null },
+    tools: Object.fromEntries(STARTER_TOOLS.map(t => [t, true])),
+    prayerPoints: 10,
+    activePrayers: [],
+    quests: {},       // id -> { stage, ... }; missing = not started
+    questPoints: 0,
     ammoCount: 0,
     runEnergy: 100,
     attackStyle: 0,
@@ -43,12 +48,10 @@ export function createPlayerState() {
   };
 }
 
-// Slots used in the 28-slot pack. Stackable items (arrows, feathers) take one slot;
-// everything else takes one slot per item, like RuneScape.
+// Slots used in the 28-slot pack. Every identical item stacks, so each
+// different item takes exactly one slot (tools live on the toolbelt instead).
 export function slotsUsed(player) {
-  let n = 0;
-  for (const [item, qty] of Object.entries(player.inventory)) n += isStackable(item) ? 1 : qty;
-  return n;
+  return Object.keys(player.inventory).length;
 }
 
 export function freeSlots(player) {
@@ -56,14 +59,12 @@ export function freeSlots(player) {
 }
 
 export function canAdd(player, item, qty = 1) {
-  if (isStackable(item)) return !!player.inventory[item] || freeSlots(player) >= 1;
-  return freeSlots(player) >= qty;
+  return !!player.inventory[item] || freeSlots(player) >= 1;
 }
 
-// How many of this item fit right now.
+// How many of this item fit right now (all or nothing, since items stack).
 export function roomFor(player, item, qty) {
-  if (isStackable(item)) return canAdd(player, item) ? qty : 0;
-  return Math.min(qty, freeSlots(player));
+  return canAdd(player, item) ? qty : 0;
 }
 
 export function addItem(player, item, qty = 1) {

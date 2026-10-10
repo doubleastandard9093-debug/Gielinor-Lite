@@ -129,11 +129,62 @@ export function setupUI(settings) {
     queue.push(html);
     if (!showing) nextBanner();
   }
-  function levelUp(skill, icon, level) {
-    queue.push(`<div class="lu-icon">${icon}</div><div><b>Congratulations!</b> You just advanced a ${esc(skill)} level.<br>Your ${esc(skill)} level is now ${level}.</div>`);
+  function levelUp(skill, icon, level, perks = []) {
+    queue.push(`<div class="lu-icon">${icon}</div><div><b>Congratulations!</b> You just advanced a ${esc(skill)} level.<br>Your ${esc(skill)} level is now ${level}.` +
+      perks.map(p => `<br><span class="lu-perk">New perk: ${esc(p.name)} (${esc(p.desc)})</span>`).join('') + '</div>');
     if (!showing) nextBanner();
   }
   bannerEl.addEventListener('click', () => { nextBanner(); });
 
-  return { log, showMenu, hideMenu, tapMarker, setStatus, xpDrop, levelUp, banner };
+  // ---- RS-style dialogue box ----
+  // script entries: ['npc'|'player', text], { choose: [[label, entries]] }, { run: fn }
+  const dlg = document.createElement('div');
+  dlg.id = 'dialogue';
+  document.body.appendChild(dlg);
+  let dq = null, dName = '', dIcon = '', dEnd = null;
+  function dialogueNext() {
+    if (!dq) return;
+    while (dq.length) {
+      const e = dq.shift();
+      if (Array.isArray(e)) {
+        const who = e[0] === 'npc' ? dName : 'You';
+        dlg.innerHTML = `<div class="d-face">${e[0] === 'npc' ? dIcon : '🧑'}</div><div class="d-body"><div class="d-name">${esc(who)}</div>
+          <div class="d-text">${esc(e[1])}</div><div class="d-cont">Tap here to continue</div></div>`;
+        dlg.dataset.kind = 'line';
+        dlg.style.display = 'flex';
+        return;
+      }
+      if (e.run) { e.run(); continue; }
+      if (e.choose) {
+        dlg.innerHTML = `<div class="d-body"><div class="d-name">Select an Option</div>${e.choose.map((c, i) => `<button class="d-opt" data-i="${i}">${esc(c[0])}</button>`).join('')}</div>`;
+        dlg.dataset.kind = 'choose';
+        dlg._choose = e.choose;
+        dlg.style.display = 'flex';
+        return;
+      }
+    }
+    closeDialogue();
+  }
+  function closeDialogue() {
+    dlg.style.display = 'none';
+    const end = dEnd;
+    dq = null; dEnd = null;
+    if (end) end();
+  }
+  function dialogue(name, icon, script, onEnd) {
+    dq = [...script]; dName = name; dIcon = icon || '🙂'; dEnd = onEnd || null;
+    dialogueNext();
+  }
+  dlg.addEventListener('click', e => {
+    e.stopPropagation();
+    if (dlg.dataset.kind === 'choose') {
+      const b = e.target.closest('.d-opt');
+      if (!b) return;
+      const branch = dlg._choose[+b.dataset.i][1];
+      dq.unshift(['player', dlg._choose[+b.dataset.i][0]], ...branch);
+      dialogueNext();
+    } else dialogueNext();
+  });
+
+  return { log, showMenu, hideMenu, tapMarker, setStatus, xpDrop, levelUp, banner, dialogue, closeDialogue, get inDialogue() { return !!dq; } };
 }
