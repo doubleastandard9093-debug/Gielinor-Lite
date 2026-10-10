@@ -251,7 +251,7 @@ function setting(act) {
   else if (act === 'retaliate') s.autoRetaliate = !s.autoRetaliate;
   else if (act === 'run') toggleRun();
   else if (act === 'autoloot') s.autoLoot = !s.autoLoot;
-  else if (act === 'camera') { rig.targetYaw = 0; rig.targetPitch = 0.9; rig.targetDist = window.innerHeight > window.innerWidth ? 21 : 17; }
+  else if (act === 'camera') { rig.targetYaw = 0; rig.targetPitch = 0.9; rig.targetDist = window.innerHeight > window.innerWidth ? 19 : 17; }
   markDirty();
 }
 function toggleRun() {
@@ -698,6 +698,10 @@ function updateMonsters(dt, now) {
         m.wanderAt = now + 3000 + Math.random() * 6000;
         m.wx = m.spawnX + (Math.random() - 0.5) * 2 * m.roam;
         m.wz = m.spawnZ + (Math.random() - 0.5) * 2 * m.roam;
+        if (m.bounds) {
+          m.wx = Math.max(m.bounds.minX, Math.min(m.bounds.maxX, m.wx));
+          m.wz = Math.max(m.bounds.minZ, Math.min(m.bounds.maxZ, m.wz));
+        }
       }
       if (m.wx !== undefined) { tx = m.wx; tz = m.wz; }
     }
@@ -809,6 +813,8 @@ function updateViewOffset() {
   if (key === viewKey) return;
   viewKey = key;
   camera.aspect = W / H;
+  // Portrait phones: widen the view so you can see more than a few steps to each side.
+  camera.fov = camera.aspect < 1 ? Math.min(70, 2 * Math.atan(Math.tan(17 * Math.PI / 180) / camera.aspect) * 180 / Math.PI) : 50;
   camera.setViewOffset(W, H, W / 2 - cx, H / 2 - cy, W, H);
   camera.updateProjectionMatrix();
 }
@@ -816,7 +822,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   updateViewOffset();
 });
-if (window.innerHeight > window.innerWidth) { rig.dist = rig.targetDist = 21; }
+if (window.innerHeight > window.innerWidth) { rig.dist = rig.targetDist = 19; }
 
 const barEnts = [...monsters, playerEnt];
 let last = performance.now();
@@ -869,7 +875,7 @@ requestAnimationFrame(animate);
 
 // Handy for testing in the browser console.
 window.gielinor = {
-  player, skills, monsters, nodes, piles, pm, rig,
+  renderer, player, skills, monsters, nodes, piles, pm, rig,
   get action() { return action; }, get tick() { return tick; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };

@@ -242,7 +242,7 @@ export function createWorld(scene) {
   }
 
   // ---- Monsters ----
-  function createMonster(typeName, x, z, roam) {
+  function createMonster(typeName, x, z, roam, bounds = null) {
     const t = MONSTER_TYPES[typeName];
     const root = new THREE.Group();
     const body = new THREE.Group();
@@ -286,7 +286,7 @@ export function createWorld(scene) {
     pickables.push(root);
     return tag(root, {
       ...t, mesh: root, body, legs, maxHp: t.hp, hp: t.hp, alive: true,
-      x, z, spawnX: x, spawnZ: z, roam, radius: 0.7,
+      x, z, spawnX: x, spawnZ: z, roam, bounds, radius: 0.7,
       state: 'idle', target: null, wanderAt: 0, nextAttackTick: 0, deathT: 0, respawnAt: 0, lastHitAt: -1e9
     });
   }
@@ -312,7 +312,8 @@ export function createWorld(scene) {
   fence(-18, -16, 12, 10);
 
   for (let i = 0; i < 4; i++) monsters.push(createMonster('Goblin', 13 + (rng() - 0.5) * 8, -13 + (rng() - 0.5) * 8, 4));
-  for (let i = 0; i < 4; i++) monsters.push(createMonster('Cow', -18 + (rng() - 0.5) * 8, -16 + (rng() - 0.5) * 6, 3.5));
+  const field = { minX: -23, maxX: -13, minZ: -20, maxZ: -12 }; // inside the fence
+  for (let i = 0; i < 4; i++) monsters.push(createMonster('Cow', -18 + (rng() - 0.5) * 8, -16 + (rng() - 0.5) * 6, 3.5, field));
   monsters.push(createMonster('Guard', -2, 25, 2.5));
   monsters.push(createMonster('Guard', 2.5, 25, 2.5));
 
