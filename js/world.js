@@ -195,12 +195,13 @@ export function createWorld(scene) {
   }
   function createBank(x, z) {
     const g = new THREE.Group();
-    g.add(part(G.box, 0x8a8a90, 2.4, 1.1, 1.0, 0, 0.55, 0));
-    g.add(part(G.box, 0x5a3a1a, 2.6, 0.12, 1.2, 0, 1.15, 0));
-    g.add(part(G.box, 0xd4af37, 0.5, 0.35, 0.05, 0, 0.75, 0.53, false));
-    g.add(part(G.box, 0x8a8a90, 0.2, 1.4, 0.2, -1.1, 1.85, -0.3));
-    g.add(part(G.box, 0x8a8a90, 0.2, 1.4, 0.2, 1.1, 1.85, -0.3));
-    g.add(part(G.box, 0x6a2a2a, 2.6, 0.15, 0.6, 0, 2.6, -0.3));
+    g.add(part(G.box, 0x9a9488, 3.0, 2.6, 0.25, 0, 1.3, -0.9));        // back wall
+    g.add(part(G.box, 0x2a3a7a, 0.6, 0.7, 0.35, 0, 1.35, -0.45));       // banker
+    g.add(part(G.box, 0xd4a574, 0.4, 0.4, 0.4, 0, 1.92, -0.45));
+    g.add(part(G.box, 0x8a8a90, 2.6, 1.0, 0.9, 0, 0.5, 0.1));           // counter
+    g.add(part(G.box, 0x6a4a2a, 2.8, 0.1, 1.1, 0, 1.05, 0.1));
+    g.add(part(G.box, 0xd4af37, 0.9, 0.45, 0.05, 0, 2.2, -0.76, false)); // gold sign
+    g.add(part(G.box, 0x8a2a2a, 3.2, 0.15, 1.7, 0, 2.75, -0.2));        // awning
     g.position.set(x, 0, z);
     g.rotation.y = Math.PI / 2;
     scene.add(g);

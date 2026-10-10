@@ -284,34 +284,41 @@ function interactive(ent) {
   if (ent.hp !== undefined) return ent.alive;
   return true;
 }
-function pick(cx, cy) {
+function pick(cx, cy, all = false) {
   const rect = renderer.domElement.getBoundingClientRect();
   ndc.set(((cx - rect.left) / rect.width) * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
   pickList.length = 0;
   for (const p of pickables) if (p.visible) pickList.push(p);
   for (const p of piles) pickList.push(p.mesh);
+  const ents = [];
   const hits = raycaster.intersectObjects(pickList, true);
   for (const h of hits) {
     const ent = entityOf(h.object);
-    if (interactive(ent)) return { ent };
+    if (interactive(ent) && !ents.includes(ent)) { ents.push(ent); if (!all) break; }
   }
-  // Forgiving fallback for small things on a phone screen: nearest within ~30px.
-  let best = null, bestD = IS_TOUCH ? 34 : 22;
-  const consider = (ent, x, y, z) => {
-    tmpV.set(x, y, z).project(camera);
-    if (tmpV.z > 1) return;
-    const sx = (tmpV.x + 1) / 2 * rect.width + rect.left, sy = (1 - tmpV.y) / 2 * rect.height + rect.top;
-    const d = Math.hypot(sx - cx, sy - cy);
-    if (d < bestD) { bestD = d; best = ent; }
-  };
-  for (const m of monsters) if (m.alive) consider(m, m.mesh.position.x, 0.9, m.mesh.position.z);
-  for (const p of piles) consider(p, p.x, 0.15, p.z);
-  for (const n of nodes) if (n.type === 'fish' || n.type === 'rock') consider(n, n.x, 0.4, n.z);
-  if (best) return { ent: best };
+  // Forgiving search for small things on a phone screen: anything within ~30px.
+  if (all || !ents.length) {
+    const near = [];
+    const maxD = IS_TOUCH ? 34 : 22;
+    const consider = (ent, x, y, z) => {
+      if (ents.includes(ent)) return;
+      tmpV.set(x, y, z).project(camera);
+      if (tmpV.z > 1) return;
+      const sx = (tmpV.x + 1) / 2 * rect.width + rect.left, sy = (1 - tmpV.y) / 2 * rect.height + rect.top;
+      const d = Math.hypot(sx - cx, sy - cy);
+      if (d < maxD) near.push({ ent, d });
+    };
+    for (const m of monsters) if (m.alive) consider(m, m.mesh.position.x, 0.9, m.mesh.position.z);
+    for (const p of piles) consider(p, p.x, 0.15, p.z);
+    for (const n of nodes) if (n.type === 'fish' || n.type === 'rock') consider(n, n.x, 0.4, n.z);
+    near.sort((a, b) => a.d - b.d);
+    for (const n of near) ents.push(n.ent);
+  }
   const g = raycaster.intersectObject(ground);
-  if (g.length) return { point: g[0].point };
-  return null;
+  const point = g.length ? g[0].point : null;
+  if (!ents.length && !point) return null;
+  return { ent: ents[0] || null, ents: all ? ents.slice(0, 4) : ents.slice(0, 1), point };
 }
 
 // ---------------------------------------------------------------------------
@@ -394,13 +401,12 @@ function onTap(x, y) {
   }
 }
 function onContext(x, y) {
-  const hit = pick(x, y);
-  const opts = hit && hit.ent ? optionsFor(hit.ent) : [];
-  let point = hit && hit.point;
-  if (!point) {
-    const g = raycaster.intersectObject(ground);
-    if (g.length) point = g[0].point;
-  }
+  const hit = pick(x, y, true);
+  if (!hit) return;
+  // Like RuneScape, list the options for everything under your finger.
+  const opts = [];
+  for (const ent of hit.ents) opts.push(...optionsFor(ent));
+  const point = hit.point;
   if (point) opts.push({ action: 'Walk here', fn: () => { stopAction(); walkTo(point.x, point.z); ui.tapMarker(x, y, false); } });
   if (opts.length) ui.showMenu(x, y, opts);
 }
