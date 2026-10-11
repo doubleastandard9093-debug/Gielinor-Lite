@@ -1,1 +1,1 @@
-FULL_WORLD_CONTENT_HERE
+SEE_ARTIFACT_world_final.js

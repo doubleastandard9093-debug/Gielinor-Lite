@@ -1,1 +1,1 @@
-FULL_QUESTS_CONTENT_HERE
+SEE_ARTIFACT_quests_final.js
