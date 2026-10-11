@@ -168,16 +168,16 @@ export function rarityColor(item) { const r = rarityOf(item); return r ? RARITY[
 
 // ---- Single-tier tools ----
 export const TOOL_TYPES = [
-  { id: 'axe', name: 'Axe', icon: 'ðª', skill: 'Woodcutting' },
-  { id: 'pickaxe', name: 'Pickaxe', icon: 'âï¸', skill: 'Mining' },
-  { id: 'net', name: 'Fishing net', icon: 'ð¥' },
-  { id: 'rod', name: 'Fishing rod', icon: 'ð£' },
-  { id: 'cage', name: 'Lobster pot', icon: 'ð§º' },
-  { id: 'harpoon', name: 'Harpoon', icon: 'ð±' },
-  { id: 'hammer', name: 'Hammer', icon: 'ð¨' },
-  { id: 'knife', name: 'Knife', icon: 'ðª' },
-  { id: 'needle', name: 'Needle', icon: 'ðª¡' },
-  { id: 'tinderbox', name: 'Tinderbox', icon: 'ð¥' }
+  { id: 'axe', name: 'Axe', icon: '🪓', skill: 'Woodcutting' },
+  { id: 'pickaxe', name: 'Pickaxe', icon: '⛏️', skill: 'Mining' },
+  { id: 'net', name: 'Fishing net', icon: '🥅' },
+  { id: 'rod', name: 'Fishing rod', icon: '🎣' },
+  { id: 'cage', name: 'Lobster pot', icon: '🧺' },
+  { id: 'harpoon', name: 'Harpoon', icon: '🔱' },
+  { id: 'hammer', name: 'Hammer', icon: '🔨' },
+  { id: 'knife', name: 'Knife', icon: '🔪' },
+  { id: 'needle', name: 'Needle', icon: '🪡' },
+  { id: 'tinderbox', name: 'Tinderbox', icon: '🔥' }
 ];
 for (const [n, tool, v] of [['Small fishing net', 'net', 5], ['Fly fishing rod', 'rod', 10], ['Lobster pot', 'cage', 20], ['Harpoon', 'harpoon', 25],
   ['Hammer', 'hammer', 1], ['Knife', 'knife', 1], ['Needle', 'needle', 1], ['Tinderbox', 'tinderbox', 1]]) {
@@ -200,70 +200,70 @@ export function isRangedWeapon(item) { return !!(item && ITEMS[item] && ITEMS[it
 export function itemValue(item) { return ITEMS[item] ? ITEMS[item].value : 1; }
 
 // ---- Icons: [emoji, tint] ----
-const KIND_ICON = { sword: 'âï¸', 'full helm': 'ðª', shield: 'ð¡ï¸', platelegs: 'ð', platebody: 'ð¦º', axe: 'ðª', pickaxe: 'âï¸', arrows: 'ð¹', bar: 'ð§±' };
+const KIND_ICON = { sword: '⚔️', 'full helm': '🪖', shield: '🛡️', platelegs: '👖', platebody: '🦺', axe: '🪓', pickaxe: '⛏️', arrows: '🏹', bar: '🧱' };
 const FIXED_ICONS = {
-  Coal: ['ðª¨', '#11111180'], 'Copper ore': ['ðª¨', '#b8733340'], 'Tin ore': ['ðª¨', '#c8c8c840'], 'Iron ore': ['ðª¨', '#8a4b3a50'],
-  'Mithril ore': ['ðª¨', '#5a6ad060'], 'Adamantite ore': ['ðª¨', '#3a9a5a60'], 'Runite ore': ['ðª¨', '#3ab8d060'],
-  Flax: ['ð¾', ''], Cowhide: ['ð', ''], Bones: ['ð¦´', ''], 'Big bones': ['ð¦´', '#e0d0a060'], 'Dragon bones': ['ð¦´', '#3a8a3a60'], 'Raw beef': ['ð¥©', ''], Feather: ['ðª¶', ''],
-  Bowstring: ['ð§µ', ''], 'Soft leather': ['ð«', ''], 'Hard leather': ['ð«', '#5a3a1a60'], 'Burnt food': ['ð', '#22222280'],
-  'Raw shrimp': ['ð¦', ''], 'Cooked shrimp': ['ð¤', ''], 'Raw trout': ['ð', ''], 'Cooked trout': ['ð ', ''], 'Raw salmon': ['ð', '#e0806040'],
-  'Cooked salmon': ['ð£', ''], 'Cooked meat': ['ð', ''], 'Raw lobster': ['ð¦', '#40608040'], 'Cooked lobster': ['ð¦', ''],
-  'Raw swordfish': ['ð', '#6080c040'], 'Cooked swordfish': ['ð¡', ''], 'Raw shark': ['ð¦', '#6080c040'], 'Cooked shark': ['ð¦', ''],
-  'Leather cowl': ['ð§¢', ''], 'Leather body': ['ð§¥', ''], 'Leather chaps': ['ð', '#7a4a2450'], 'Hard leather body': ['ð§¥', '#5a3a1a60'],
-  'Wooden shield': ['ð¡ï¸', '#8a5a2a50'], 'Oak shield': ['ð¡ï¸', '#c49a5a50'],
-  'Small fishing net': ['ð¥', ''], 'Fly fishing rod': ['ð£', ''], 'Lobster pot': ['ð§º', ''], Harpoon: ['ð±', ''],
-  Hammer: ['ð¨', ''], Knife: ['ðª', ''], Needle: ['ðª¡', ''], Tinderbox: ['ð¥', ''],
-  'Amulet of accuracy': ['ð¿', '#4a8ad060'], 'Amulet of strength': ['ð¿', '#d04a4a60'], 'Amulet of defence': ['ð¿', '#4ad08a60'],
-  'Holy symbol': ['âï¸', '#e0e0e060'], 'Amulet of glory': ['ð¿', '#ffd70080'], 'Warrior ring': ['ð', '#d04a4a60'], 'Archer ring': ['ð', '#4ad04a60'],
-  'Ring of regeneration': ['ð', '#ff80c060'], "Miner's ring": ['ð', '#8a8a8a60'], "Forester's ring": ['ð', '#3a8a3a60'], "Angler's ring": ['ð', '#3a7ad060'],
-  'Red cape': ['ð§£', '#c0303060'], 'Blue cape': ['ð§£', '#3050c060'], 'Quest point cape': ['ð§£', '#3060ff80'],
-  'Dragon ore': ['ðª¨', '#c0404060'], 'Dragon bar': ['ð§±', '#c0404060'],
-  'Dragon sword': ['ð¡ï¸', '#c0404060'], 'Dragon full helm': ['âï¸', '#c0404060'],
-  'Dragon shield': ['ð¡ï¸', '#c0404060'], 'Dragon platelegs': ['ð', '#c0404060'],
-  'Dragon platebody': ['ð¦º', '#c0404060'], 'Dragon axe': ['ðª', '#c0404060'],
-  'Dragon pickaxe': ['âï¸', '#c0404060'], 'Dragon arrows': ['â¶', '#c0404060'],
-  'Uncut sapphire': ['ð', '#4060ff40'], 'Uncut emerald': ['ð', '#40ff6040'],
-  'Uncut ruby': ['ð', '#ff406040'], 'Uncut diamond': ['ð', '#e0e0e040'],
-  'Sapphire': ['ð', '#4060ff60'], 'Emerald': ['ð', '#40ff6060'],
-  'Ruby': ['ð', '#ff406060'], 'Diamond': ['ð', '#e0e0e060'],
-  'Gold ore': ['ðª¨', '#ffd70040'], 'Gold bar': ['ð§±', '#ffd70060'],
-  'Bird nest': ['ðªº', ''], 'Raw pike': ['ð', ''], 'Raw tuna': ['ð', '#c0a06040'],
-  'Cooked pike': ['ð£', ''], 'Cooked tuna': ['ð£', '#c0a06040']
+  Coal: ['🪨', '#11111180'], 'Copper ore': ['🪨', '#b8733340'], 'Tin ore': ['🪨', '#c8c8c840'], 'Iron ore': ['🪨', '#8a4b3a50'],
+  'Mithril ore': ['🪨', '#5a6ad060'], 'Adamantite ore': ['🪨', '#3a9a5a60'], 'Runite ore': ['🪨', '#3ab8d060'],
+  Flax: ['🌾', ''], Cowhide: ['🐄', ''], Bones: ['🦴', ''], 'Big bones': ['🦴', '#e0d0a060'], 'Dragon bones': ['🦴', '#3a8a3a60'], 'Raw beef': ['🥩', ''], Feather: ['🪶', ''],
+  Bowstring: ['🧵', ''], 'Soft leather': ['🟫', ''], 'Hard leather': ['🟫', '#5a3a1a60'], 'Burnt food': ['🍘', '#22222280'],
+  'Raw shrimp': ['🦐', ''], 'Cooked shrimp': ['🍤', ''], 'Raw trout': ['🐟', ''], 'Cooked trout': ['🐠', ''], 'Raw salmon': ['🐟', '#e0806040'],
+  'Cooked salmon': ['🍣', ''], 'Cooked meat': ['🍖', ''], 'Raw lobster': ['🦞', '#40608040'], 'Cooked lobster': ['🦞', ''],
+  'Raw swordfish': ['🐟', '#6080c040'], 'Cooked swordfish': ['🐡', ''], 'Raw shark': ['🦈', '#6080c040'], 'Cooked shark': ['🦈', ''],
+  'Leather cowl': ['🧢', ''], 'Leather body': ['🧥', ''], 'Leather chaps': ['👖', '#7a4a2450'], 'Hard leather body': ['🧥', '#5a3a1a60'],
+  'Wooden shield': ['🛡️', '#8a5a2a50'], 'Oak shield': ['🛡️', '#c49a5a50'],
+  'Small fishing net': ['🥅', ''], 'Fly fishing rod': ['🎣', ''], 'Lobster pot': ['🧺', ''], Harpoon: ['🔱', ''],
+  Hammer: ['🔨', ''], Knife: ['🔪', ''], Needle: ['🪡', ''], Tinderbox: ['🔥', ''],
+  'Amulet of accuracy': ['📿', '#4a8ad060'], 'Amulet of strength': ['📿', '#d04a4a60'], 'Amulet of defence': ['📿', '#4ad08a60'],
+  'Holy symbol': ['✝️', '#e0e0e060'], 'Amulet of glory': ['📿', '#ffd70080'], 'Warrior ring': ['💍', '#d04a4a60'], 'Archer ring': ['💍', '#4ad04a60'],
+  'Ring of regeneration': ['💍', '#ff80c060'], "Miner's ring": ['💍', '#8a8a8a60'], "Forester's ring": ['💍', '#3a8a3a60'], "Angler's ring": ['💍', '#3a7ad060'],
+  'Red cape': ['🧣', '#c0303060'], 'Blue cape': ['🧣', '#3050c060'], 'Quest point cape': ['🧣', '#3060ff80'],
+  'Dragon ore': ['🪨', '#c0404060'], 'Dragon bar': ['🧱', '#c0404060'],
+  'Dragon sword': ['🗡️', '#c0404060'], 'Dragon full helm': ['⛑️', '#c0404060'],
+  'Dragon shield': ['🛡️', '#c0404060'], 'Dragon platelegs': ['👖', '#c0404060'],
+  'Dragon platebody': ['🦺', '#c0404060'], 'Dragon axe': ['🪓', '#c0404060'],
+  'Dragon pickaxe': ['⛏️', '#c0404060'], 'Dragon arrows': ['➶', '#c0404060'],
+  'Uncut sapphire': ['💎', '#4060ff40'], 'Uncut emerald': ['💎', '#40ff6040'],
+  'Uncut ruby': ['💎', '#ff406040'], 'Uncut diamond': ['💎', '#e0e0e040'],
+  'Sapphire': ['💎', '#4060ff60'], 'Emerald': ['💎', '#40ff6060'],
+  'Ruby': ['💎', '#ff406060'], 'Diamond': ['💎', '#e0e0e060'],
+  'Gold ore': ['🪨', '#ffd70040'], 'Gold bar': ['🧱', '#ffd70060'],
+  'Bird nest': ['🪺', ''], 'Raw pike': ['🐟', ''], 'Raw tuna': ['🐟', '#c0a06040'],
+  'Cooked pike': ['🍣', ''], 'Cooked tuna': ['🍣', '#c0a06040']
 };
 const WOOD_TINT = ['', '#c49a5a40', '#7a9a4a40', '#c0702a40', '#4a6a3a50', '#3a5ad050'];
-const UNIQUE_ICON = { 'Venom dagger': 'ð¡ï¸', 'Vampyric blade': 'ð¡ï¸', 'Granite maul': 'ð¨', 'Dragon dagger': 'ð¡ï¸', 'Dragon longsword': 'âï¸', 'Dark bow': 'ð¹',
-  'Obsidian cape': 'ð§£', 'Berserker ring': 'ð', 'Ring of recoil': 'ð', "Captain's cutlass": 'ð¡ï¸', 'Highcrag warhammer': 'ð¨', "Herbalist's amulet": 'ð¿' };
-const SECOND_ICON = { 'Eye of newt': 'ðï¸', 'Unicorn horn dust': 'ð¦', 'Limpwurt root': 'ð¥', 'Chocolate dust': 'ð«', 'White berries': 'ð«', 'Snape grass': 'ð±',
-  'Goat horn dust': 'ð', 'Red spider eggs': 'ð´', 'Wine of zamorak': 'ð·', 'Dragon scale dust': 'ð' };
+const UNIQUE_ICON = { 'Venom dagger': '🗡️', 'Vampyric blade': '🗡️', 'Granite maul': '🔨', 'Dragon dagger': '🗡️', 'Dragon longsword': '⚔️', 'Dark bow': '🏹',
+  'Obsidian cape': '🧣', 'Berserker ring': '💍', 'Ring of recoil': '💍', "Captain's cutlass": '🗡️', 'Highcrag warhammer': '🔨', "Herbalist's amulet": '📿' };
+const SECOND_ICON = { 'Eye of newt': '👁️', 'Unicorn horn dust': '🦄', 'Limpwurt root': '🥕', 'Chocolate dust': '🍫', 'White berries': '🫐', 'Snape grass': '🌱',
+  'Goat horn dust': '🐐', 'Red spider eggs': '🔴', 'Wine of zamorak': '🍷', 'Dragon scale dust': '🐉' };
 export function iconFor(item) {
   if (FIXED_ICONS[item]) return FIXED_ICONS[item];
   const info0 = ITEMS[item];
   if (info0) {
     if (info0.unique) {
       const tint = RARITY[info0.rarity] + '50';
-      if (/^Wyrmscale/.test(item)) return [{ head: 'âï¸', body: 'ð¦º', legs: 'ð', shield: 'ð¡ï¸' }[info0.type], '#2a8a3a80'];
-      return [UNIQUE_ICON[item] || 'â¨', tint];
+      if (/^Wyrmscale/.test(item)) return [{ head: '⛑️', body: '🦺', legs: '👖', shield: '🛡️' }[info0.type], '#2a8a3a80'];
+      return [UNIQUE_ICON[item] || '✨', tint];
     }
-    if (info0.type === 'herb') return ['ð¿', '#3ad03a30'];
-    if (info0.type === 'grimy') return ['ð¿', '#6a5a2a60'];
-    if (info0.type === 'secondary') return [SECOND_ICON[item] || 'ð§', ''];
-    if (item === 'Vial') return ['â±ï¸', ''];
-    if (item === 'Vial of water') return ['ð§ª', '#3a7ad040'];
-    if (info0.type === 'potion') { const r = POTION_RECIPES.find(p => p[0] === item); return ['ð§ª', (r ? r[6] : '#888888') + '60']; }
+    if (info0.type === 'herb') return ['🌿', '#3ad03a30'];
+    if (info0.type === 'grimy') return ['🌿', '#6a5a2a60'];
+    if (info0.type === 'secondary') return [SECOND_ICON[item] || '🧂', ''];
+    if (item === 'Vial') return ['⚱️', ''];
+    if (item === 'Vial of water') return ['🧪', '#3a7ad040'];
+    if (info0.type === 'potion') { const r = POTION_RECIPES.find(p => p[0] === item); return ['🧪', (r ? r[6] : '#888888') + '60']; }
   }
-  if (ITEMS[item] && ITEMS[item].capeSkill) return ['ð§£', '#d4af3780'];
+  if (ITEMS[item] && ITEMS[item].capeSkill) return ['🧣', '#d4af3780'];
   const w = WOODS.indexOf(item);
-  if (w >= 0) return ['ðªµ', WOOD_TINT[w]];
+  if (w >= 0) return ['🪵', WOOD_TINT[w]];
   const bow = BOWS.findIndex(b => b[0] === item);
-  if (bow >= 0) return ['ð¹', WOOD_TINT[bow]];
+  if (bow >= 0) return ['🏹', WOOD_TINT[bow]];
   const info = ITEMS[item];
   if (info && info.metal) {
     const kind = item.slice(info.metal.length + 1);
-    const ic = KIND_ICON[kind] || (info.tool === 'axe' ? 'ðª' : info.tool === 'pickaxe' ? 'âï¸' : 'ð¦');
+    const ic = KIND_ICON[kind] || (info.tool === 'axe' ? '🪓' : info.tool === 'pickaxe' ? '⛏️' : '📦');
     return [ic, (METAL_TINT[info.metal] || '#888888') + '60'];
   }
-  if (/ bar$/.test(item)) { const m = item.split(' ')[0]; return ['ð§±', (METAL_TINT[m] || '#888') + '60']; }
-  return ['ð¦', ''];
+  if (/ bar$/.test(item)) { const m = item.split(' ')[0]; return ['🧱', (METAL_TINT[m] || '#888') + '60']; }
+  return ['📦', ''];
 }
 export const ICONS = FIXED_ICONS;
 
