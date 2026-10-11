@@ -594,6 +594,40 @@ export function createWorld(scene) {
   fenceLine(10.5, -8.2, 15, -8.2);
 
   for (let i = 0; i < 26; i++) { const p = place(0, 0, 36, 1.6, 40, 16); if (p) nodes.push(createTree(p.x, p.z, 'Tree')); }
+
+  // ---- Extra skill activity nodes (expanded map) ----
+  // More trees across the larger world
+  for (let i = 0; i < 18; i++) { const p = place(0, 0, 55, 1.6, 50, 20); if (p) nodes.push(createTree(p.x, p.z, 'Tree')); }
+  for (let i = 0; i < 6; i++) { const p = place(40, -10, 12, 2); if (p) nodes.push(createTree(p.x, p.z, 'Oak')); }
+  for (let i = 0; i < 4; i++) { const p = place(35, 15, 8, 2); if (p) nodes.push(createTree(p.x, p.z, 'Maple')); }
+  for (let i = 0; i < 3; i++) { const p = place(-35, 10, 6, 2.2); if (p) nodes.push(createTree(p.x, p.z, 'Yew')); }
+  for (let i = 0; i < 2; i++) { const p = place(15, -40, 4, 2); if (p) nodes.push(createTree(p.x, p.z, 'Magic')); }
+
+  // Extra mining near Ashford and outer areas
+  for (const [ore, n] of [['Iron', 4], ['Coal', 3], ['Mithril', 2]]) {
+    for (let i = 0; i < n; i++) { const p = place(45, -15, 8, 1.1); if (p) nodes.push(createRock(p.x, p.z, ore)); }
+  }
+  for (let i = 0; i < 2; i++) { const p = place(-20, -40, 5, 1.1); if (p) nodes.push(createRock(p.x, p.z, 'Adamantite')); }
+
+  // Extra fishing spots (reuse existing createFish)
+  for (let i = 0; i < 3; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const x = LAKE.x + Math.cos(a) * (LAKE.r + 2 + Math.random() * 4);
+    const z = LAKE.z + Math.sin(a) * (LAKE.r + 2 + Math.random() * 4);
+    if (free(x, z, 1.2)) nodes.push(createFish(x, z, i % 2 ? 'Lure' : 'Cage'));
+  }
+
+  // Extra herb patches near Ashford
+  const ashfordHerbs = ['Harralander', 'Ranarr weed', 'Irit leaf', 'Kwuarm'];
+  for (let i = 0; i < ashfordHerbs.length; i++) {
+    const p = place(48, -20, 6, 1.3); if (p) nodes.push(createHerbPatch(p.x, p.z, ashfordHerbs[i], i));
+  }
+
+  // Extra mid/high monsters in the expanded outer areas
+  for (const [x, z] of [[42, -8], [46, -12]]) monsters.push(createMonster('Moss Giant', x, z, 3));
+  for (const [x, z] of [[-42, -15], [-38, -20]]) monsters.push(createMonster('Ice Giant', x, z, 3));
+  for (const [x, z] of [[30, -45]]) monsters.push(createMonster('Green Dragon', x, z, 4));
+
   for (let i = 0; i < 7; i++) { const p = place(26, -24, 8, 2); if (p) nodes.push(createTree(p.x, p.z, 'Oak')); }
   for (let i = 0; i < 5; i++) {
     const a = 0.6 + i * 0.75;
@@ -648,4 +682,5 @@ export function createPileMesh(scene, x, z) {
   scene.add(g);
   return g;
 }
+
 
