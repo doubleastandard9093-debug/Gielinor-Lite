@@ -152,7 +152,6 @@ export function createWorld(scene) {
   scene.add(water);
   // Store for simple animation
   water.userData.wave = true;
-  window._water = water;
 
   const occupied = [];
   function free(x, z, r = 1.6, townR = 6) {
@@ -188,16 +187,25 @@ export function createWorld(scene) {
     const st = TREE_STYLE[kind];
     const root = new THREE.Group();
     const full = new THREE.Group();
-    full.add(part(G.box, st.trunk, 0.4, 1.7, 0.4, 0, 0.85, 0));
+    // Thicker, tapered trunk
+    const trunk = part(G.cyl, st.trunk, 0.35, 1.9, 0.35, 0, 0.95, 0);
+    full.add(trunk);
+    // Main canopy
     const round = st.seg === G.sphere;
-    const leaves = part(st.seg, st.leaf, st.r, round ? 1.2 : st.h, st.r, 0, 2.5, 0);
+    const leaves = part(st.seg, st.leaf, st.r, round ? 1.4 : st.h * 1.1, st.r, 0, 2.6, 0);
     full.add(leaves);
-    if (round) full.add(part(G.sphere, st.leaf, 0.9, 0.8, 0.9, 0.6, 3.1, 0.2));
-    // Trees never get cut down now, so the whole tree bakes into one mesh (one draw call).
+    // Extra foliage clusters for more organic shape
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + rng() * 0.5;
+      const dist = 0.4 + rng() * 0.4;
+      const y = 2.2 + rng() * 0.8;
+      full.add(part(G.sphere, st.leaf, 0.6 + rng() * 0.3, 0.5 + rng() * 0.3, 0.6 + rng() * 0.3,
+        Math.cos(a) * dist, y, Math.sin(a) * dist));
+    }
     root.add(full);
     root.position.set(x, 0, z);
     root.rotation.y = rng() * Math.PI;
-    const s = 0.9 + rng() * 0.25;
+    const s = 0.85 + rng() * 0.3;
     root.scale.set(s, s, s);
     mergeStatic(root);
     scene.add(root);
@@ -210,15 +218,22 @@ export function createWorld(scene) {
   const ORE_COLOR = { Copper: 0xc07a3a, Tin: 0xc8c8c8, Iron: 0x7a3a2a, Coal: 0x151515, Mithril: 0x5a6ad0, Adamantite: 0x3a9a5a, Runite: 0x3ab8d0 };
   function createRock(x, z, ore) {
     const root = new THREE.Group();
-    const rockMesh = part(G.box, 0x6a6560, 1.0, 0.7, 0.85, 0, 0.35, 0);
+    // Base rock using sphere for more organic shape
+    const rockMesh = part(G.sphere, 0x6a6560, 0.85, 0.55, 0.75, 0, 0.3, 0);
     rockMesh.rotation.y = rng();
-    const top = part(G.box, 0x7a7570, 0.7, 0.35, 0.6, 0.1, 0.8, 0.05);
-    top.rotation.y = rng();
-    root.add(rockMesh, top);
+    rockMesh.rotation.x = (rng() - 0.5) * 0.3;
+    root.add(rockMesh);
+    // Secondary lumps
+    const lump = part(G.sphere, 0x7a7570, 0.5, 0.35, 0.45, 0.25, 0.45, 0.15);
+    lump.rotation.y = rng();
+    root.add(lump);
     const full = new THREE.Group();
-    for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * Math.PI * 2 + rng();
-      full.add(part(G.box, ORE_COLOR[ore], 0.22, 0.2, 0.22, Math.cos(a) * 0.42, 0.45 + rng() * 0.35, Math.sin(a) * 0.36, false));
+    // Ore crystals
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + rng();
+      const dist = 0.3 + rng() * 0.25;
+      full.add(part(G.box, ORE_COLOR[ore] || 0x888888, 0.18, 0.22, 0.18,
+        Math.cos(a) * dist, 0.35 + rng() * 0.4, Math.sin(a) * dist, false));
     }
     root.add(full);
     root.position.set(x, 0, z);
