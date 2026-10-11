@@ -32,12 +32,12 @@ export const colliders = [];
 // Shared geometry and materials keep memory and draw setup low on phones.
 const G = {
   box: new THREE.BoxGeometry(1, 1, 1),
-  cone5: new THREE.ConeGeometry(1, 1, 5),
-  cone7: new THREE.ConeGeometry(1, 1, 7),
-  sphere: new THREE.SphereGeometry(1, 8, 6),
-  cyl: new THREE.CylinderGeometry(1, 1, 1, 8),
-  cone4: new THREE.ConeGeometry(0.71, 1, 4),
-  ring: new THREE.RingGeometry(0.35, 0.55, 16)
+  cone5: new THREE.ConeGeometry(1, 1, 8),
+  cone7: new THREE.ConeGeometry(1, 1, 12),
+  sphere: new THREE.SphereGeometry(1, 16, 12),
+  cyl: new THREE.CylinderGeometry(1, 1, 1, 16),
+  cone4: new THREE.ConeGeometry(0.71, 1, 6),
+  ring: new THREE.RingGeometry(0.35, 0.55, 24)
 };
 const matCache = new Map();
 function mat(color, opts) {
@@ -55,7 +55,7 @@ function mergeStatic(group) {
   const pos = [], nor = [], col = [], drop = [];
   const m = new THREE.Matrix4(), c = new THREE.Color();
   group.traverse(o => {
-    if (!o.isMesh || !o.material.isMeshLambertMaterial) return;
+    if (!o.isMesh || !(o.material.isMeshStandardMaterial || o.material.isMeshLambertMaterial)) return;
     const g = (o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone());
     m.multiplyMatrices(inv, o.matrixWorld);
     g.applyMatrix4(m);
@@ -114,7 +114,7 @@ export function createWorld(scene) {
     colors.push(tmp.r, tmp.g, tmp.b);
   }
   groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  const ground = new THREE.Mesh(groundGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.0 }));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
