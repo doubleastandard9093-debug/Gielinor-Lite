@@ -192,11 +192,7 @@ export function createWorld(scene) {
     scene.add(root);
     pickables.push(root);
     const name = kind === 'Tree' ? 'Tree' : kind;
-    // Depleted stump
-    const stump = part(G.cyl, 0x4a3010, 0.35, 0.4, 0.35, 0, 0.2, 0);
-    stump.visible = false;
-    root.add(stump);
-    return tag(root, { mesh: root, full: root, depleted: stump, type: 'tree', kind, name, alive: true, x, z, radius: 0.9 });
+    return tag(root, { mesh: root, full: root, type: 'tree', kind, name, alive: true, x, z, radius: 0.9 });
   }
 
   // ---- Rocks ----
@@ -218,11 +214,7 @@ export function createWorld(scene) {
     mergeStatic(root);
     scene.add(root);
     pickables.push(root);
-    // Depleted (empty) rock
-    const empty = part(G.box, 0x5a5550, 0.9, 0.5, 0.75, 0, 0.25, 0);
-    empty.visible = false;
-    root.add(empty);
-    return tag(root, { mesh: root, full: root, depleted: empty, type: 'rock', ore, name: 'Rocks', alive: true, x, z, radius: 0.8 });
+    return tag(root, { mesh: root, full: root, type: 'rock', ore, name: 'Rocks', alive: true, x, z, radius: 0.8 });
   }
 
   // ---- Fishing spots ----
@@ -615,6 +607,11 @@ export function createWorld(scene) {
   const mine = [['Copper', 4], ['Tin', 4], ['Iron', 3], ['Coal', 3], ['Mithril', 2], ['Adamantite', 1]];
   for (const [ore, n] of mine) for (let i = 0; i < n; i++) { const p = place(22, 20, 5.5, 1.0); if (p) nodes.push(createRock(p.x, p.z, ore)); }
   for (const [ore, n] of [['Runite', 1], ['Adamantite', 1], ['Mithril', 1], ['Coal', 2]]) for (let i = 0; i < n; i++) { const p = place(-9, -28, 3, 1.0); if (p) nodes.push(createRock(p.x, p.z, ore)); }
+
+  // Dragon ore rocks (high level, remote)
+  for (let i = 0; i < 2; i++) { const p = place(15, -50, 4, 1.2); if (p) nodes.push(createRock(p.x, p.z, 'Dragon')); }
+  for (let i = 0; i < 1; i++) { const p = place(-45, -35, 3, 1.2); if (p) nodes.push(createRock(p.x, p.z, 'Dragon')); }
+
   const spots = [['Net', 3.6], ['Net', 4.3], ['Net', 5.0], ['Lure', -0.6], ['Lure', 0.2], ['Cage', 1.2], ['Harpoon', 2.0]];
   for (const [kind, a] of spots) {
     nodes.push(createFish(LAKE.x + Math.cos(a) * (LAKE.r - 0.6), LAKE.z + Math.sin(a) * (LAKE.r - 0.6), kind));
@@ -656,3 +653,5 @@ export function createPileMesh(scene, x, z) {
   scene.add(g);
   return g;
 }
+
+
