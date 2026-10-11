@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, IS_TOUCH } from './scene.js';
 import { createWorld, createPileMesh, SPAWN } from './world.js';
 import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt } from './player.js';
@@ -28,6 +32,11 @@ import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, apply
 const scene = createScene();
 const camera = createCamera();
 const renderer = createRenderer();
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.35, 0.4, 0.85);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
 document.body.prepend(renderer.domElement);
 const { dirLight } = createLights(scene);
 const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);
@@ -671,7 +680,7 @@ function doGatherTick(a) {
   a.wait = gi ? nextGatherWait(skills, gi.skill) : 1;
   pm.actionAnim = 1; pm.actionKind = 'tool';
   const r = gatherTick(node, skills, player);
-  if (!a.started) { a.started = true; const info = gatherInfo(node); if (info && !r?.error) log(SKILL_VERB[info.skill], 'skill'); }
+  if (!a.started) { a.started = true; const info = gatherInfo(node); if (info && !r?.error) log(SKILL_VERB[info.skill].replace('your axe', 'your ' + (bestTool(player, skills, 'axe') || 'axe').toLowerCase()).replace('your pick', 'your ' + (bestTool(player, skills, 'pickaxe') || 'pickaxe').toLowerCase()), 'skill'); }
   if (!r) return;
   if (r.error) { log(r.error, 'warn'); stopAction(); return; }
   if (r.bank) player.bank[r.item] = (player.bank[r.item] || 0) + (r.qty || 1);
@@ -679,14 +688,8 @@ function doGatherTick(a) {
   giveXP(r.skill, r.xp);
   log((GOT(r.item) || (node.type === 'rock' ? `You manage to mine some ${r.item.replace(' ore', '').toLowerCase()}.` : `You catch some ${r.item.replace('Raw ', '').toLowerCase()}.`)) +
     (r.qty > 1 ? ' Your perk doubles it!' : '') + (r.bank ? ' It is sent straight to your bank.' : ''), 'skill');
-  // OSRS-style depletion
-  if (r.depleted) {
-    const info = gatherInfo(node);
-    const respawnMs = (info && info.respawn) || 8000;
-    depleteNode(node, respawnMs);
-    log(node.type === 'tree' ? 'The tree falls.' : 'The rock is depleted.', 'skill');
-    stopAction();
-  } else if (!r.bank && !canAdd(player, r.item)) {
+  // Resources never run out: keep going until the pack is full.
+  if (!r.bank && !canAdd(player, r.item)) {
     log('Your inventory is too full to hold any more.', 'warn');
     stopAction();
   }
@@ -1350,6 +1353,10 @@ const barEnts = [...monsters, playerEnt];
 let last = performance.now();
 let frame = 0;
 function animate(now) {
+  // Simple water wave
+  if (window._water && window._water.userData.wave) {
+    window._water.position.y = 0.05 + Math.sin((now || performance.now()) * 0.0012) * 0.025;
+  }
   requestAnimationFrame(animate);
   if (document.hidden) return;
   now = now || performance.now();
@@ -1383,7 +1390,7 @@ function animate(now) {
   updateArrow(dt);
   updateRig(rig, camera, pm.mesh.position.x, pm.mesh.position.z, dt);
   followLight(dirLight, rig.fx, rig.fz);
-  renderer.render(scene, camera);
+  composer.render();
 
   overlays.update(camera, barEnts, now);
   if (frame % 3 === 0) {
