@@ -189,8 +189,8 @@ let effectsHtml = '';
 function renderEffects() {
   const mmss = t => { const sec = Math.ceil(t * TICK_MS / 1000); return sec >= 60 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : sec + 's'; };
   const parts = (player.effects || []).map(e => `<div class="fx${e.left <= 50 ? ' low' : ''}" title="${e.id}"><span>${e.icon}</span><small>${mmss(e.left)}</small></div>`);
-  if (player.poisonImmune > 0) parts.push(`<div class="fx" title="Poison protection"><span>💚</span><small>${mmss(player.poisonImmune)}</small></div>`);
-  if (player.poison) parts.push(`<div class="fx low" title="Poisoned"><span>☠️</span><small>${player.poison.dmg}</small></div>`);
+  if (player.poisonImmune > 0) parts.push(`<div class="fx" title="Poison protection"><span>ð</span><small>${mmss(player.poisonImmune)}</small></div>`);
+  if (player.poison) parts.push(`<div class="fx low" title="Poisoned"><span>â ï¸</span><small>${player.poison.dmg}</small></div>`);
   const html = parts.join('');
   if (html !== effectsHtml) { effectsHtml = html; effectsEl.innerHTML = html; }
 }
@@ -677,6 +677,14 @@ function doGatherTick(a) {
   if (r.bank) player.bank[r.item] = (player.bank[r.item] || 0) + (r.qty || 1);
   else addItem(player, r.item, r.qty || 1);
   giveXP(r.skill, r.xp);
+  // Handle extra skill drops (bird nests, gems, etc.)
+  if (r.extras && r.extras.length) {
+    for (const ex of r.extras) {
+      if (canAdd(player, ex.item)) addItem(player, ex.item, ex.qty || 1);
+      else player.bank[ex.item] = (player.bank[ex.item] || 0) + (ex.qty || 1);
+      log(`You also find a ${ex.item}!`, 'skill');
+    }
+  }
   log((GOT(r.item) || (node.type === 'rock' ? `You manage to mine some ${r.item.replace(' ore', '').toLowerCase()}.` : `You catch some ${r.item.replace('Raw ', '').toLowerCase()}.`)) +
     (r.qty > 1 ? ' Your perk doubles it!' : '') + (r.bank ? ' It is sent straight to your bank.' : ''), 'skill');
   // Resources never run out: keep going until the pack is full.
@@ -811,7 +819,7 @@ function removeFire(f) {
 }
 
 // ---- Talking ----
-const NPC_FACE = { cook: '👨‍🍳', priest: '🧔', doric: '🧔‍♂️', captain: '💂‍♀️', farmer: '👨‍🌾', bob: '👷', merchant: '🧑‍💼', ranger: '🧝', knight: '🤺', apothecary: '🧑‍⚕️' };
+const NPC_FACE = { cook: 'ð¨âð³', priest: 'ð§', doric: 'ð§ââï¸', captain: 'ðââï¸', farmer: 'ð¨âð¾', bob: 'ð·', merchant: 'ð§âð¼', ranger: 'ð§', knight: 'ð¤º', apothecary: 'ð§ââï¸' };
 const SHOP_GREET = { apothecary: 'Herbs, vials and potions! Fill empty vials at the well. Pick grimy herbs from the patches out back, clean them, then mix herb + vial of water + a secondary.' };
 const questHelpers = {
   has: (item, n) => (player.inventory[item] || 0) >= n,
@@ -827,15 +835,15 @@ const questHelpers = {
     for (const m of milestones) log(`Quest point milestone (${m.qp} QP): ${m.desc}.`, 'skill');
     if (isDone(player, 'all')) log('You have completed every quest! The Quest point cape is yours.', 'skill');
     refreshMaxHp();
-    ui.banner(`<div class="lu-icon">📜</div><div><b>Quest complete!</b><br>${qd.name}<br><small>${qd.rewards.join(' · ')}</small>` +
-      `<div class="lu-perk">★ Lasting bonus: ${qd.bonus.desc}</div>` + milestones.map(m => `<div class="lu-perk">★ ${m.qp} QP: ${m.desc}</div>`).join('') + '</div>');
+    ui.banner(`<div class="lu-icon">ð</div><div><b>Quest complete!</b><br>${qd.name}<br><small>${qd.rewards.join(' Â· ')}</small>` +
+      `<div class="lu-perk">â Lasting bonus: ${qd.bonus.desc}</div>` + milestones.map(m => `<div class="lu-perk">â ${m.qp} QP: ${m.desc}</div>`).join('') + '</div>');
     updateQuestMarks();
     markDirty();
   }
 };
 function talkTo(ent) {
   const name = ent.name;
-  const face = NPC_FACE[ent.npc] || (ent.type === 'shop' ? NPC_FACE.merchant : '🙂');
+  const face = NPC_FACE[ent.npc] || (ent.type === 'shop' ? NPC_FACE.merchant : 'ð');
   const qd = questForNpc(ent.npc);
   let script;
   if (qd) {
@@ -1034,7 +1042,7 @@ function monsterAttack(mon, now) {
 
 function playerDied() {
   log('Oh dear, you are dead!', 'warn');
-  ui.banner('<div class="lu-icon">💀</div><div><b>Oh dear, you are dead!</b><br>You wake up in town with full health.</div>');
+  ui.banner('<div class="lu-icon">ð</div><div><b>Oh dear, you are dead!</b><br>You wake up in town with full health.</div>');
   stopAction();
   pm.target = null;
   pm.mesh.position.set(SPAWN.x + 1, 0, SPAWN.z + 1);
@@ -1254,10 +1262,10 @@ function updateArrow(dt) {
 }
 
 const ACTION_LABEL = {
-  gather: n => ({ tree: '🪓 Woodcutting', rock: '⛏️ Mining', fish: '🎣 Fishing' })[n.node.type], attack: a => `⚔️ Fighting ${a.mon.name}`,
-  craft: a => `${SKILL_ICONS[a.recipe.skill]} ${a.recipe.name}${a.left !== Infinity && a.left > 1 ? ` (${a.left})` : ''}`, pickup: () => '✋ Picking up', bank: () => '🏦 Going to bank',
-  shop: a => `🛒 Going to ${a.node.name}`, talk: a => `💬 Talking to ${a.node.name}`, altar: () => '🙏 Going to the altar', station: a => `Going to the ${a.node.name.toLowerCase()}`,
-  bury: () => '🦴 Burying bones', light: () => '🔥 Lighting a fire'
+  gather: n => ({ tree: 'ðª Woodcutting', rock: 'âï¸ Mining', fish: 'ð£ Fishing' })[n.node.type], attack: a => `âï¸ Fighting ${a.mon.name}`,
+  craft: a => `${SKILL_ICONS[a.recipe.skill]} ${a.recipe.name}${a.left !== Infinity && a.left > 1 ? ` (${a.left})` : ''}`, pickup: () => 'â Picking up', bank: () => 'ð¦ Going to bank',
+  shop: a => `ð Going to ${a.node.name}`, talk: a => `ð¬ Talking to ${a.node.name}`, altar: () => 'ð Going to the altar', station: a => `Going to the ${a.node.name.toLowerCase()}`,
+  bury: () => 'ð¦´ Burying bones', light: () => 'ð¥ Lighting a fire'
 };
 function updateStatus() {
   let html = '';
@@ -1405,3 +1413,4 @@ window.gielinor = {
   get action() { return action; }, get tick() { return tick; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
+
