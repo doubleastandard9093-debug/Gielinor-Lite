@@ -42,7 +42,7 @@ const G = {
 const matCache = new Map();
 function mat(color, opts) {
   const key = color + (opts ? JSON.stringify(opts) : '');
-  if (!matCache.has(key)) matCache.set(key, new THREE.MeshLambertMaterial({ color, ...(opts || {}) }));
+  if (!matCache.has(key)) matCache.set(key, new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.05, ...(opts || {}) }));
   return matCache.get(key);
 }
 
@@ -105,7 +105,7 @@ export function createWorld(scene) {
   // Ground with gentle colour variation (one draw call).
   const groundGeo = new THREE.PlaneGeometry(WORLD_HALF * 2 + 10, WORLD_HALF * 2 + 10, 45, 45);
   const colors = [];
-  const base = new THREE.Color(0x3f7a35);
+  const base = new THREE.Color(0x4a8a3a);
   const tmp = new THREE.Color();
   const pos = groundGeo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
@@ -607,11 +607,6 @@ export function createWorld(scene) {
   const mine = [['Copper', 4], ['Tin', 4], ['Iron', 3], ['Coal', 3], ['Mithril', 2], ['Adamantite', 1]];
   for (const [ore, n] of mine) for (let i = 0; i < n; i++) { const p = place(22, 20, 5.5, 1.0); if (p) nodes.push(createRock(p.x, p.z, ore)); }
   for (const [ore, n] of [['Runite', 1], ['Adamantite', 1], ['Mithril', 1], ['Coal', 2]]) for (let i = 0; i < n; i++) { const p = place(-9, -28, 3, 1.0); if (p) nodes.push(createRock(p.x, p.z, ore)); }
-
-  // Dragon ore rocks (high level, remote)
-  for (let i = 0; i < 2; i++) { const p = place(15, -50, 4, 1.2); if (p) nodes.push(createRock(p.x, p.z, 'Dragon')); }
-  for (let i = 0; i < 1; i++) { const p = place(-45, -35, 3, 1.2); if (p) nodes.push(createRock(p.x, p.z, 'Dragon')); }
-
   const spots = [['Net', 3.6], ['Net', 4.3], ['Net', 5.0], ['Lure', -0.6], ['Lure', 0.2], ['Cage', 1.2], ['Harpoon', 2.0]];
   for (const [kind, a] of spots) {
     nodes.push(createFish(LAKE.x + Math.cos(a) * (LAKE.r - 0.6), LAKE.z + Math.sin(a) * (LAKE.r - 0.6), kind));
