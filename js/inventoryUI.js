@@ -1,5 +1,5 @@
 // RS-style side panel with tabs, plus the bank, shop and help windows and the combat-skill quick bar.
-import { ITEMS, RECIPES, iconFor, CRAFT_TABS, METALS, TOOL_TYPES, statLine, setDesc } from './items.js';
+import { ITEMS, RECIPES, iconFor, CRAFT_TABS, METALS, TOOL_TYPES, statLine, setDesc, rarityColor } from './items.js';
 import { SKILLS, SKILL_ICONS, xpToNext, levelProgress, nextLevelXp, combatLevel, totalLevel, PERKS, maxPrayer, perkTotals, CAPS_TEXT } from './skills.js';
 import { INV_SIZE, slotsUsed } from './playerState.js';
 import { stylesFor, currentStyle, equipmentBonuses, playerMaxHit, playerAccuracy, monsterAccuracy, MONSTER_TYPES, SHOP_STOCK, TOOL_STOCK, sellPrice, buyPrice, stockVisible, bestTool, SHOPS } from './gameplay.js';
@@ -99,8 +99,9 @@ export function createInventoryUI(api) {
   }
   function itemCell(item, qty, extra = '', showQty = true) {
     const [ic, tint] = iconFor(item);
-    return `<div class="slot item" data-item="${esc(item)}" ${extra} title="${esc(item)}" style="${tint ? `background-color:${tint}` : ''}">` +
-      `<span class="ico">${ic}</span>${showQty && qty > 1 ? `<span class="qty">${qtyLabel(qty)}</span>` : ''}<span class="nm">${esc(shortName(item))}</span></div>`;
+    const rc = rarityColor(item);
+    return `<div class="slot item" data-item="${esc(item)}" ${extra} title="${esc(item)}" style="${tint ? `background-color:${tint};` : ''}${rc ? `box-shadow:inset 0 0 0 2px ${rc};` : ''}">` +
+      `<span class="ico">${ic}</span>${showQty && qty > 1 ? `<span class="qty">${qtyLabel(qty)}</span>` : ''}<span class="nm"${rc ? ` style="color:${rc}"` : ''}>${esc(shortName(item))}</span></div>`;
   }
   function shortName(item) {
     return item.replace(' logs', '').replace('Cooked ', '').replace(' platebody', ' plate').replace(' platelegs', ' legs').replace(' full helm', ' helm').replace(' shortbow', ' bow');

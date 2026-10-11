@@ -9,11 +9,11 @@ import { createOverlays } from './overlays.js';
 import { createMinimap } from './minimap.js';
 import { createSkills, addXP, combatLevel, SKILL_ICONS, perk, perksBetween, maxPrayer, setPerkBoost } from './skills.js';
 import { createPlayerState, addItem, removeItem, recalcMaxHp, roomFor, canAdd } from './playerState.js';
-import { RECIPES, ITEMS, canCraft, hasInputs, recipeOutputQty, examineItem, isRangedWeapon, slotFor, isTool, toolType, TOOL_TYPES, WOODS } from './items.js';
+import { RECIPES, ITEMS, canCraft, hasInputs, recipeOutputQty, examineItem, isRangedWeapon, slotFor, isTool, toolType, TOOL_TYPES, WOODS, rarityOf, rarityColor } from './items.js';
 import {
   TICK_MS, gatherTick, gatherInfo, TREES, ROCKS, FISH_SPOTS, rollPlayerHit, rollMonsterHit, combatXp, rollLoot, RARE_DROPS,
   attackSpeedTicks, attackRange, equip, unequip, eat, sellPrice, bestTool, addTool, ownsToolType, toolName,
-  burnChance, saveChance, makeXp, buryXp, reduceIncoming, nextGatherWait, xpMultiplier, makeTicks, doubleMakeChance, buyPrice, capeBoosts, regenBonus, SHOPS
+  burnChance, saveChance, makeXp, buryXp, reduceIncoming, nextGatherWait, xpMultiplier, makeTicks, doubleMakeChance, buyPrice, capeBoosts, regenBonus, SHOPS, gearEffects, weaponProcs, isRareDrop
 } from './gameplay.js';
 import { POTIONS, isPotion, drinkPotion, effectsTick, applyPoison, poisonTick } from './potions.js';
 import { PRAYERS, prayerById, togglePrayer, drainTick, prayerFx, rechargePrayer, ppRegenPerTick } from './prayer.js';
@@ -231,7 +231,7 @@ function giveItem(item, qty = 1) {
 
 function itemMenu(item, x, y, mode) {
   const info = ITEMS[item] || {};
-  const c = '#ff9040';
+  const c = rarityColor(item) || '#ff9040';
   const opts = [];
   if (mode === 'bank') {
     for (const q of [1, 5, 10, 'All']) opts.push({ action: `Deposit-${q}`, target: item, color: c, fn: () => deposit(item, q) });
@@ -913,19 +913,30 @@ function playerAttack(mon, now) {
   else if (special === 'snipe') swings.push({ acc: base.acc + 0.3, dmg: base.dmg + 1.0 });
   else if (special === 'volley') { swings.push({ ...base, acc: base.acc - 0.15 }); for (let i = 0; i < 2; i++) if (useArrow()) swings.push({ ...base, acc: base.acc - 0.15 }); }
   else swings.push(base);
+  // Dark bow: fires extra arrows every shot.
+  const ge = gearEffects(player);
+  if (ranged && ge.multiArrow) for (let i = 1; i < ge.multiArrow; i++) if (useArrow()) swings.push({ ...base });
   // Double Shot perk: a free second arrow now and then.
   if (ranged && !special && Math.random() < perk(skills, 'Ranged', 'doubleShot')) { swings.push(base); log('Double Shot!', 'combat'); }
   // Swift Strikes perk: sometimes your next melee swing comes a tick early.
   if (!ranged && Math.random() < perk(skills, 'Attack', 'quick')) nextPlayerAttack = Math.max(tick + 1, nextPlayerAttack - 1);
   if (special) log(`${abilityById(special).name}!`, 'combat');
   let dmg = 0;
-  swings.forEach((mods, i) => {
-    if (mon.hp <= 0) return;
+  for (let i = 0; i < swings.length && i < 6; i++) {
+    const mods = { ...swings[i] };
+    if (mon.hp <= 0) break;
     const d = rollPlayerHit(player, skills, mon, Math.random, mods);
     mon.hp -= d;
     dmg += d;
     overlays.splat(mon, d, now + i * 150);
-  });
+    if (mods.procs && mods.procs.includes('bigHit')) log(`${ITEMS[player.equipment.weapon].special.split(':')[0]}!`, 'combat');
+    // Unique weapon specials
+    const pr = weaponProcs(player, d);
+    if (pr.again && !mods.extra) { swings.push({ ...base, extra: true }); log('Your weapon strikes twice!', 'combat'); }
+    if (pr.heal > 0 && player.hp > 0) { player.hp = Math.min(player.maxHp, player.hp + pr.heal); }
+    if (pr.poison && mon.hp > 0 && (!mon.venom || mon.venom.dmg < pr.poison)) { mon.venom = { dmg: pr.poison, next: 10 }; log(`You poison the ${mon.name}!`, 'combat'); }
+    if (pr.stun && mon.hp > 0) { mon.stunUntil = tick + 5; log(`The ${mon.name} is stunned!`, 'combat'); }
+  }
   if (special === 'bash') { mon.stunUntil = tick + 5; log(`The ${mon.name} is stunned!`, 'combat'); }
   mon.lastHitAt = now;
   const xp = combatXp(player, dmg);
@@ -953,7 +964,13 @@ function killMonster(mon, now) {
   if (action && action.mon === mon) stopAction();
   const drops = rollLoot(mon.name);
   const x = mon.mesh.position.x, z = mon.mesh.position.z;
-  if (drops.some(d => RARE_DROPS.has(d.item))) log('Rare drop! Check the loot pile.', 'loot');
+  // Drop announcements: uniques in their rarity colour, other rares in gold.
+  for (const d of drops) {
+    if (!isRareDrop(d.item)) continue;
+    const r = rarityOf(d.item);
+    log(r ? `${r[0].toUpperCase() + r.slice(1)} drop: ${d.item}!` : `Rare drop: ${d.item}!`, 'loot', rarityColor(d.item) || '#ffd84a');
+  }
+  if (mon.boss) log(`You have slain ${mon.title || mon.name}! It will return in ${Math.round((mon.respawn || 15000) / 60000)} minutes.`, 'loot', '#ff9a2a');
   if (player.settings.autoLoot) {
     const pile = addToPile(x, z, drops);
     takeFromPile(pile);
@@ -978,7 +995,7 @@ function monsterAttack(mon, now) {
   let dmg = reduceIncoming(raw, player, skills, { fortify: tick < buffs.fortifyUntil, rage: tick < buffs.rageUntil });
   if (dmg > 0 && Math.random() < perk(skills, 'Defence', 'block')) { dmg = 0; log('Parry: you block the attack!', 'combat'); }
   // Retribution: reflect some damage back.
-  const refl = dmg > 0 ? Math.floor(dmg * perk(skills, 'Defence', 'reflect')) : 0;
+  const refl = dmg > 0 ? Math.floor(dmg * Math.min(0.6, perk(skills, 'Defence', 'reflect') + (gearEffects(player).reflect || 0))) : 0;
   if (refl > 0 && mon.alive) {
     mon.hp -= Math.min(refl, mon.hp); overlays.splat(mon, refl, now + 150);
     if (mon.hp <= 0) { killMonster(mon, now); }
@@ -1149,7 +1166,7 @@ function updateMonsters(dt, now) {
       const t = Math.min(1, m.deathT / 0.9);
       m.mesh.rotation.z = t * Math.PI / 2;
       pos.y = -t * 0.6;
-      if (t >= 1) { m.dying = false; m.mesh.visible = false; m.respawnAt = now + 15000; }
+      if (t >= 1) { m.dying = false; m.mesh.visible = false; m.respawnAt = now + (m.respawn || 15000); }
       continue;
     }
     if (!m.alive) continue;

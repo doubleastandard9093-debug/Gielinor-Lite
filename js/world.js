@@ -458,9 +458,40 @@ export function createWorld(scene) {
         body.add(l); legs.push(l);
       }
       body.rotation.y = -Math.PI / 2; // face +z
+    } else if (t.shape === 'quad') { // wolf
+      const c = t.color;
+      body.add(part(G.box, c, 0.5, 0.5, 1.2, 0, 0.75, 0));
+      body.add(part(G.box, c, 0.42, 0.42, 0.5, 0, 0.95, 0.75));
+      body.add(part(G.box, 0x4a4a50, 0.22, 0.2, 0.3, 0, 0.85, 1.1, false));
+      body.add(part(G.cone4, c, 0.12, 0.2, 0.1, 0.13, 1.25, 0.7, false));
+      body.add(part(G.cone4, c, 0.12, 0.2, 0.1, -0.13, 1.25, 0.7, false));
+      body.add(part(G.box, c, 0.12, 0.12, 0.5, 0, 0.9, -0.75, false));
+      for (const [lx, lz] of [[0.18, 0.45], [-0.18, 0.45], [0.18, -0.45], [-0.18, -0.45]]) {
+        const l = part(G.box, c, 0.14, 0.5, 0.14, lx, 0.25, lz); body.add(l); legs.push(l);
+      }
+    } else if (t.shape === 'spider') {
+      const c = t.color;
+      body.add(part(G.box, c, 0.8, 0.5, 0.9, 0, 0.6, -0.2));
+      body.add(part(G.box, c, 0.5, 0.4, 0.45, 0, 0.55, 0.45));
+      body.add(part(G.box, 0xc02020, 0.3, 0.08, 0.05, 0, 0.62, 0.68, false));
+      for (const side of [-1, 1]) for (const lz of [-0.4, -0.1, 0.2, 0.45]) {
+        const l = part(G.box, 0x1a1a1a, 0.7, 0.08, 0.08, side * 0.6, 0.45, lz); l.rotation.z = side * 0.5; body.add(l); legs.push(l);
+      }
+    } else if (t.shape === 'dragon') {
+      const c = t.color;
+      body.add(part(G.box, c, 0.9, 0.8, 1.8, 0, 1.0, 0));
+      body.add(part(G.box, c, 0.4, 0.4, 0.8, 0, 1.5, 1.1));
+      body.add(part(G.box, c, 0.5, 0.45, 0.7, 0, 1.75, 1.6));
+      body.add(part(G.box, 0xd0c080, 0.1, 0.3, 0.1, 0.16, 2.1, 1.45, false));
+      body.add(part(G.box, 0xd0c080, 0.1, 0.3, 0.1, -0.16, 2.1, 1.45, false));
+      body.add(part(G.box, c, 0.25, 0.25, 1.2, 0, 0.9, -1.4));
+      for (const side of [-1, 1]) { const w = part(G.box, 0x1a4a1a, 1.4, 0.06, 1.0, side * 1.1, 1.6, -0.1, false); w.rotation.z = side * 0.35; body.add(w); }
+      for (const [lx, lz] of [[0.35, 0.6], [-0.35, 0.6], [0.35, -0.6], [-0.35, -0.6]]) {
+        const l = part(G.box, c, 0.25, 0.7, 0.25, lx, 0.35, lz); body.add(l); legs.push(l);
+      }
     } else {
       const c = t.color;
-      const skin = typeName === 'Goblin' ? 0x6aa040 : typeName === 'Hill Giant' ? 0xb08a5a : typeName === 'Black Knight' ? 0x1a1a22 : 0xd4a574;
+      const skin = t.skin || (typeName === 'Goblin' ? 0x6aa040 : typeName === 'Hill Giant' ? 0xb08a5a : typeName === 'Black Knight' ? 0x1a1a22 : 0xd4a574);
       body.add(part(G.box, c, 0.7, 0.8, 0.42, 0, 1.0, 0));
       body.add(part(G.box, skin, 0.48, 0.45, 0.45, 0, 1.65, 0));
       if (typeName === 'Goblin') {
@@ -477,6 +508,21 @@ export function createWorld(scene) {
         body.add(part(G.box, 0x2a2a34, 0.56, 0.5, 0.56, 0, 1.68, 0));
         body.add(part(G.box, 0x111111, 0.4, 0.06, 0.02, 0, 1.7, 0.29, false));
         body.add(part(G.box, 0x777780, 0.08, 1.0, 0.14, 0.5, 0.9, 0.35)); // sword
+      } else if (['Moss Giant', 'Ogre', 'Ice Giant', 'Grumsh'].includes(typeName)) {
+        body.add(part(G.box, 0x4a3a2a, 0.2, 1.1, 0.2, 0.55, 0.9, 0.3)); // club
+        body.add(part(G.box, 0x4a3a2a, 0.34, 0.42, 0.34, 0.55, 0.4, 0.3));
+        if (typeName === 'Grumsh') body.add(part(G.box, 0xd4af37, 0.52, 0.16, 0.52, 0, 1.95, 0, false)); // crown
+        if (typeName === 'Moss Giant') body.add(part(G.box, 0x2a5a1a, 0.5, 0.15, 0.5, 0, 1.92, 0, false));
+      } else if (typeName === 'Lesser Demon') {
+        body.add(part(G.cone4, 0x2a1a1a, 0.1, 0.35, 0.1, 0.18, 2.0, 0, false));
+        body.add(part(G.cone4, 0x2a1a1a, 0.1, 0.35, 0.1, -0.18, 2.0, 0, false));
+        for (const side of [-1, 1]) { const w = part(G.box, 0x5a0a0a, 0.9, 0.6, 0.05, side * 0.6, 1.3, -0.3, false); w.rotation.y = side * 0.4; body.add(w); }
+      } else if (typeName === 'Bandit') {
+        body.add(part(G.box, 0x2a2a2a, 0.5, 0.12, 0.05, 0, 1.6, 0.24, false)); // mask
+        body.add(part(G.box, 0xa0a0a8, 0.07, 0.7, 0.1, 0.5, 0.95, 0.3)); // blade
+      } else if (typeName === 'Skeleton' || typeName === 'Zombie') {
+        body.add(part(G.box, 0x111111, 0.3, 0.08, 0.02, 0, 1.7, 0.24, false)); // eyes
+        if (typeName === 'Skeleton') body.add(part(G.box, 0x8a8a8a, 0.07, 0.8, 0.1, 0.5, 0.95, 0.3));
       } else {
         body.add(part(G.box, 0x9a9aa8, 0.54, 0.25, 0.54, 0, 1.92, 0));
         body.add(part(G.box, 0x6a5a3a, 0.06, 2.2, 0.06, 0.5, 1.2, 0.15)); // spear
@@ -559,6 +605,11 @@ export function createWorld(scene) {
   for (const [x, z] of [[-3, -31], [1.5, -33], [-1, -28.5]]) monsters.push(createMonster('Hill Giant', x, z, 3));
   for (const [x, z] of [[-16, -32], [-18, -35]]) monsters.push(createMonster('Black Knight', x, z, 2.5));
   for (const [x, z] of [[-34, 9], [-36, 4.5], [-32.5, 5]]) monsters.push(createMonster('Dark Archer', x, z, 2));
+  // New monsters near Brightwater (more in the far wilderness)
+  for (const [x, z] of [[38, -8], [40, -12], [36, -14]]) monsters.push(createMonster('Wolf', x, z, 3));
+  for (const [x, z] of [[-24, -30], [-28, -27]]) monsters.push(createMonster('Zombie', x, z, 2.5));
+  for (const [x, z] of [[24, -38], [28, -36]]) monsters.push(createMonster('Skeleton', x, z, 2.5));
+  for (const [x, z] of [[-38, -18], [-36, -22]]) monsters.push(createMonster('Giant Spider', x, z, 2.5));
 
   return { ground, nodes, monsters, pickables, buildings };
 }

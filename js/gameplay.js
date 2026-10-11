@@ -313,9 +313,21 @@ export function rollPlayerHit(player, skills, mon, rng = Math.random, mods = {})
     const ranged = isRangedWeapon(player.equipment.weapon);
     const crit = Math.min(0.75, (ranged ? perk(skills, 'Ranged', 'rcrit') : perk(skills, 'Strength', 'crit')) + (gearEffects(player).crit || 0));
     if (rng() < crit) dmg = Math.floor(dmg * (1.5 + perk(skills, 'Strength', 'critMult')));
+    const ge = gearEffects(player);
+    if (ge.bigHit && rng() < ge.bigHit) { dmg = Math.floor(dmg * 1.5); mods.procs = (mods.procs || []).concat('bigHit'); }
     dmg = Math.floor(dmg * damageMult(player, skills, mon));
   }
   return Math.min(dmg, mon.hp);
+}
+// Unique weapon specials after a hit lands: { again, heal, poison, stun } (see items.js `eff`).
+export function weaponProcs(player, dmg, rng = Math.random) {
+  const e = gearEffects(player), out = { again: false, heal: 0, poison: 0, stun: false };
+  if (dmg <= 0) return out;
+  if (e.doubleHit && rng() < e.doubleHit) out.again = true;
+  if (e.lifesteal) out.heal = Math.floor(dmg * e.lifesteal);
+  if (e.poison && rng() < e.poison.chance) out.poison = e.poison.dmg;
+  if (e.stun && rng() < e.stun) out.stun = true;
+  return out;
 }
 // Quest bonuses against a monster type, and Executioner against weakened targets.
 export function damageMult(player, skills, mon) {

@@ -25,6 +25,7 @@ export function setupUI(settings) {
     const d = document.createElement('div');
     d.className = 'c-' + m.type;
     d.textContent = m.text;
+    if (m.color) { d.style.color = m.color; d.style.fontWeight = 'bold'; }
     return d;
   }
   function renderAll() {
@@ -42,11 +43,11 @@ export function setupUI(settings) {
   }));
 
   let lastText = '', lastAt = 0;
-  function log(text, type = 'game') {
+  function log(text, type = 'game', color = null) {
     const now = performance.now();
     if (text === lastText && now - lastAt < 400) return; // drop exact duplicates fired together
     lastText = text; lastAt = now;
-    const m = { text, type };
+    const m = { text, type, color };
     messages.push(m);
     if (messages.length > 150) {
       messages.shift();
