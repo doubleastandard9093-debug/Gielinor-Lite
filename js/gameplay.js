@@ -31,8 +31,8 @@ export const HERB_PATCHES = Object.fromEntries(HERBS.map(([h, lvl, xp]) => [h, {
 // A fishing spot offers several catches; the best one you can catch is rolled first.
 export const FISH_SPOTS = {
   Net:     { verb: 'Net',     tool: 'net',     catches: [{ level: 1, xp: 20, item: 'Raw shrimp' }] },
-  Lure:    { verb: 'Lure',    tool: 'rod',     catches: [{ level: 35, xp: 80, item: 'Raw pike' }, { level: 30, xp: 70, item: 'Raw salmon' }, { level: 20, xp: 50, item: 'Raw trout' }] },
-  Cage:    { verb: 'Cage',    tool: 'cage',    catches: [{ level: 40, xp: 90, item: 'Raw lobster' }, { level: 35, xp: 80, item: 'Raw tuna' }] },
+  Lure:    { verb: 'Lure',    tool: 'rod',     catches: [{ level: 30, xp: 70, item: 'Raw salmon' }, { level: 20, xp: 50, item: 'Raw trout' }] },
+  Cage:    { verb: 'Cage',    tool: 'cage',    catches: [{ level: 40, xp: 90, item: 'Raw lobster' }] },
   Harpoon: { verb: 'Harpoon', tool: 'harpoon', catches: [{ level: 76, xp: 110, item: 'Raw shark' }, { level: 50, xp: 100, item: 'Raw swordfish' }] }
 };
 
@@ -82,7 +82,9 @@ export function gatherInfo(node) {
 }
 
 export function successChance(level, req) {
-  return Math.max(0.05, Math.min(0.92, 0.3 + (level - req) * 0.025));
+  // Closer to classic RS feel: lower base, steeper with level advantage
+  const diff = level - req;
+  return Math.max(0.08, Math.min(0.95, 0.25 + diff * 0.03));
 }
 
 // One gathering attempt on a game tick. Returns { item, qty, xp, depleted } on success,
@@ -116,17 +118,13 @@ export function gatherTick(node, skills, player, rng = Math.random) {
   }
   if (!canAdd(player, info.item)) return { error: 'Your inventory is too full to hold any more.' };
   if (rng() >= Math.min(0.95, successChance(lvl, info.level) + bonus)) return null;
-  // Resources are infinite: trees, rocks and herb patches never run out.
-  // Extra skill activities: bird nests (Woodcutting) and gems (Mining)
-  let extras = [];
-  if (node.type === 'tree' && rng() < 0.04 + (skills.Woodcutting.level - info.level) * 0.001) {
-    extras.push({ item: 'Bird nest', qty: 1 });
+  // Trees and rocks can deplete (OSRS-style). Herbs stay infinite.
+  let depleted = false;
+  if (node.type === 'tree' || node.type === 'rock') {
+    const depleteChance = (info.deplete || 0.2) * (1 - Math.min(0.5, perk(skills, info.skill, 'fastGather') * 0.5));
+    if (rng() < depleteChance) depleted = true;
   }
-  if (node.type === 'rock' && rng() < 0.03 + (skills.Mining.level - info.level) * 0.0008) {
-    const gems = ['Uncut sapphire', 'Uncut emerald', 'Uncut ruby', 'Uncut diamond'];
-    extras.push({ item: gems[Math.floor(rng() * gems.length)], qty: 1 });
-  }
-  return { item: info.item, qty: doubled(), xp: info.xp * xpMult, skill: info.skill, depleted: false, bank: banked(), extras };
+  return { item: info.item, qty: doubled(), xp: info.xp * xpMult, skill: info.skill, depleted, bank: banked() };
 }
 // Chain Chop / Rich Vein / Quick Picker: chance the next attempt comes 1 tick sooner (never below 1 tick).
 export function nextGatherWait(skills, skill, rng = Math.random) {
@@ -653,3 +651,4 @@ export function unequip(player, slot, onLog) {
   onLog(`You remove the ${item}.`, 'game');
   return true;
 }
+
