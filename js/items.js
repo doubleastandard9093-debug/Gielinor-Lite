@@ -27,6 +27,19 @@ for (const [n, v] of [['Flax', 2], ['Cowhide', 6], ['Feather', 1], ['Raw beef', 
 def('Bones', { type: 'bones', prayerXp: 10, value: 2 });
 def('Big bones', { type: 'bones', prayerXp: 30, value: 15 });
 def('Dragon bones', { type: 'bones', prayerXp: 72, value: 200 });
+def('Uncut sapphire', { type: 'resource', value: 25 });
+def('Uncut emerald', { type: 'resource', value: 50 });
+def('Uncut ruby', { type: 'resource', value: 100 });
+def('Uncut diamond', { type: 'resource', value: 250 });
+def('Sapphire', { type: 'processed', value: 40 });
+def('Emerald', { type: 'processed', value: 80 });
+def('Ruby', { type: 'processed', value: 160 });
+def('Diamond', { type: 'processed', value: 400 });
+def('Gold bar', { type: 'processed', value: 120 });
+def('Bird nest', { type: 'resource', value: 30 });
+def('Raw pike', { type: 'resource', value: 8 });
+def('Raw tuna', { type: 'resource', value: 20 });
+
 def('Burnt food', { type: 'junk', value: 0 });
 
 // ---- Food: [raw, cooked, cook level, stop-burn level, heal, xp, value] ----
@@ -34,7 +47,9 @@ export const FOODS = [
   ['Raw shrimp', 'Cooked shrimp', 1, 34, 3, 30, 4], ['Raw beef', 'Cooked meat', 1, 34, 4, 30, 4],
   ['Raw trout', 'Cooked trout', 15, 50, 7, 70, 10], ['Raw salmon', 'Cooked salmon', 25, 58, 9, 90, 15],
   ['Raw lobster', 'Cooked lobster', 40, 74, 12, 120, 40], ['Raw swordfish', 'Cooked swordfish', 45, 86, 14, 140, 60],
-  ['Raw shark', 'Cooked shark', 80, 99, 20, 210, 150]
+  ['Raw shark', 'Cooked shark', 80, 99, 20, 210, 150],
+  ['Raw pike', 'Cooked pike', 20, 55, 6, 60, 12],
+  ['Raw tuna', 'Cooked tuna', 30, 64, 10, 100, 25]
 ];
 for (const [raw, cooked, , , heal, , v] of FOODS) {
   if (!ITEMS[raw]) def(raw, { type: 'resource', value: Math.max(2, Math.round(v * 1.2)) });
@@ -97,6 +112,15 @@ export const SKILL_CAPE_SKILLS = ['Attack', 'Strength', 'Defence', 'Hitpoints', 
 for (const sk of SKILL_CAPE_SKILLS) def(`${sk} cape`, { type: 'cape', def: 4, rdef: 4, prayer: 2, capeSkill: sk, req: { [sk]: 99 }, value: 9900 });
 
 // Full matched sets. pieces = how many you need; fx feeds the combat maths.
+
+def('Sapphire ring', { type: 'ring', atk: 2, ranged: 2, value: 200 });
+def('Emerald ring', { type: 'ring', atk: 3, str: 2, value: 350 });
+def('Ruby ring', { type: 'ring', str: 4, def: 2, value: 600 });
+def('Diamond ring', { type: 'ring', atk: 4, str: 4, ranged: 4, value: 1200 });
+def('Sapphire amulet', { type: 'neck', atk: 3, ranged: 3, value: 300 });
+def('Emerald amulet', { type: 'neck', atk: 4, str: 3, value: 500 });
+def('Oak crossbow', { type: 'weapon', ranged: 32, speed: 5, req: { Ranged: 39 }, value: 200 });
+
 export const SETS = {
   Leather: { pieces: ['head', 'body', 'legs'], fx: { racc: 0.05, dr: 0.02 } },
   ...Object.fromEntries(METALS.map((m, t) => [m, { pieces: ['head', 'body', 'legs', 'shield'], fx: { dr: 0.02 + 0.01 * t, acc: 0.03 } }])),
@@ -168,16 +192,16 @@ export function rarityColor(item) { const r = rarityOf(item); return r ? RARITY[
 
 // ---- Single-tier tools ----
 export const TOOL_TYPES = [
-  { id: 'axe', name: 'Axe', icon: '🪓', skill: 'Woodcutting' },
-  { id: 'pickaxe', name: 'Pickaxe', icon: '⛏️', skill: 'Mining' },
-  { id: 'net', name: 'Fishing net', icon: '🥅' },
-  { id: 'rod', name: 'Fishing rod', icon: '🎣' },
-  { id: 'cage', name: 'Lobster pot', icon: '🧺' },
-  { id: 'harpoon', name: 'Harpoon', icon: '🔱' },
-  { id: 'hammer', name: 'Hammer', icon: '🔨' },
-  { id: 'knife', name: 'Knife', icon: '🔪' },
-  { id: 'needle', name: 'Needle', icon: '🪡' },
-  { id: 'tinderbox', name: 'Tinderbox', icon: '🔥' }
+  { id: 'axe', name: 'Axe', icon: 'ðª', skill: 'Woodcutting' },
+  { id: 'pickaxe', name: 'Pickaxe', icon: 'âï¸', skill: 'Mining' },
+  { id: 'net', name: 'Fishing net', icon: 'ð¥' },
+  { id: 'rod', name: 'Fishing rod', icon: 'ð£' },
+  { id: 'cage', name: 'Lobster pot', icon: 'ð§º' },
+  { id: 'harpoon', name: 'Harpoon', icon: 'ð±' },
+  { id: 'hammer', name: 'Hammer', icon: 'ð¨' },
+  { id: 'knife', name: 'Knife', icon: 'ðª' },
+  { id: 'needle', name: 'Needle', icon: 'ðª¡' },
+  { id: 'tinderbox', name: 'Tinderbox', icon: 'ð¥' }
 ];
 for (const [n, tool, v] of [['Small fishing net', 'net', 5], ['Fly fishing rod', 'rod', 10], ['Lobster pot', 'cage', 20], ['Harpoon', 'harpoon', 25],
   ['Hammer', 'hammer', 1], ['Knife', 'knife', 1], ['Needle', 'needle', 1], ['Tinderbox', 'tinderbox', 1]]) {
@@ -200,57 +224,57 @@ export function isRangedWeapon(item) { return !!(item && ITEMS[item] && ITEMS[it
 export function itemValue(item) { return ITEMS[item] ? ITEMS[item].value : 1; }
 
 // ---- Icons: [emoji, tint] ----
-const KIND_ICON = { sword: '🗡️', 'full helm': '⛑️', shield: '🛡️', platelegs: '👖', platebody: '🦺', axe: '🪓', pickaxe: '⛏️', arrows: '➶', bar: '🧱' };
+const KIND_ICON = { sword: 'ð¡ï¸', 'full helm': 'âï¸', shield: 'ð¡ï¸', platelegs: 'ð', platebody: 'ð¦º', axe: 'ðª', pickaxe: 'âï¸', arrows: 'â¶', bar: 'ð§±' };
 const FIXED_ICONS = {
-  Coal: ['🪨', '#11111180'], 'Copper ore': ['🪨', '#b8733340'], 'Tin ore': ['🪨', '#c8c8c840'], 'Iron ore': ['🪨', '#8a4b3a50'],
-  'Mithril ore': ['🪨', '#5a6ad060'], 'Adamantite ore': ['🪨', '#3a9a5a60'], 'Runite ore': ['🪨', '#3ab8d060'],
-  Flax: ['🌾', ''], Cowhide: ['🐄', ''], Bones: ['🦴', ''], 'Big bones': ['🦴', '#e0d0a060'], 'Dragon bones': ['🦴', '#3a8a3a60'], 'Raw beef': ['🥩', ''], Feather: ['🪶', ''],
-  Bowstring: ['🧵', ''], 'Soft leather': ['🟫', ''], 'Hard leather': ['🟫', '#5a3a1a60'], 'Burnt food': ['🍘', '#22222280'],
-  'Raw shrimp': ['🦐', ''], 'Cooked shrimp': ['🍤', ''], 'Raw trout': ['🐟', ''], 'Cooked trout': ['🐠', ''], 'Raw salmon': ['🐟', '#e0806040'],
-  'Cooked salmon': ['🍣', ''], 'Cooked meat': ['🍖', ''], 'Raw lobster': ['🦞', '#40608040'], 'Cooked lobster': ['🦞', ''],
-  'Raw swordfish': ['🐟', '#6080c040'], 'Cooked swordfish': ['🐡', ''], 'Raw shark': ['🦈', '#6080c040'], 'Cooked shark': ['🦈', ''],
-  'Leather cowl': ['🧢', ''], 'Leather body': ['🧥', ''], 'Leather chaps': ['👖', '#7a4a2450'], 'Hard leather body': ['🧥', '#5a3a1a60'],
-  'Wooden shield': ['🛡️', '#8a5a2a50'], 'Oak shield': ['🛡️', '#c49a5a50'],
-  'Small fishing net': ['🥅', ''], 'Fly fishing rod': ['🎣', ''], 'Lobster pot': ['🧺', ''], Harpoon: ['🔱', ''],
-  Hammer: ['🔨', ''], Knife: ['🔪', ''], Needle: ['🪡', ''], Tinderbox: ['🔥', ''],
-  'Amulet of accuracy': ['📿', '#4a8ad060'], 'Amulet of strength': ['📿', '#d04a4a60'], 'Amulet of defence': ['📿', '#4ad08a60'],
-  'Holy symbol': ['✝️', '#e0e0e060'], 'Amulet of glory': ['📿', '#ffd70080'], 'Warrior ring': ['💍', '#d04a4a60'], 'Archer ring': ['💍', '#4ad04a60'],
-  'Ring of regeneration': ['💍', '#ff80c060'], "Miner's ring": ['💍', '#8a8a8a60'], "Forester's ring": ['💍', '#3a8a3a60'], "Angler's ring": ['💍', '#3a7ad060'],
-  'Red cape': ['🧣', '#c0303060'], 'Blue cape': ['🧣', '#3050c060'], 'Quest point cape': ['🧣', '#3060ff80']
+  Coal: ['ðª¨', '#11111180'], 'Copper ore': ['ðª¨', '#b8733340'], 'Tin ore': ['ðª¨', '#c8c8c840'], 'Iron ore': ['ðª¨', '#8a4b3a50'],
+  'Mithril ore': ['ðª¨', '#5a6ad060'], 'Adamantite ore': ['ðª¨', '#3a9a5a60'], 'Runite ore': ['ðª¨', '#3ab8d060'],
+  Flax: ['ð¾', ''], Cowhide: ['ð', ''], Bones: ['ð¦´', ''], 'Big bones': ['ð¦´', '#e0d0a060'], 'Dragon bones': ['ð¦´', '#3a8a3a60'], 'Raw beef': ['ð¥©', ''], Feather: ['ðª¶', ''],
+  Bowstring: ['ð§µ', ''], 'Soft leather': ['ð«', ''], 'Hard leather': ['ð«', '#5a3a1a60'], 'Burnt food': ['ð', '#22222280'],
+  'Raw shrimp': ['ð¦', ''], 'Cooked shrimp': ['ð¤', ''], 'Raw trout': ['ð', ''], 'Cooked trout': ['ð ', ''], 'Raw salmon': ['ð', '#e0806040'],
+  'Cooked salmon': ['ð£', ''], 'Cooked meat': ['ð', ''], 'Raw lobster': ['ð¦', '#40608040'], 'Cooked lobster': ['ð¦', ''],
+  'Raw swordfish': ['ð', '#6080c040'], 'Cooked swordfish': ['ð¡', ''], 'Raw shark': ['ð¦', '#6080c040'], 'Cooked shark': ['ð¦', ''],
+  'Leather cowl': ['ð§¢', ''], 'Leather body': ['ð§¥', ''], 'Leather chaps': ['ð', '#7a4a2450'], 'Hard leather body': ['ð§¥', '#5a3a1a60'],
+  'Wooden shield': ['ð¡ï¸', '#8a5a2a50'], 'Oak shield': ['ð¡ï¸', '#c49a5a50'],
+  'Small fishing net': ['ð¥', ''], 'Fly fishing rod': ['ð£', ''], 'Lobster pot': ['ð§º', ''], Harpoon: ['ð±', ''],
+  Hammer: ['ð¨', ''], Knife: ['ðª', ''], Needle: ['ðª¡', ''], Tinderbox: ['ð¥', ''],
+  'Amulet of accuracy': ['ð¿', '#4a8ad060'], 'Amulet of strength': ['ð¿', '#d04a4a60'], 'Amulet of defence': ['ð¿', '#4ad08a60'],
+  'Holy symbol': ['âï¸', '#e0e0e060'], 'Amulet of glory': ['ð¿', '#ffd70080'], 'Warrior ring': ['ð', '#d04a4a60'], 'Archer ring': ['ð', '#4ad04a60'],
+  'Ring of regeneration': ['ð', '#ff80c060'], "Miner's ring": ['ð', '#8a8a8a60'], "Forester's ring": ['ð', '#3a8a3a60'], "Angler's ring": ['ð', '#3a7ad060'],
+  'Red cape': ['ð§£', '#c0303060'], 'Blue cape': ['ð§£', '#3050c060'], 'Quest point cape': ['ð§£', '#3060ff80']
 };
 const WOOD_TINT = ['', '#c49a5a40', '#7a9a4a40', '#c0702a40', '#4a6a3a50', '#3a5ad050'];
-const UNIQUE_ICON = { 'Venom dagger': '🗡️', 'Vampyric blade': '🗡️', 'Granite maul': '🔨', 'Dragon dagger': '🗡️', 'Dragon longsword': '⚔️', 'Dark bow': '🏹',
-  'Obsidian cape': '🧣', 'Berserker ring': '💍', 'Ring of recoil': '💍', "Captain's cutlass": '🗡️', 'Highcrag warhammer': '🔨', "Herbalist's amulet": '📿' };
-const SECOND_ICON = { 'Eye of newt': '👁️', 'Unicorn horn dust': '🦄', 'Limpwurt root': '🥕', 'Chocolate dust': '🍫', 'White berries': '🫐', 'Snape grass': '🌱',
-  'Goat horn dust': '🐐', 'Red spider eggs': '🔴', 'Wine of zamorak': '🍷', 'Dragon scale dust': '🐉' };
+const UNIQUE_ICON = { 'Venom dagger': 'ð¡ï¸', 'Vampyric blade': 'ð¡ï¸', 'Granite maul': 'ð¨', 'Dragon dagger': 'ð¡ï¸', 'Dragon longsword': 'âï¸', 'Dark bow': 'ð¹',
+  'Obsidian cape': 'ð§£', 'Berserker ring': 'ð', 'Ring of recoil': 'ð', "Captain's cutlass": 'ð¡ï¸', 'Highcrag warhammer': 'ð¨', "Herbalist's amulet": 'ð¿' };
+const SECOND_ICON = { 'Eye of newt': 'ðï¸', 'Unicorn horn dust': 'ð¦', 'Limpwurt root': 'ð¥', 'Chocolate dust': 'ð«', 'White berries': 'ð«', 'Snape grass': 'ð±',
+  'Goat horn dust': 'ð', 'Red spider eggs': 'ð´', 'Wine of zamorak': 'ð·', 'Dragon scale dust': 'ð' };
 export function iconFor(item) {
   if (FIXED_ICONS[item]) return FIXED_ICONS[item];
   const info0 = ITEMS[item];
   if (info0) {
     if (info0.unique) {
       const tint = RARITY[info0.rarity] + '50';
-      if (/^Wyrmscale/.test(item)) return [{ head: '⛑️', body: '🦺', legs: '👖', shield: '🛡️' }[info0.type], '#2a8a3a80'];
-      return [UNIQUE_ICON[item] || '✨', tint];
+      if (/^Wyrmscale/.test(item)) return [{ head: 'âï¸', body: 'ð¦º', legs: 'ð', shield: 'ð¡ï¸' }[info0.type], '#2a8a3a80'];
+      return [UNIQUE_ICON[item] || 'â¨', tint];
     }
-    if (info0.type === 'herb') return ['🌿', '#3ad03a30'];
-    if (info0.type === 'grimy') return ['🌿', '#6a5a2a60'];
-    if (info0.type === 'secondary') return [SECOND_ICON[item] || '🧂', ''];
-    if (item === 'Vial') return ['⚱️', ''];
-    if (item === 'Vial of water') return ['🧪', '#3a7ad040'];
-    if (info0.type === 'potion') { const r = POTION_RECIPES.find(p => p[0] === item); return ['🧪', (r ? r[6] : '#888888') + '60']; }
+    if (info0.type === 'herb') return ['ð¿', '#3ad03a30'];
+    if (info0.type === 'grimy') return ['ð¿', '#6a5a2a60'];
+    if (info0.type === 'secondary') return [SECOND_ICON[item] || 'ð§', ''];
+    if (item === 'Vial') return ['â±ï¸', ''];
+    if (item === 'Vial of water') return ['ð§ª', '#3a7ad040'];
+    if (info0.type === 'potion') { const r = POTION_RECIPES.find(p => p[0] === item); return ['ð§ª', (r ? r[6] : '#888888') + '60']; }
   }
-  if (ITEMS[item] && ITEMS[item].capeSkill) return ['🧣', '#d4af3780'];
+  if (ITEMS[item] && ITEMS[item].capeSkill) return ['ð§£', '#d4af3780'];
   const w = WOODS.indexOf(item);
-  if (w >= 0) return ['🪵', WOOD_TINT[w]];
+  if (w >= 0) return ['ðªµ', WOOD_TINT[w]];
   const bow = BOWS.findIndex(b => b[0] === item);
-  if (bow >= 0) return ['🏹', WOOD_TINT[bow]];
+  if (bow >= 0) return ['ð¹', WOOD_TINT[bow]];
   const info = ITEMS[item];
   if (info && info.metal) {
     const kind = item.slice(info.metal.length + 1);
-    return [KIND_ICON[kind] || '📦', METAL_TINT[info.metal] + '60'];
+    return [KIND_ICON[kind] || 'ð¦', METAL_TINT[info.metal] + '60'];
   }
-  if (/ bar$/.test(item)) { const m = item.split(' ')[0]; return ['🧱', (METAL_TINT[m] || '#888') + '60']; }
-  return ['📦', ''];
+  if (/ bar$/.test(item)) { const m = item.split(' ')[0]; return ['ð§±', (METAL_TINT[m] || '#888') + '60']; }
+  return ['ð¦', ''];
 }
 export const ICONS = FIXED_ICONS;
 
@@ -346,6 +370,28 @@ for (const [raw, cooked, lvl, stop, , xp] of FOODS) {
   R({ name: `Cook ${cooked.replace('Cooked ', '')}`, cat: 'Cooking', group: 'Range or fire', skill: 'Cooking', level: lvl, inputs: { [raw]: 1 }, output: cooked, xp, station: 'range', burnStop: stop });
 }
 
+
+// ---- Extra skill activities ----
+// Jewellery (Crafting)
+R({ name: 'Cut Sapphire', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 20, inputs: { 'Uncut sapphire': 1 }, output: 'Sapphire', xp: 50 });
+R({ name: 'Cut Emerald', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 27, inputs: { 'Uncut emerald': 1 }, output: 'Emerald', xp: 67.5 });
+R({ name: 'Cut Ruby', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 34, inputs: { 'Uncut ruby': 1 }, output: 'Ruby', xp: 85 });
+R({ name: 'Cut Diamond', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 43, inputs: { 'Uncut diamond': 1 }, output: 'Diamond', xp: 107.5 });
+R({ name: 'Sapphire ring', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 20, inputs: { 'Gold bar': 1, Sapphire: 1 }, output: 'Sapphire ring', xp: 40 });
+R({ name: 'Emerald ring', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 27, inputs: { 'Gold bar': 1, Emerald: 1 }, output: 'Emerald ring', xp: 55 });
+R({ name: 'Ruby ring', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 34, inputs: { 'Gold bar': 1, Ruby: 1 }, output: 'Ruby ring', xp: 70 });
+R({ name: 'Diamond ring', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 43, inputs: { 'Gold bar': 1, Diamond: 1 }, output: 'Diamond ring', xp: 85 });
+R({ name: 'Sapphire amulet', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 24, inputs: { 'Gold bar': 1, Sapphire: 1 }, output: 'Sapphire amulet', xp: 65 });
+R({ name: 'Emerald amulet', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 31, inputs: { 'Gold bar': 1, Emerald: 1 }, output: 'Emerald amulet', xp: 80 });
+
+// Extra Smithing (gold bars)
+R({ name: 'Smelt Gold bar', cat: 'Smithing', group: 'Bars', skill: 'Smithing', level: 40, inputs: { 'Gold ore': 1 }, output: 'Gold bar', xp: 22.5, station: 'furnace' });
+
+// Extra Fletching
+R({ name: 'Fletch Oak crossbow', cat: 'Fletching', group: 'Crossbows', skill: 'Fletching', level: 39, inputs: { 'Oak logs': 1, Bowstring: 1 }, output: 'Oak crossbow', xp: 45, tool: 'knife' });
+
+// Extra Cooking already added via FOODS
+
 // Herblore: clean grimy herbs, then herb + vial of water + secondary = potion.
 for (const [n, herb, sec, lvl, xp] of POTION_RECIPES) R({ name: `Brew ${n}`, cat: 'Herblore', group: 'Potions', skill: 'Herblore', level: lvl, inputs: { [herb]: 1, 'Vial of water': 1, [sec]: 1 }, output: n, xp });
 for (const [h, lvl, xp] of HERBS) R({ name: `Clean ${h}`, cat: 'Herblore', group: 'Cleaning', skill: 'Herblore', level: lvl, inputs: { [grimyOf(h)]: 1 }, output: h, xp });
@@ -364,3 +410,4 @@ export function canCraft(skills, inventory, recipe) {
   if (skills[recipe.skill].level < recipe.level) return false;
   return hasInputs(inventory, recipe);
 }
+
