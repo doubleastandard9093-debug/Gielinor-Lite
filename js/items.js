@@ -216,7 +216,19 @@ const FIXED_ICONS = {
   'Amulet of accuracy': ['ð¿', '#4a8ad060'], 'Amulet of strength': ['ð¿', '#d04a4a60'], 'Amulet of defence': ['ð¿', '#4ad08a60'],
   'Holy symbol': ['âï¸', '#e0e0e060'], 'Amulet of glory': ['ð¿', '#ffd70080'], 'Warrior ring': ['ð', '#d04a4a60'], 'Archer ring': ['ð', '#4ad04a60'],
   'Ring of regeneration': ['ð', '#ff80c060'], "Miner's ring": ['ð', '#8a8a8a60'], "Forester's ring": ['ð', '#3a8a3a60'], "Angler's ring": ['ð', '#3a7ad060'],
-  'Red cape': ['ð§£', '#c0303060'], 'Blue cape': ['ð§£', '#3050c060'], 'Quest point cape': ['ð§£', '#3060ff80']
+  'Red cape': ['ð§£', '#c0303060'], 'Blue cape': ['ð§£', '#3050c060'], 'Quest point cape': ['ð§£', '#3060ff80'],
+  'Dragon ore': ['ðª¨', '#c0404060'], 'Dragon bar': ['ð§±', '#c0404060'],
+  'Dragon sword': ['ð¡ï¸', '#c0404060'], 'Dragon full helm': ['âï¸', '#c0404060'],
+  'Dragon shield': ['ð¡ï¸', '#c0404060'], 'Dragon platelegs': ['ð', '#c0404060'],
+  'Dragon platebody': ['ð¦º', '#c0404060'], 'Dragon axe': ['ðª', '#c0404060'],
+  'Dragon pickaxe': ['âï¸', '#c0404060'], 'Dragon arrows': ['â¶', '#c0404060'],
+  'Uncut sapphire': ['ð', '#4060ff40'], 'Uncut emerald': ['ð', '#40ff6040'],
+  'Uncut ruby': ['ð', '#ff406040'], 'Uncut diamond': ['ð', '#e0e0e040'],
+  'Sapphire': ['ð', '#4060ff60'], 'Emerald': ['ð', '#40ff6060'],
+  'Ruby': ['ð', '#ff406060'], 'Diamond': ['ð', '#e0e0e060'],
+  'Gold ore': ['ðª¨', '#ffd70040'], 'Gold bar': ['ð§±', '#ffd70060'],
+  'Bird nest': ['ðªº', ''], 'Raw pike': ['ð', ''], 'Raw tuna': ['ð', '#c0a06040'],
+  'Cooked pike': ['ð£', ''], 'Cooked tuna': ['ð£', '#c0a06040']
 };
 const WOOD_TINT = ['', '#c49a5a40', '#7a9a4a40', '#c0702a40', '#4a6a3a50', '#3a5ad050'];
 const UNIQUE_ICON = { 'Venom dagger': 'ð¡ï¸', 'Vampyric blade': 'ð¡ï¸', 'Granite maul': 'ð¨', 'Dragon dagger': 'ð¡ï¸', 'Dragon longsword': 'âï¸', 'Dark bow': 'ð¹',
