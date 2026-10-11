@@ -1,6 +1,6 @@
 // RS-style side panel with tabs, plus the bank, shop and help windows and the combat-skill quick bar.
 import { ITEMS, RECIPES, iconFor, CRAFT_TABS, METALS, TOOL_TYPES, statLine, setDesc } from './items.js';
-import { SKILLS, SKILL_ICONS, xpToNext, levelProgress, nextLevelXp, combatLevel, totalLevel, PERKS, maxPrayer, perkTotals } from './skills.js';
+import { SKILLS, SKILL_ICONS, xpToNext, levelProgress, nextLevelXp, combatLevel, totalLevel, PERKS, maxPrayer, perkTotals, CAPS_TEXT } from './skills.js';
 import { INV_SIZE, slotsUsed } from './playerState.js';
 import { stylesFor, currentStyle, equipmentBonuses, playerMaxHit, playerAccuracy, monsterAccuracy, MONSTER_TYPES, SHOP_STOCK, TOOL_STOCK, sellPrice, buyPrice, stockVisible, bestTool } from './gameplay.js';
 import { PRAYERS, isActive, drainPerTick, prayerBonus } from './prayer.js';
@@ -120,7 +120,7 @@ export function createInventoryUI(api) {
     const totals = perkTotals(skills, skill);
     return `<div class="perktotal"><b>Your ${skill} bonuses</b> (${got}/${list.length} perks)` +
       (totals.length ? totals.map(t => `<div>• ${esc(t)}</div>`).join('') : '<div>None yet. First perk at level 5.</div>') +
-      (next ? `<div class="nextperk">Next: ${esc(next.name)} at level ${next.level}</div>` : '') + `</div>` +
+      (next ? `<div class="nextperk">Next: ${esc(next.name)} at level ${next.level}</div>` : '') + `<div class="nextperk">${esc(CAPS_TEXT)}</div></div>` +
       `<div class="perks">${list.map(p => `<div class="perk ${k.level >= p.level ? 'got' : 'locked'} ${p.milestone ? 'big' : ''}"><span>${p.level}</span> ${k.level >= p.level ? '✔' : '🔒'} <b>${p.milestone ? '★ ' : ''}${esc(p.name)}</b>: ${esc(p.desc)}</div>`).join('')}</div>`;
   }
   function renderSkills() {

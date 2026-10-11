@@ -108,6 +108,18 @@ export const FX_LABEL = {
   saveBar: v => `${P(v)} chance to save your bars/ore`, saveMat: v => `${P(v)} chance to save materials`, fastMake: () => 'make items 1 tick faster',
   doubleMake: v => `${P(v)} chance of a free extra item`, extraArrows: v => `+${Math.round(v)} arrows per batch`, burnLess: v => v >= 1 ? 'never burn food' : `burn ${P(v)} less often`
 };
+// Level bonuses are 5x the original design. Caps keep the game sane:
+// chance effects top out at 75%, damage reduction 60% in total (with quests and sets),
+// nothing can make an action faster than 1 tick, and heals are limited.
+export const PERK_MULT = 5;
+const FLAGS = new Set(['fastMake', 'lowRegen']); // on/off perks, not multiplied
+export const PERK_CAPS = {
+  double: 0.75, block: 0.75, ammoSave: 0.75, doubleShot: 0.75, counter: 0.75, autoBank: 0.75, fastGather: 0.75, doubleMake: 0.75,
+  saveBar: 0.75, saveMat: 0.75, crit: 0.5, rcrit: 0.5, quick: 0.5, reflect: 0.5, dr: 0.6, acc: 0.6, racc: 0.6, speed: 0.6,
+  abilityCd: 0.6, drainLess: 0.75, burnLess: 1, critMult: 1, execute: 0.75, healBonus: 1, regen: 2, killHeal: 0.1,
+  extraArrows: 15, xpBonus: 1, buryXp: 1, potionTime: 1, ppRegen: 0.3, maxHp: 100, maxHit: 60, rmaxHit: 40
+};
+export const CAPS_TEXT = 'Level bonuses are 5x. Caps: chance effects 75% (crits 50%), damage reduction 60% total, accuracy +60%, food heals +100%, HP regen +200%, heal on kill 10% of max HP, actions never faster than 1 tick.';
 function describe(fx) { return Object.entries(fx).map(([k, v]) => FX_LABEL[k] ? FX_LABEL[k](v) : k).join(', '); }
 
 // small: [nameA, fxA, nameB, fxB]; big: { 25: [name, fx], 50: ..., 75: ..., 99: ... }
@@ -118,6 +130,7 @@ function build(small, big) {
     if (big[level]) { [name, fx] = big[level]; milestone = true; }
     else if (level % 10 === 5) { name = `${small[0]} ${ROMAN[ia++]}`; fx = small[1]; }
     else { name = `${small[2]} ${ROMAN[ib++]}`; fx = small[3]; }
+    fx = Object.fromEntries(Object.entries(fx).map(([k, v]) => [k, FLAGS.has(k) ? v : +(v * PERK_MULT).toFixed(4)]));
     return { level, name, fx, milestone, desc: describe(fx) };
   });
 }
@@ -159,7 +172,8 @@ export function perk(skills, skill, key) {
   let v = 0;
   for (const p of PERKS[skill] || []) { if (p.level > lvl) break; if (p.fx[key]) v += p.fx[key]; }
   const boost = skills._boost && skills._boost[skill];
-  return boost ? v * (1 + boost) : v;
+  if (boost) v *= 1 + boost;
+  return PERK_CAPS[key] !== undefined ? Math.min(PERK_CAPS[key], v) : v;
 }
 // Sum of every unlocked bonus for one skill, for the Skills tab.
 export function perkTotals(skills, skill) {
@@ -170,7 +184,11 @@ export function perkTotals(skills, skill) {
   }
   const boost = skills._boost && skills._boost[skill];
   if (boost) for (const k of Object.keys(out)) out[k] *= 1 + boost;
-  return Object.entries(out).map(([k, v]) => FX_LABEL[k] ? FX_LABEL[k](v) : k);
+  return Object.entries(out).map(([k, v]) => {
+    const cap = PERK_CAPS[k];
+    const capped = cap !== undefined && v > cap;
+    return (FX_LABEL[k] ? FX_LABEL[k](capped ? cap : v) : k) + (capped ? ' (capped)' : '');
+  });
 }
 export function perksBetween(skill, fromLvl, toLvl) {
   return (PERKS[skill] || []).filter(p => p.level > fromLvl && p.level <= toLvl);

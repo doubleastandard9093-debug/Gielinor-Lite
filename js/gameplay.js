@@ -141,7 +141,7 @@ export function xpMultiplier(player, skill) {
 export function saveChance(recipe, skills, player) {
   const key = recipe.skill === 'Smithing' ? 'saveBar' : 'saveMat';
   const fromPerk = recipe.skill === 'Cooking' ? 0 : perk(skills, recipe.skill, key);
-  return fromPerk + prayerFx(player, 'saveMat');
+  return Math.min(0.75, fromPerk + prayerFx(player, 'saveMat'));
 }
 export function makeXp(recipe, skills) {
   return recipe.xp * (1 + perk(skills, recipe.skill, 'xpBonus'));
@@ -310,11 +310,12 @@ export function rollMonsterHit(mon, player, skills, rng = Math.random) {
   return Math.floor(rng() * (mon.maxHit + 1));
 }
 
+export const DR_CAP = 0.6; // hard cap on damage reduction from perks + quests + sets
 // Damage you actually take after Defence perks, Protect from Melee and buffs.
 export function reduceIncoming(dmg, player, skills, buffs = {}) {
   if (dmg <= 0) return 0;
   // Damage reduction from Defence perks, quests and armour sets (capped so nothing gets silly).
-  let m = 1 - Math.min(0.3, perk(skills, 'Defence', 'dr') + questFx(player, 'dr') + setFx(player, 'dr'));
+  let m = 1 - Math.min(DR_CAP, perk(skills, 'Defence', 'dr') + questFx(player, 'dr') + setFx(player, 'dr'));
   m *= 1 - prayerFx(player, 'protect');
   if (buffs.fortify) m *= 0.5;
   if (buffs.rage) m *= 1.1;
@@ -456,7 +457,7 @@ export const TOOL_STOCK = [
 export function healAmount(item, skills) {
   const info = ITEMS[item];
   if (!info || !info.heal) return 0;
-  const bonus = skills ? perk(skills, 'Hitpoints', 'healBonus') + perk(skills, 'Cooking', 'healBonus') : 0;
+  const bonus = skills ? Math.min(1, perk(skills, 'Hitpoints', 'healBonus') + perk(skills, 'Cooking', 'healBonus')) : 0;
   return Math.round(info.heal * HEAL_SCALE * (1 + bonus));
 }
 
