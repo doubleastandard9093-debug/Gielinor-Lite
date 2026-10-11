@@ -104,7 +104,7 @@ export const FX_LABEL = {
   doubleShot: v => `${P(v)} chance of a free second arrow`, rcrit: v => `${P(v)} ranged critical chance`, rmaxHit: v => `+${v} ranged max hit`,
   drainLess: v => `prayers drain ${P(v)} slower`, buryXp: v => `+${P(v)} XP from burying bones`, ppRegen: v => `regain ${(v / 0.6).toFixed(2)} prayer points/sec`,
   buryRestore: v => `burying bones restores ${Math.round(v)} prayer points`, speed: v => `+${P(v)} gathering success`, double: v => `${P(v)} chance of double resources`,
-  chain: v => `${P(v)} chance the node isn't used up`, autoBank: v => `${P(v)} chance resources go straight to your bank`, xpBonus: v => `+${P(v)} XP`,
+  fastGather: v => `${P(v)} chance your next gather comes a tick sooner`, autoBank: v => `${P(v)} chance resources go straight to your bank`, xpBonus: v => `+${P(v)} XP`,
   saveBar: v => `${P(v)} chance to save your bars/ore`, saveMat: v => `${P(v)} chance to save materials`, fastMake: () => 'make items 1 tick faster',
   doubleMake: v => `${P(v)} chance of a free extra item`, extraArrows: v => `+${Math.round(v)} arrows per batch`, burnLess: v => v >= 1 ? 'never burn food' : `burn ${P(v)} less often`
 };
@@ -135,11 +135,11 @@ export const PERKS = {
   Prayer: build(['Devout', { drainLess: 0.01 }, 'Blessed Rites', { buryXp: 0.01 }], {
     25: ['Faithful', { ppRegen: 0.03 }], 50: ['Blessed Burial', { buryRestore: 2 }], 75: ['Zealot', { drainLess: 0.1 }], 99: ['Prayer Mastery', { ppRegen: 0.03, buryXp: 0.1 }] }),
   Mining: build(['Keen Pick', { speed: 0.01 }, 'Lucky Strike', { double: 0.01 }], {
-    25: ['Rich Vein', { chain: 0.15 }], 50: ['Ore Cart', { autoBank: 0.05 }], 75: ['Motherlode', { double: 0.08 }], 99: ['Mining Mastery', { speed: 0.04, autoBank: 0.05 }] }),
+    25: ['Rich Vein', { fastGather: 0.08 }], 50: ['Ore Cart', { autoBank: 0.05 }], 75: ['Motherlode', { double: 0.08 }], 99: ['Mining Mastery', { speed: 0.04, autoBank: 0.05 }] }),
   Woodcutting: build(['Sharp Edge', { speed: 0.01 }, 'Bountiful Bough', { double: 0.01 }], {
-    25: ['Chain Chop', { chain: 0.15 }], 50: ["Forester's Cart", { autoBank: 0.05 }], 75: ['Heartwood', { double: 0.08 }], 99: ['Woodcutting Mastery', { speed: 0.04, autoBank: 0.05 }] }),
+    25: ['Chain Chop', { fastGather: 0.08 }], 50: ["Forester's Cart", { autoBank: 0.05 }], 75: ['Heartwood', { double: 0.08 }], 99: ['Woodcutting Mastery', { speed: 0.04, autoBank: 0.05 }] }),
   Fishing: build(['Patient Angler', { speed: 0.01 }, 'Double Catch', { double: 0.01 }], {
-    25: ['Barbarian Grip', { xpBonus: 0.05 }], 50: ['Fish Barrel', { autoBank: 0.05 }], 75: ['Double Haul', { double: 0.08 }], 99: ['Fishing Mastery', { speed: 0.04, autoBank: 0.05 }] }),
+    25: ['Barbarian Grip', { xpBonus: 0.05, fastGather: 0.04 }], 50: ['Fish Barrel', { autoBank: 0.05 }], 75: ['Double Haul', { double: 0.08 }], 99: ['Fishing Mastery', { speed: 0.04, autoBank: 0.05 }] }),
   Smithing: build(['Bar Saver', { saveBar: 0.01 }, "Smith's Insight", { xpBonus: 0.01 }], {
     25: ['Hot Forge', { fastMake: 1 }], 50: ['Double Smelt', { doubleMake: 0.1 }], 75: ['Master Smith', { saveBar: 0.05 }], 99: ['Smithing Mastery', { xpBonus: 0.05, doubleMake: 0.05 }] }),
   Crafting: build(['Nimble Fingers', { saveMat: 0.01 }, "Artisan's Eye", { xpBonus: 0.01 }], {

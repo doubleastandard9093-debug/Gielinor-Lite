@@ -176,18 +176,17 @@ export function createWorld(scene) {
     const leaves = part(st.seg, st.leaf, st.r, round ? 1.2 : st.h, st.r, 0, 2.5, 0);
     full.add(leaves);
     if (round) full.add(part(G.sphere, st.leaf, 0.9, 0.8, 0.9, 0.6, 3.1, 0.2));
-    const stump = new THREE.Group();
-    stump.add(part(G.cyl, st.trunk, 0.32, 0.35, 0.32, 0, 0.17, 0));
-    stump.visible = false;
-    root.add(full, stump);
+    // Trees never get cut down now, so the whole tree bakes into one mesh (one draw call).
+    root.add(full);
     root.position.set(x, 0, z);
     root.rotation.y = rng() * Math.PI;
     const s = 0.9 + rng() * 0.25;
     root.scale.set(s, s, s);
+    mergeStatic(root);
     scene.add(root);
     pickables.push(root);
     const name = kind === 'Tree' ? 'Tree' : kind;
-    return tag(root, { mesh: root, full, depleted: stump, type: 'tree', kind, name, alive: true, x, z, radius: 0.9 });
+    return tag(root, { mesh: root, full: root, type: 'tree', kind, name, alive: true, x, z, radius: 0.9 });
   }
 
   // ---- Rocks ----
@@ -204,13 +203,12 @@ export function createWorld(scene) {
       const a = (i / 3) * Math.PI * 2 + rng();
       full.add(part(G.box, ORE_COLOR[ore], 0.22, 0.2, 0.22, Math.cos(a) * 0.42, 0.45 + rng() * 0.35, Math.sin(a) * 0.36, false));
     }
-    const depleted = new THREE.Group();
-    depleted.visible = false;
-    root.add(full, depleted);
+    root.add(full);
     root.position.set(x, 0, z);
+    mergeStatic(root);
     scene.add(root);
     pickables.push(root);
-    return tag(root, { mesh: root, full, depleted, type: 'rock', ore, name: 'Rocks', alive: true, x, z, radius: 0.8 });
+    return tag(root, { mesh: root, full: root, type: 'rock', ore, name: 'Rocks', alive: true, x, z, radius: 0.8 });
   }
 
   // ---- Fishing spots ----

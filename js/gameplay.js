@@ -112,11 +112,12 @@ export function gatherTick(node, skills, player, rng = Math.random) {
   }
   if (!canAdd(player, info.item)) return { error: 'Your inventory is too full to hold any more.' };
   if (rng() >= Math.min(0.95, successChance(lvl, info.level) + bonus)) return null;
-  let depleted = node.type === 'rock' ? true : rng() < info.deplete;
-  // Rich Vein / Chain Chop: sometimes the rock or tree isn't used up.
-  let kept = false;
-  if (depleted && rng() < perk(skills, info.skill, 'chain')) { depleted = false; kept = true; }
-  return { item: info.item, qty: doubled(), xp: info.xp * xpMult, skill: info.skill, depleted, kept, bank: banked() };
+  // Resources are infinite: trees and rocks never run out.
+  return { item: info.item, qty: doubled(), xp: info.xp * xpMult, skill: info.skill, depleted: false, bank: banked() };
+}
+// Chain Chop / Rich Vein: chance the next attempt comes 1 tick sooner (never below 1 tick).
+export function nextGatherWait(skills, skill, rng = Math.random) {
+  return rng() < perk(skills, skill, 'fastGather') ? 0 : 1;
 }
 
 // ---- Making things ---------------------------------------------------------

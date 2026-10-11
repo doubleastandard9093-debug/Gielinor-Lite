@@ -13,7 +13,7 @@ import { RECIPES, ITEMS, canCraft, hasInputs, recipeOutputQty, examineItem, isRa
 import {
   TICK_MS, gatherTick, gatherInfo, TREES, ROCKS, FISH_SPOTS, rollPlayerHit, rollMonsterHit, combatXp, rollLoot, RARE_DROPS,
   attackSpeedTicks, attackRange, equip, unequip, eat, sellPrice, bestTool, addTool, ownsToolType, toolName,
-  burnChance, saveChance, makeXp, buryXp, reduceIncoming, xpMultiplier, makeTicks, doubleMakeChance, buyPrice, capeBoosts, regenBonus
+  burnChance, saveChance, makeXp, buryXp, reduceIncoming, nextGatherWait, xpMultiplier, makeTicks, doubleMakeChance, buyPrice, capeBoosts, regenBonus
 } from './gameplay.js';
 import { PRAYERS, prayerById, togglePrayer, drainTick, prayerFx, rechargePrayer, ppRegenPerTick } from './prayer.js';
 import { ABILITIES, abilityById, unlocked as abilityUnlocked, cooldownTicks } from './abilities.js';
@@ -606,12 +606,10 @@ function respawnNode(node) {
 
 function doGatherTick(a) {
   const node = a.node;
-  if (!node.alive) {
-    log(node.type === 'tree' ? 'This tree has been cut down.' : 'There is currently no ore available in this rock.', 'game');
-    stopAction(); return;
-  }
   if (a.wait > 0) { a.wait--; return; }
-  a.wait = 1; // try every 2 ticks
+  // Try every 2 ticks; Chain Chop / Rich Vein sometimes make it 1 tick (never faster).
+  const gi = gatherInfo(node);
+  a.wait = gi ? nextGatherWait(skills, gi.skill) : 1;
   pm.actionAnim = 1; pm.actionKind = 'tool';
   const r = gatherTick(node, skills, player);
   if (!a.started) { a.started = true; const info = gatherInfo(node); if (info && !r?.error) log(SKILL_VERB[info.skill].replace('your axe', 'your ' + (bestTool(player, skills, 'axe') || 'axe').toLowerCase()).replace('your pick', 'your ' + (bestTool(player, skills, 'pickaxe') || 'pickaxe').toLowerCase()), 'skill'); }
@@ -622,11 +620,8 @@ function doGatherTick(a) {
   giveXP(r.skill, r.xp);
   log((GOT(r.item) || (node.type === 'rock' ? `You manage to mine some ${r.item.replace(' ore', '').toLowerCase()}.` : `You catch some ${r.item.replace('Raw ', '').toLowerCase()}.`)) +
     (r.qty > 1 ? ' Your perk doubles it!' : '') + (r.bank ? ' It is sent straight to your bank.' : ''), 'skill');
-  if (r.kept) log(node.type === 'tree' ? 'Chain Chop: the tree stays standing!' : 'Rich Vein: the rock still has ore!', 'skill');
-  if (r.depleted) {
-    depleteNode(node, node.type === 'tree' ? TREES[node.kind].respawn : ROCKS[node.ore].respawn);
-    stopAction();
-  } else if (!canAdd(player, r.item)) {
+  // Resources never run out: keep going until the pack is full.
+  if (!r.bank && !canAdd(player, r.item)) {
     log('Your inventory is too full to hold any more.', 'warn');
     stopAction();
   }
