@@ -200,7 +200,7 @@ export function isRangedWeapon(item) { return !!(item && ITEMS[item] && ITEMS[it
 export function itemValue(item) { return ITEMS[item] ? ITEMS[item].value : 1; }
 
 // ---- Icons: [emoji, tint] ----
-const KIND_ICON = { sword: 'ð¡ï¸', 'full helm': 'âï¸', shield: 'ð¡ï¸', platelegs: 'ð', platebody: 'ð¦º', axe: 'ðª', pickaxe: 'âï¸', arrows: 'â¶', bar: 'ð§±' };
+const KIND_ICON = { sword: 'âï¸', 'full helm': 'ðª', shield: 'ð¡ï¸', platelegs: 'ð', platebody: 'ð¦º', axe: 'ðª', pickaxe: 'âï¸', arrows: 'ð¹', bar: 'ð§±' };
 const FIXED_ICONS = {
   Coal: ['ðª¨', '#11111180'], 'Copper ore': ['ðª¨', '#b8733340'], 'Tin ore': ['ðª¨', '#c8c8c840'], 'Iron ore': ['ðª¨', '#8a4b3a50'],
   'Mithril ore': ['ðª¨', '#5a6ad060'], 'Adamantite ore': ['ðª¨', '#3a9a5a60'], 'Runite ore': ['ðª¨', '#3ab8d060'],
@@ -259,7 +259,8 @@ export function iconFor(item) {
   const info = ITEMS[item];
   if (info && info.metal) {
     const kind = item.slice(info.metal.length + 1);
-    return [KIND_ICON[kind] || 'ð¦', METAL_TINT[info.metal] + '60'];
+    const ic = KIND_ICON[kind] || (info.tool === 'axe' ? 'ðª' : info.tool === 'pickaxe' ? 'âï¸' : 'ð¦');
+    return [ic, (METAL_TINT[info.metal] || '#888888') + '60'];
   }
   if (/ bar$/.test(item)) { const m = item.split(' ')[0]; return ['ð§±', (METAL_TINT[m] || '#888') + '60']; }
   return ['ð¦', ''];
