@@ -136,12 +136,23 @@ export function createWorld(scene) {
   scene.add(plaza);
 
   // Lake with a sandy shore.
-  const shore = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r + 1.4, 28), new THREE.MeshLambertMaterial({ color: 0xc9b77a }));
+  const shore = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r + 1.6, 36), new THREE.MeshStandardMaterial({ color: 0xc4b080, roughness: 0.9 }));
   shore.rotation.x = -Math.PI / 2; shore.position.set(LAKE.x, 0.025, LAKE.z);
   scene.add(shore);
-  const water = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r, 28), new THREE.MeshLambertMaterial({ color: 0x2f6fb0 }));
-  water.rotation.x = -Math.PI / 2; water.position.set(LAKE.x, 0.04, LAKE.z);
+  const waterMat = new THREE.MeshStandardMaterial({
+    color: 0x1a6aa0,
+    roughness: 0.15,
+    metalness: 0.35,
+    transparent: true,
+    opacity: 0.85
+  });
+  const water = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r, 48), waterMat);
+  water.rotation.x = -Math.PI / 2; water.position.set(LAKE.x, 0.05, LAKE.z);
+  water.receiveShadow = true;
   scene.add(water);
+  // Store for simple animation
+  water.userData.wave = true;
+  window._water = water;
 
   const occupied = [];
   function free(x, z, r = 1.6, townR = 6) {
