@@ -746,11 +746,11 @@ export function questForNpc(npc) { return QUESTS.find(x => x.giver === npc); }
 export function onKill(player, monName) {
   const out = [];
   for (const [id, mon, need, returnTo] of [
-    ['archers', "Dark Archer', 3, 'Ranger Wyn"],
-    ['honour', "Black Knight', 2, 'Sir Vyvin"],
-    ['eastern_guards', "Goblin', 8, 'Guard Captain Ryn"],
-    ['scout_report', "Dark Archer', 4, 'Scout Vey"],
-    ['knight_honour_east', "Black Knight', 3, 'Sir Elric"]
+    ['archers', 'Dark Archer', 3, 'Ranger Wyn'],
+    ['honour', 'Black Knight', 2, 'Sir Vyvin'],
+    ['eastern_guards', 'Goblin', 8, 'Guard Captain Ryn'],
+    ['scout_report', 'Dark Archer', 4, 'Scout Vey'],
+    ['knight_honour_east', 'Black Knight', 3, 'Sir Elric']
   ]) {
     const st = q(player, id);
     if (st.stage === 1 && monName === mon) {
@@ -845,4 +845,5 @@ export function activeQuestBonuses(player) {
     milestones: QP_MILESTONES.map(m => ({ ...m, active: qp >= m.qp }))
   };
 }
+
 
