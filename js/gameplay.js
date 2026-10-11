@@ -24,7 +24,8 @@ export const ROCKS = {
   Coal:       { level: 30, xp: 50,   item: 'Coal',           respawn: 20000 },
   Mithril:    { level: 55, xp: 80,   item: 'Mithril ore',    respawn: 30000 },
   Adamantite: { level: 70, xp: 95,   item: 'Adamantite ore', respawn: 50000 },
-  Runite:     { level: 85, xp: 125,  item: 'Runite ore',     respawn: 90000 }
+  Runite:     { level: 85, xp: 125,  item: 'Runite ore',     respawn: 90000 },
+  Dragon:     { level: 95, xp: 180,  item: 'Dragon ore',     respawn: 120000 }
 };
 // Herb patches: pick grimy herbs. Never run out.
 export const HERB_PATCHES = Object.fromEntries(HERBS.map(([h, lvl, xp]) => [h, { level: lvl, xp: Math.round(xp * 3 * 10) / 10, item: grimyOf(h) }]));
@@ -82,9 +83,7 @@ export function gatherInfo(node) {
 }
 
 export function successChance(level, req) {
-  // Closer to classic RS feel: lower base, steeper with level advantage
-  const diff = level - req;
-  return Math.max(0.08, Math.min(0.95, 0.25 + diff * 0.03));
+  return Math.max(0.05, Math.min(0.92, 0.3 + (level - req) * 0.025));
 }
 
 // One gathering attempt on a game tick. Returns { item, qty, xp, depleted } on success,
@@ -118,13 +117,8 @@ export function gatherTick(node, skills, player, rng = Math.random) {
   }
   if (!canAdd(player, info.item)) return { error: 'Your inventory is too full to hold any more.' };
   if (rng() >= Math.min(0.95, successChance(lvl, info.level) + bonus)) return null;
-  // Trees and rocks can deplete (OSRS-style). Herbs stay infinite.
-  let depleted = false;
-  if (node.type === 'tree' || node.type === 'rock') {
-    const depleteChance = (info.deplete || 0.2) * (1 - Math.min(0.5, perk(skills, info.skill, 'fastGather') * 0.5));
-    if (rng() < depleteChance) depleted = true;
-  }
-  return { item: info.item, qty: doubled(), xp: info.xp * xpMult, skill: info.skill, depleted, bank: banked() };
+  // Resources are infinite: trees, rocks and herb patches never run out.
+  return { item: info.item, qty: doubled(), xp: info.xp * xpMult, skill: info.skill, depleted: false, bank: banked() };
 }
 // Chain Chop / Rich Vein / Quick Picker: chance the next attempt comes 1 tick sooner (never below 1 tick).
 export function nextGatherWait(skills, skill, rng = Math.random) {
@@ -412,7 +406,11 @@ export const LOOT_TABLES = {
     { herbs: [...MID_HERBS, 'Avantoe', 'Kwuarm', 'Snapdragon'], chance: 0.35 }, { item: 'Adamant platelegs', chance: 0.02 }, { item: 'Berserker ring', chance: 1 / 200 }
   ],
   'Green Dragon': [
-    { item: 'Dragon bones', chance: 1 }, { item: 'Coins', chance: 0.9, qty: [80, 300] }, { item: 'Dragon scale dust', chance: 0.4 },
+    { item: 'Dragon bones', chance: 1 }, { item: 'Coins', chance: 0.9, qty: [80, 300,
+    { item: 'Dragon ore', chance: 0.08 },
+    { item: 'Dragon sword', chance: 0.015 },
+    { item: 'Dragon platelegs', chance: 0.008 }
+  ] }, { item: 'Dragon scale dust', chance: 0.4 },
     { herbs: HIGH_HERBS, chance: 0.3 }, { item: 'Rune arrows', chance: 0.1, qty: [5, 15] }, { item: 'Dragon dagger', chance: 1 / 40 }, { item: 'Dragon longsword', chance: 1 / 120 }
   ],
   'Lesser Demon': [
@@ -424,7 +422,12 @@ export const LOOT_TABLES = {
     { item: 'Granite maul', chance: 1 / 8 }, { item: 'Berserker ring', chance: 1 / 6 }, { item: 'Obsidian cape', chance: 1 / 10 }, { item: 'Rune platelegs', chance: 0.1 }
   ],
   Scorchwing: [
-    { item: 'Dragon bones', chance: 1, qty: [3, 5] }, { item: 'Coins', chance: 1, qty: [2000, 5000] }, { item: 'Dragon scale dust', chance: 1, qty: [3, 8] }, { herbs: ['Torstol', 'Dwarf weed', 'Snapdragon'], chance: 1 },
+    { item: 'Dragon bones', chance: 1, qty: [3, 5,
+    { item: 'Dragon ore', chance: 0.25 },
+    { item: 'Dragon sword', chance: 0.06 },
+    { item: 'Dragon full helm', chance: 0.03 },
+    { item: 'Dragon platebody', chance: 0.02 }
+  ] }, { item: 'Coins', chance: 1, qty: [2000, 5000] }, { item: 'Dragon scale dust', chance: 1, qty: [3, 8] }, { herbs: ['Torstol', 'Dwarf weed', 'Snapdragon'], chance: 1 },
     { item: 'Wyrmscale helm', chance: 1 / 5 }, { item: 'Wyrmscale body', chance: 1 / 6 }, { item: 'Wyrmscale legs', chance: 1 / 6 }, { item: 'Wyrmscale shield', chance: 1 / 5 },
     { item: 'Dragon longsword', chance: 1 / 6 }, { item: 'Dark bow', chance: 1 / 15 }
   ],
