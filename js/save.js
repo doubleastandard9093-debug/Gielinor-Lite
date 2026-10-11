@@ -4,7 +4,8 @@ import { ITEMS, isTool, STARTER_TOOLS } from './items.js';
 import { PRAYERS } from './prayer.js';
 import { questPoints } from './quests.js';
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
+export const POS_LIMIT = 128; // world half-size minus a margin
 const KEY = 'gielinor3d';
 
 export function getSaveData(skills, player, playerMesh) {
@@ -28,6 +29,10 @@ export function getSaveData(skills, player, playerMesh) {
       activePrayers: player.activePrayers || [],
       quests: player.quests || {},
       questPoints: player.questPoints || 0,
+      effects: player.effects || [],
+      poison: player.poison || null,
+      poisonImmune: player.poisonImmune || 0,
+      questCapeLegacy: !!player.questCapeLegacy,
       skillTrees: player.skillTrees,
       bank: player.bank || {}
     },
@@ -98,6 +103,19 @@ export function migrateSave(saved) {
   if (typeof p.prayerPoints !== 'number' || !(p.prayerPoints >= 0)) p.prayerPoints = saved.skills.Prayer.level * 10;
   p.prayerPoints = Math.min(p.prayerPoints, saved.skills.Prayer.level * 10);
   if (fromVersion < 4) notes.push('New in this update: stacking items, a toolbelt, quests, prayer and combat skills. See Settings → What\'s new.');
+  // v6: potions/poison state, Herblore skill (added by normalizeSkills), quest cape for earlier finishers.
+  if (!Array.isArray(p.effects)) p.effects = [];
+  p.effects = p.effects.filter(e => e && ITEMS[e.id] && e.left > 0);
+  if (!p.poison || typeof p.poison !== 'object' || !(p.poison.dmg > 0)) p.poison = null;
+  p.poisonImmune = Math.max(0, Number(p.poisonImmune) || 0);
+  if (fromVersion < 6) {
+    const OLD_QUESTS = ['cook', 'fallen', 'doric', 'goblins', 'hides', 'tools', 'supply', 'archers', 'honour'];
+    const hadAll = OLD_QUESTS.every(id => p.quests[id] && p.quests[id].stage === 'done');
+    const ownsCape = p.inventory['Quest point cape'] || p.bank['Quest point cape'] || p.equipment.cape === 'Quest point cape';
+    if (hadAll || ownsCape) { p.questCapeLegacy = true; notes.push('You keep your Quest point cape, even as new quests are added.'); }
+  }
+  p.questCapeLegacy = !!p.questCapeLegacy;
+  if (fromVersion < 6) notes.push('New: Herblore and potions, endless trees, rocks and fishing spots, and 5x level bonuses. See Settings → What\'s new.');
   if (fromVersion < 5) notes.push('New: perks every 5 levels, gear bonuses with jewellery, capes and armour sets, and lasting quest bonuses. See Settings → What\'s new.');
   saved.version = SAVE_VERSION;
   return notes;
@@ -110,7 +128,7 @@ export function applySaveData(data, skills, player, playerMesh) {
     const notes = migrateSave(saved);
     Object.assign(skills, saved.skills);
     const p = saved.player;
-    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints']) {
+    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints', 'effects', 'poison', 'poisonImmune', 'questCapeLegacy']) {
       if (p[k] !== undefined) player[k] = p[k];
     }
     if (p.skillTrees) {
@@ -120,8 +138,8 @@ export function applySaveData(data, skills, player, playerMesh) {
     }
     if (typeof player.hp !== 'number' || !(player.hp > 0)) player.hp = player.maxHp || 100;
     if (saved.position && playerMesh && isFinite(saved.position.x) && isFinite(saved.position.z)) {
-      playerMesh.mesh.position.x = Math.max(-38, Math.min(38, saved.position.x));
-      playerMesh.mesh.position.z = Math.max(-38, Math.min(38, saved.position.z));
+      playerMesh.mesh.position.x = Math.max(-POS_LIMIT, Math.min(POS_LIMIT, saved.position.x));
+      playerMesh.mesh.position.z = Math.max(-POS_LIMIT, Math.min(POS_LIMIT, saved.position.z));
     }
     applySaveData.lastNotes = notes;
     return true;

@@ -233,6 +233,12 @@ body.dpad-on #abilityBar { bottom: calc(var(--chat-h) + var(--sb) + 164px); }
 .splat { position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50% 50% 45% 45%; color: #fff; font: bold 13px sans-serif;
   display: flex; align-items: center; justify-content: center; text-shadow: 1px 1px 0 #000; border: 1px solid #000; will-change: transform; }
 .splat.hit { background: radial-gradient(circle at 40% 35%, #ff4a3a, #a80000); }
+.skill b.boosted, .boosted { color: #5aff5a; }
+#effects { position: fixed; left: 8px; top: calc(env(safe-area-inset-top) + 64px); display: flex; flex-wrap: wrap; gap: 3px; max-width: 46vw; pointer-events: none; z-index: 6; }
+#effects .fx { width: 34px; background: rgba(20,16,10,.78); border: 1px solid #6a5a3a; border-radius: 5px; text-align: center; color: #ffe; font: 10px sans-serif; padding: 1px 0; }
+#effects .fx span { display: block; font-size: 15px; line-height: 18px; }
+#effects .fx.low { border-color: #c04a3a; color: #ffb0a0; }
+.splat.poison { background: radial-gradient(circle at 40% 35%, #5ad04a, #1a7a10); }
 .splat.miss { background: radial-gradient(circle at 40% 35%, #5a8aff, #1a3aa0); }
 .hpbar { position: absolute; left: 0; top: 0; width: 40px; height: 6px; background: #d00000; border: 1px solid #000; will-change: transform; }
 .hpbar i { display: block; height: 100%; background: #00d000; }

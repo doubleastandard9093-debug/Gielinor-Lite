@@ -101,6 +101,7 @@ export function createMinimap({ onWalk, onCompass, onRunToggle, onPrayerOrb }) {
       if (n.type === 'tree') dot(n.x, n.z, n.alive ? DOT.tree : '#4a3a1a', r * 1.4);
       else if (n.type === 'rock') dot(n.x, n.z, n.alive ? DOT.rock : '#555', r);
       else if (n.type === 'fish') dot(n.x, n.z, DOT.fish, r);
+      else if (n.type === 'herb') dot(n.x, n.z, '#7aff4a', r * 1.2);
       else if (n.type === 'shop') dot(n.x, n.z, DOT.shop, r * 1.6);
       else if (n.type === 'bank') dot(n.x, n.z, DOT.bank, r * 1.6);
       else if (n.type === 'npc') dot(n.x, n.z, n.questMark ? DOT.quest : DOT.shop, r * 1.4);

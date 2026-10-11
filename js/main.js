@@ -13,8 +13,9 @@ import { RECIPES, ITEMS, canCraft, hasInputs, recipeOutputQty, examineItem, isRa
 import {
   TICK_MS, gatherTick, gatherInfo, TREES, ROCKS, FISH_SPOTS, rollPlayerHit, rollMonsterHit, combatXp, rollLoot, RARE_DROPS,
   attackSpeedTicks, attackRange, equip, unequip, eat, sellPrice, bestTool, addTool, ownsToolType, toolName,
-  burnChance, saveChance, makeXp, buryXp, reduceIncoming, nextGatherWait, xpMultiplier, makeTicks, doubleMakeChance, buyPrice, capeBoosts, regenBonus
+  burnChance, saveChance, makeXp, buryXp, reduceIncoming, nextGatherWait, xpMultiplier, makeTicks, doubleMakeChance, buyPrice, capeBoosts, regenBonus, SHOPS
 } from './gameplay.js';
+import { POTIONS, isPotion, drinkPotion, effectsTick, applyPoison, poisonTick } from './potions.js';
 import { PRAYERS, prayerById, togglePrayer, drainTick, prayerFx, rechargePrayer, ppRegenPerTick } from './prayer.js';
 import { ABILITIES, abilityById, unlocked as abilityUnlocked, cooldownTicks } from './abilities.js';
 import { QUESTS, questForNpc, questStatus, isDone, onKill, onBury, onPray, NPC_INFO, questPoints, questFx } from './quests.js';
@@ -164,6 +165,8 @@ function useItem(item) {
   if (!info) return;
   if (info.type === 'bones') { startBury(item, 1); return; }
   if (info.type === 'tool') { beltFromInventory(item); return; }
+  if (isPotion(item)) { drink(item); return; }
+  if (info.type === 'grimy') { const r = RECIPES.find(rc => rc.name === `Clean ${info.clean}`); if (r) startCraft(r, 1); return; }
   if (info.type === 'food') {
     if (eat(player, item, log, skills)) {
       if (tick - lastCombatTick < 8) nextPlayerAttack = Math.max(nextPlayerAttack, tick + 2); // eating delays your next hit
@@ -176,6 +179,35 @@ function useItem(item) {
     const r = RECIPES.find(rc => rc.inputs[item] && canCraft(skills, player.inventory, rc));
     log(examineItem(item) + (r ? ` (Craft tab: ${r.name})` : WOODS.includes(item) ? ' (Hold for Light)' : ''), 'examine');
   }
+}
+
+// Active potion boosts as small icons with countdowns (top-left).
+const effectsEl = document.createElement('div');
+effectsEl.id = 'effects';
+document.body.appendChild(effectsEl);
+let effectsHtml = '';
+function renderEffects() {
+  const mmss = t => { const sec = Math.ceil(t * TICK_MS / 1000); return sec >= 60 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : sec + 's'; };
+  const parts = (player.effects || []).map(e => `<div class="fx${e.left <= 50 ? ' low' : ''}" title="${e.id}"><span>${e.icon}</span><small>${mmss(e.left)}</small></div>`);
+  if (player.poisonImmune > 0) parts.push(`<div class="fx" title="Poison protection"><span>💚</span><small>${mmss(player.poisonImmune)}</small></div>`);
+  if (player.poison) parts.push(`<div class="fx low" title="Poisoned"><span>☠️</span><small>${player.poison.dmg}</small></div>`);
+  const html = parts.join('');
+  if (html !== effectsHtml) { effectsHtml = html; effectsEl.innerHTML = html; }
+}
+function drink(item) {
+  if (!removeItem(player, item, 1)) return;
+  log(drinkPotion(player, skills, item), 'game');
+  addItem(player, 'Vial', 1); // the empty vial goes back in your pack (same slot space)
+  pm.actionAnim = 1; pm.actionKind = 'tool';
+  if (tick - lastCombatTick < 8) nextPlayerAttack = Math.max(nextPlayerAttack, tick + 1);
+  markDirty();
+}
+function fillVials() {
+  const n = player.inventory['Vial'] || 0;
+  if (!n) { log('You need an empty vial to fill. The apothecary sells them.', 'game'); return; }
+  removeItem(player, 'Vial', n); addItem(player, 'Vial of water', n);
+  log(`You fill ${n > 1 ? n + ' vials' : 'the vial'} with water.`, 'game');
+  markDirty();
 }
 
 function beltFromInventory(item) {
@@ -203,12 +235,17 @@ function itemMenu(item, x, y, mode) {
   const opts = [];
   if (mode === 'bank') {
     for (const q of [1, 5, 10, 'All']) opts.push({ action: `Deposit-${q}`, target: item, color: c, fn: () => deposit(item, q) });
-  } else if (mode === 'shop') {
+  } else if (SHOPS[mode]) {
     opts.push({ action: 'Value', target: item, color: c, fn: () => log(`${item}: shop will buy for ${sellPrice(item, player)} coins.`, 'game') });
     for (const q of [1, 5, 'All']) opts.push({ action: `Sell ${q}`, target: item, color: c, fn: () => sell(item, q) });
   } else {
     const have = player.inventory[item] || 0;
     if (info.type === 'food') opts.push({ action: 'Eat', target: item, color: c, fn: () => useItem(item) });
+    else if (isPotion(item)) opts.push({ action: 'Drink', target: item, color: c, fn: () => drink(item) });
+    else if (info.type === 'grimy') {
+      const r = RECIPES.find(rc => rc.name === `Clean ${info.clean}`);
+      if (r) { opts.push({ action: 'Clean', target: item, color: c, fn: () => startCraft(r, 1) }); if (have > 1) opts.push({ action: 'Clean all', target: `${item} (${have})`, color: c, fn: () => startCraft(r, Infinity) }); }
+    }
     else if (info.type === 'bones') {
       opts.push({ action: 'Bury', target: item, color: c, fn: () => startBury(item, 1) });
       if (have > 1) opts.push({ action: 'Bury all', target: `${item} (${have})`, color: c, fn: () => startBury(item, Infinity) });
@@ -450,6 +487,8 @@ function entExamine(ent) {
   if (ent.type === 'tree' && !ent.alive) return 'This tree has been cut down.';
   if (ent.type === 'rock' && !ent.alive) return 'There is currently no ore available in this rock.';
   if (ent.type === 'fish') return EXAMINE[ent.kind];
+  if (ent.type === 'herb') return `A herb patch growing ${ent.herb.toLowerCase()}. It never runs out. (Herblore ${HERB_LEVEL(ent.herb)})`;
+  if (ent.type === 'well') return ent.examine;
   return EXAMINE[ent.kind] || EXAMINE[ent.name] || `It's a ${ent.name}.`;
 }
 
@@ -477,10 +516,13 @@ function optionsFor(ent) {
       { action: 'Trade', target: 'Merchant', color: '#ffff00', fn: () => startAction({ kind: 'shop', node: ent, shop: 'shop' }) },
       { action: 'Talk-to', target: 'Merchant', color: '#ffff00', fn: () => startAction({ kind: 'talk', node: ent }) },
       { ...ex, color: '#ffff00' }];
+    case 'herb': return [{ action: 'Pick', target: ent.name, color: cy, fn: () => startAction({ kind: 'gather', node: ent }) }, ex];
+    case 'well': return [{ action: 'Fill vials', target: 'Well', color: cy, fn: () => startAction({ kind: 'well', node: ent }) }, ex];
     case 'bank': return [{ action: 'Bank', target: 'Bank booth', color: cy, fn: () => startAction({ kind: 'bank', node: ent }) }, ex];
     case 'npc': {
       const o = [{ action: 'Talk-to', target: ent.name, color: '#ffff00', fn: () => startAction({ kind: 'talk', node: ent }) }];
       if (ent.npc === 'bob') o.push({ action: 'Trade', target: ent.name, color: '#ffff00', fn: () => startAction({ kind: 'shop', node: ent, shop: 'tools' }) });
+      else if (ent.shop) o.push({ action: 'Trade', target: ent.name, color: '#ffff00', fn: () => startAction({ kind: 'shop', node: ent, shop: ent.shop }) });
       const qd = questForNpc(ent.npc);
       if (qd) o.push({ action: 'Quest', target: `${qd.name} (${questStatus(player, qd.id)})`, color: '#3ad0ff', fn: () => { invUI.showTab('quests'); } });
       return [...o, { ...ex, color: '#ffff00' }];
@@ -590,8 +632,9 @@ function takeFromPile(pile, only) {
 }
 
 // ---- Gathering ----
-const SKILL_VERB = { Woodcutting: 'You swing your axe at the tree.', Mining: 'You swing your pick at the rock.', Fishing: 'You attempt to catch a fish.' };
-const GOT = item => WOODS.includes(item) ? `You get some ${item.toLowerCase()}.` : null;
+const SKILL_VERB = { Woodcutting: 'You swing your axe at the tree.', Mining: 'You swing your pick at the rock.', Fishing: 'You attempt to catch a fish.', Herblore: 'You start picking herbs.' };
+const GOT = item => WOODS.includes(item) ? `You get some ${item.toLowerCase()}.` : ITEMS[item] && ITEMS[item].type === 'grimy' ? `You pick a ${item.toLowerCase()}.` : null;
+const HERB_LEVEL = herb => (ITEMS[herb] && ITEMS[herb].herbLevel) || 1;
 function depleteNode(node, ms) {
   node.alive = false;
   node.full.visible = false;
@@ -752,7 +795,8 @@ function removeFire(f) {
 }
 
 // ---- Talking ----
-const NPC_FACE = { cook: '👨‍🍳', priest: '🧔', doric: '🧔‍♂️', captain: '💂‍♀️', farmer: '👨‍🌾', bob: '👷', merchant: '🧑‍💼', ranger: '🧝', knight: '🤺' };
+const NPC_FACE = { cook: '👨‍🍳', priest: '🧔', doric: '🧔‍♂️', captain: '💂‍♀️', farmer: '👨‍🌾', bob: '👷', merchant: '🧑‍💼', ranger: '🧝', knight: '🤺', apothecary: '🧑‍⚕️' };
+const SHOP_GREET = { apothecary: 'Herbs, vials and potions! Fill empty vials at the well. Pick grimy herbs from the patches out back, clean them, then mix herb + vial of water + a secondary.' };
 const questHelpers = {
   has: (item, n) => (player.inventory[item] || 0) >= n,
   take: (item, n) => { removeItem(player, item, n); markDirty(); },
@@ -781,7 +825,10 @@ function talkTo(ent) {
   if (qd) {
     script = qd.talk(player, questHelpers);
     // Shopkeepers with quests still offer to trade afterwards.
-    if (ent.npc === 'bob' || ent.npc === 'merchant') script = [...script, { choose: [["Let's trade.", [{ run: () => invUI.open(ent.npc === 'bob' ? 'tools' : 'shop') }]], ['Goodbye.', []]] }];
+    const sh = ent.npc === 'bob' ? 'tools' : ent.npc === 'merchant' ? 'shop' : ent.shop;
+    if (sh) script = [...script, { choose: [["Let's trade.", [{ run: () => invUI.open(sh) }]], ['Goodbye.', []]] }];
+  } else if (ent.shop) {
+    script = [['npc', SHOP_GREET[ent.shop] || 'Welcome! Have a look at my wares.'], { choose: [["Let's trade.", [{ run: () => invUI.open(ent.shop) }]], ['No thanks.', []]] }];
   } else if (ent.npc === 'bob') script = [
     ['npc', "Welcome to Bob's Brilliant Tools! Axes, pickaxes, fishing gear: it all goes straight on your toolbelt."],
     { choose: [['Let\'s trade.', [{ run: () => { invUI.open('tools'); } }]], ['Just looking.', [['npc', 'Better tools gather faster. Come back any time!']]]] }
@@ -939,6 +986,7 @@ function monsterAttack(mon, now) {
   // Riposte: counter when a melee monster misses and you're fighting it up close.
   if (raw === 0 && !mon.ranged && mon.alive && !isRangedWeapon(player.equipment.weapon) && action && action.kind === 'attack' && action.mon === mon &&
       Math.random() < perk(skills, 'Attack', 'counter')) bonusHit(mon, now, 'Riposte');
+  if (dmg > 0 && mon.poison && Math.random() < mon.poison.chance && applyPoison(player, mon.poison.dmg, true)) log(`You have been poisoned by the ${mon.name}!`, 'warn');
   player.hp = Math.max(0, player.hp - dmg);
   playerEnt.lastHitAt = now;
   overlays.splat(playerEnt, dmg, now);
@@ -994,6 +1042,17 @@ function gameTick(now) {
     player.prayerPoints = Math.min(ppMax, player.prayerPoints + ppr);
     if (Math.floor(player.prayerPoints) !== before) markDirty();
   }
+  // Potion timers, poison
+  for (const m of effectsTick(player)) log(m.text, m.cls);
+  if (player.poison && player.hp > 0) {
+    const pd = poisonTick(player);
+    if (pd > 0) { player.hp = Math.max(0, player.hp - pd); overlays.splat(playerEnt, pd, now, true); if (!player.poison) log('The poison has worn off.', 'game'); if (player.hp <= 0) playerDied(); }
+  }
+  for (const m of monsters) if (m.venom && m.alive) { // poison you put on monsters (venom weapons)
+    const w = { poison: m.venom }; const md = poisonTick(w); m.venom = w.poison;
+    if (md > 0) { m.hp -= Math.min(md, m.hp); overlays.splat(m, md, now, true); if (m.hp <= 0) killMonster(m, now); }
+  }
+  if (tick % 2 === 0) renderEffects();
   if (queuedAbility && tick - queuedAt > 12) queuedAbility = null;
   for (let i = fires.length - 1; i >= 0; i--) if (now > fires[i].expires) { removeFire(fires[i]); }
   if (!(player.settings.run && pm.moving)) player.runEnergy = Math.min(100, player.runEnergy + 0.45 * (1 + questFx(player, 'runRegen')));
@@ -1063,6 +1122,7 @@ function updateAction() {
   else if (a.kind === 'bank') { invUI.open('bank'); stopAction(); }
   else if (a.kind === 'shop') { log(`${ent.name}: "Have a look at my wares."`, 'game'); invUI.open(a.shop || 'shop'); stopAction(); }
   else if (a.kind === 'talk') { stopAction(); talkTo(ent); }
+  else if (a.kind === 'well') { stopAction(); pm.actionAnim = 1; pm.actionKind = 'tool'; fillVials(); }
   else if (a.kind === 'altar') {
     stopAction();
     pm.actionAnim = 1; pm.actionKind = 'tool';
@@ -1307,7 +1367,7 @@ window.addEventListener('keydown', e => {
 });
 
 window.gielinor = {
-  renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, giveXP, useAbility, talkTo, startCraft, stopAction,
+  renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, giveXP, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor,
   get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }

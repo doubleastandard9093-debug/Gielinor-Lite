@@ -1,8 +1,8 @@
-export const SKILLS = ['Attack','Strength','Defence','Hitpoints','Ranged','Prayer','Mining','Woodcutting','Fishing','Smithing','Crafting','Cooking','Fletching'];
+export const SKILLS = ['Attack','Strength','Defence','Hitpoints','Ranged','Prayer','Mining','Woodcutting','Fishing','Smithing','Crafting','Cooking','Fletching','Herblore'];
 
 export const SKILL_ICONS = {
   Attack: '⚔️', Strength: '💪', Defence: '🛡️', Hitpoints: '❤️', Ranged: '🏹', Prayer: '🙏', Mining: '⛏️',
-  Woodcutting: '🪓', Fishing: '🎣', Smithing: '🔨', Crafting: '🧶', Cooking: '🍳', Fletching: '🪶'
+  Woodcutting: '🪓', Fishing: '🎣', Smithing: '🔨', Crafting: '🧶', Cooking: '🍳', Fletching: '🪶', Herblore: '🌿'
 };
 
 export function xpForLevel(level) {
@@ -104,7 +104,7 @@ export const FX_LABEL = {
   doubleShot: v => `${P(v)} chance of a free second arrow`, rcrit: v => `${P(v)} ranged critical chance`, rmaxHit: v => `+${v} ranged max hit`,
   drainLess: v => `prayers drain ${P(v)} slower`, buryXp: v => `+${P(v)} XP from burying bones`, ppRegen: v => `regain ${(v / 0.6).toFixed(2)} prayer points/sec`,
   buryRestore: v => `burying bones restores ${Math.round(v)} prayer points`, speed: v => `+${P(v)} gathering success`, double: v => `${P(v)} chance of double resources`,
-  fastGather: v => `${P(v)} chance your next gather comes a tick sooner`, autoBank: v => `${P(v)} chance resources go straight to your bank`, xpBonus: v => `+${P(v)} XP`,
+  fastGather: v => `${P(v)} chance your next gather comes a tick sooner`, potionTime: v => `potions last ${P(v)} longer`, autoBank: v => `${P(v)} chance resources go straight to your bank`, xpBonus: v => `+${P(v)} XP`,
   saveBar: v => `${P(v)} chance to save your bars/ore`, saveMat: v => `${P(v)} chance to save materials`, fastMake: () => 'make items 1 tick faster',
   doubleMake: v => `${P(v)} chance of a free extra item`, extraArrows: v => `+${Math.round(v)} arrows per batch`, burnLess: v => v >= 1 ? 'never burn food' : `burn ${P(v)} less often`
 };
@@ -159,6 +159,8 @@ export const PERKS = {
     25: ['Quick Hands', { fastMake: 1 }], 50: ['Masterwork', { doubleMake: 0.08 }], 75: ['Thrifty', { saveMat: 0.05 }], 99: ['Crafting Mastery', { xpBonus: 0.05, doubleMake: 0.05 }] }),
   Cooking: build(['Careful Cook', { burnLess: 0.02 }, 'Hearty Portions', { healBonus: 0.01 }], {
     25: ['Double Cook', { doubleMake: 0.08 }], 50: ['Quick Chef', { fastMake: 1 }], 75: ['Gourmet', { healBonus: 0.1 }], 99: ['Cooking Mastery', { burnLess: 1 }] }),
+  Herblore: build(['Green Fingers', { double: 0.01 }, 'Steeped', { potionTime: 0.01 }], {
+    25: ['Quick Picker', { fastGather: 0.08 }], 50: ['Potion Master', { doubleMake: 0.08 }], 75: ['Lasting Brews', { potionTime: 0.1 }], 99: ['Herblore Mastery', { xpBonus: 0.05, doubleMake: 0.05 }] }),
   Fletching: build(['Whittler', { extraArrows: 1 }, 'Careful Cuts', { saveMat: 0.01 }], {
     25: ['Quick Knife', { fastMake: 1 }], 50: ['Twin Bows', { doubleMake: 0.08 }], 75: ['Arrowsmith', { extraArrows: 3 }], 99: ['Fletching Mastery', { xpBonus: 0.05, doubleMake: 0.05 }] })
 };

@@ -41,7 +41,7 @@ export function createOverlays() {
   }
 
   // ent needs .mesh and .barHeight
-  function splat(ent, dmg, now) {
+  function splat(ent, dmg, now, poison = false) {
     let s = splats.find(x => !x.ent) || splats.reduce((a, b) => (a.until < b.until ? a : b));
     // Offset splats on the same target so multiple hits don't stack exactly
     const busy = splats.filter(x => x.ent === ent && x !== s).length;
@@ -50,7 +50,7 @@ export function createOverlays() {
     s.ox = [0, -16, 16, 0][busy % 4];
     s.oy = [0, 8, 8, 16][busy % 4];
     s.el.textContent = dmg;
-    s.el.className = dmg > 0 ? 'splat hit' : 'splat miss';
+    s.el.className = poison ? 'splat poison' : dmg > 0 ? 'splat hit' : 'splat miss';
     s.el.style.display = 'block';
   }
 

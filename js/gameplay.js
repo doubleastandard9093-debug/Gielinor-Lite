@@ -1,9 +1,10 @@
 // Pure game rules (no rendering), so they can be unit-tested in node.
 import { addItem, removeItem, canAdd } from './playerState.js';
-import { ITEMS, HEAL_SCALE, slotFor, isRangedWeapon, itemValue, isTool, toolType, FOODS, SETS, SKILL_CAPE_SKILLS } from './items.js';
+import { ITEMS, HEAL_SCALE, slotFor, isRangedWeapon, itemValue, isTool, toolType, FOODS, SETS, SKILL_CAPE_SKILLS, HERBS, grimyOf, METALS } from './items.js';
+import { boostedLevel, effectFx } from './potions.js';
 import { perk } from './skills.js';
 import { prayerFx } from './prayer.js';
-import { questFx, isDone } from './quests.js';
+import { questFx, isDone, questCapeAllowed } from './quests.js';
 
 export const TICK_MS = 600;
 
@@ -25,6 +26,8 @@ export const ROCKS = {
   Adamantite: { level: 70, xp: 95,   item: 'Adamantite ore', respawn: 50000 },
   Runite:     { level: 85, xp: 125,  item: 'Runite ore',     respawn: 90000 }
 };
+// Herb patches: pick grimy herbs. Never run out.
+export const HERB_PATCHES = Object.fromEntries(HERBS.map(([h, lvl, xp]) => [h, { level: lvl, xp: Math.round(xp * 3 * 10) / 10, item: grimyOf(h) }]));
 // A fishing spot offers several catches; the best one you can catch is rolled first.
 export const FISH_SPOTS = {
   Net:     { verb: 'Net',     tool: 'net',     catches: [{ level: 1, xp: 20, item: 'Raw shrimp' }] },
@@ -69,6 +72,7 @@ export function toolName(type) { return TOOL_NAME[type] || type; }
 export function gatherInfo(node) {
   if (node.type === 'tree') return { skill: 'Woodcutting', tool: 'axe', ...TREES[node.kind] };
   if (node.type === 'rock') return { skill: 'Mining', tool: 'pickaxe', ...ROCKS[node.ore] };
+  if (node.type === 'herb') return { skill: 'Herblore', tool: null, ...HERB_PATCHES[node.herb] };
   if (node.type === 'fish') {
     const spot = FISH_SPOTS[node.kind];
     const min = spot.catches[spot.catches.length - 1];
@@ -88,13 +92,13 @@ export function gatherTick(node, skills, player, rng = Math.random) {
   if (!info) return { error: 'You can\'t do that.' };
   const lvl = skills[info.skill].level;
   if (lvl < info.level) return { error: `You need a ${info.skill} level of ${info.level} to do that.` };
-  const tool = bestTool(player, skills, info.tool);
+  const tool = info.tool ? bestTool(player, skills, info.tool) : 'hands';
   if (!tool) {
     return { error: ownsToolType(player, info.tool) ? `Your ${info.tool} needs a higher ${info.skill} level.` : `You need ${toolName(info.tool)} on your toolbelt. The tool shop sells one.` };
   }
   const gear = equipmentBonuses(player);
-  const bonus = (ITEMS[tool].toolTier || 0) * 0.05 + perk(skills, info.skill, 'speed') + prayerFx(player, 'gather') +
-    (gear.gather[info.skill] || 0) + questFx(player, 'gather');
+  const bonus = ((ITEMS[tool] && ITEMS[tool].toolTier) || 0) * 0.05 + perk(skills, info.skill, 'speed') + prayerFx(player, 'gather') +
+    (gear.gather[info.skill] || 0) + questFx(player, 'gather') + effectFx(player, 'gather');
   const xpMult = 1 + prayerFx(player, 'gather') + perk(skills, info.skill, 'xpBonus');
   const doubled = () => (rng() < perk(skills, info.skill, 'double') ? 2 : 1);
   // Milestone perks: resources sometimes go straight to the bank.
@@ -112,10 +116,10 @@ export function gatherTick(node, skills, player, rng = Math.random) {
   }
   if (!canAdd(player, info.item)) return { error: 'Your inventory is too full to hold any more.' };
   if (rng() >= Math.min(0.95, successChance(lvl, info.level) + bonus)) return null;
-  // Resources are infinite: trees and rocks never run out.
+  // Resources are infinite: trees, rocks and herb patches never run out.
   return { item: info.item, qty: doubled(), xp: info.xp * xpMult, skill: info.skill, depleted: false, bank: banked() };
 }
-// Chain Chop / Rich Vein: chance the next attempt comes 1 tick sooner (never below 1 tick).
+// Chain Chop / Rich Vein / Quick Picker: chance the next attempt comes 1 tick sooner (never below 1 tick).
 export function nextGatherWait(skills, skill, rng = Math.random) {
   return rng() < perk(skills, skill, 'fastGather') ? 0 : 1;
 }
@@ -135,7 +139,7 @@ export function doubleMakeChance(recipe, skills) { return perk(skills, recipe.sk
 // Multiplier on all XP from quests (+x% in a skill or all skills) and worn gear.
 export function xpMultiplier(player, skill) {
   const gear = equipmentBonuses(player);
-  return 1 + questFx(player, 'xp.' + skill) + questFx(player, 'xp.*') + (gear.xp[skill] || 0);
+  return 1 + questFx(player, 'xp.' + skill) + questFx(player, 'xp.*') + (gear.xp[skill] || 0) + effectFx(player, 'xp');
 }
 // Chance to keep the inputs for one make (perks + Provident Hands prayer).
 export function saveChance(recipe, skills, player) {
@@ -156,7 +160,20 @@ export function buryXp(item, skills) {
 
 // ---- Combat --------------------------------------------------------------
 // ranged: true = attacks from a distance with arrows (your ranged defence counts).
+// poison: { chance, dmg }; boss: true (long respawn); respawn in ms; shape: humanoid (default), quad, spider, dragon.
 export const MONSTER_TYPES = {
+  Wolf:          { name: 'Wolf',          level: 14, hp: 140, maxHit: 18, att: 12, def: 10, speed: 4, color: 0x7a7a80, scale: 0.9, shape: 'quad' },
+  Zombie:        { name: 'Zombie',        level: 18, hp: 200, maxHit: 20, att: 14, def: 12, speed: 5, color: 0x4a5a3a, scale: 1.0, skin: 0x7a9a6a },
+  Skeleton:      { name: 'Skeleton',      level: 22, hp: 220, maxHit: 24, att: 18, def: 16, speed: 4, color: 0xd8d8c8, scale: 1.0, skin: 0xe8e8d8 },
+  'Giant Spider':{ name: 'Giant Spider',  level: 27, hp: 280, maxHit: 22, att: 22, def: 18, speed: 4, color: 0x2a2a2a, scale: 1.1, shape: 'spider', poison: { chance: 0.25, dmg: 20 } },
+  Bandit:        { name: 'Bandit',        level: 30, hp: 300, maxHit: 30, att: 26, def: 22, speed: 4, color: 0x5a4a3a, scale: 1.0, skin: 0xc89a74 },
+  'Moss Giant':  { name: 'Moss Giant',    level: 42, hp: 450, maxHit: 40, att: 32, def: 30, speed: 5, color: 0x3a6a2a, scale: 1.9, skin: 0x6a9a4a },
+  Ogre:          { name: 'Ogre',          level: 53, hp: 600, maxHit: 50, att: 40, def: 36, speed: 5, color: 0x6a5a2a, scale: 1.7, skin: 0x8a9a5a },
+  'Ice Giant':   { name: 'Ice Giant',     level: 53, hp: 650, maxHit: 48, att: 40, def: 40, speed: 5, color: 0x8ab0d0, scale: 1.9, skin: 0xb0d0f0 },
+  'Green Dragon':{ name: 'Green Dragon',  level: 79, hp: 750, maxHit: 80, att: 60, def: 55, speed: 4, color: 0x2a7a2a, scale: 1.6, shape: 'dragon' },
+  'Lesser Demon':{ name: 'Lesser Demon',  level: 82, hp: 790, maxHit: 80, att: 65, def: 50, speed: 4, color: 0x9a1a1a, scale: 1.6, skin: 0xb02a2a },
+  Grumsh:        { name: 'Grumsh', title: 'Grumsh the Ogre Chieftain', level: 90, hp: 1600, maxHit: 90, att: 70, def: 60, speed: 5, color: 0x5a3a1a, scale: 2.4, skin: 0x7a8a4a, boss: true, respawn: 180000 },
+  Scorchwing:    { name: 'Scorchwing', title: 'Scorchwing the Green Wyrm', level: 150, hp: 3000, maxHit: 140, att: 110, def: 100, speed: 5, color: 0x1a5a2a, scale: 2.6, shape: 'dragon', boss: true, respawn: 300000, ranged: true, range: 5 },
   'Dark Archer': { name: 'Dark Archer', level: 25, hp: 260, maxHit: 30, att: 24, def: 16, speed: 5, color: 0x2a3a2a, scale: 1.0, ranged: true, range: 6 },
   Goblin:        { name: 'Goblin',       level: 2,  hp: 50,  maxHit: 8,  att: 1,  def: 1,  speed: 4, color: 0x4a7a3a, scale: 0.85 },
   Cow:           { name: 'Cow',          level: 2,  hp: 80,  maxHit: 6,  att: 1,  def: 1,  speed: 4, color: 0x8a6a4a, scale: 1.0 },
@@ -186,6 +203,19 @@ export function currentStyle(player) {
 }
 
 export const BONUS_KEYS = ['atk', 'str', 'ranged', 'rstr', 'def', 'rdef', 'prayer'];
+// Specials from unique items, added up from everything worn.
+export function gearEffects(player) {
+  const out = {};
+  for (const it of Object.values(player.equipment || {})) {
+    const e = it && ITEMS[it] && ITEMS[it].eff;
+    if (!e) continue;
+    for (const [k, v] of Object.entries(e)) {
+      if (typeof v === 'number') out[k] = (out[k] || 0) + v;
+      else out[k] = v;
+    }
+  }
+  return out;
+}
 // Totals of everything worn, plus extras and set bonus.
 export function equipmentBonuses(player) {
   const b = { atk: 0, str: 0, ranged: 0, rstr: 0, def: 0, rdef: 0, prayer: 0, regen: 0, gather: {}, xp: {}, capeSkill: null };
@@ -214,7 +244,7 @@ export function setStatus(player) {
   if (best) best.active = best.have >= best.need;
   return best;
 }
-function setFx(player, key) { const st = setStatus(player); return st && st.active ? st.fx[key] || 0 : 0; }
+export function setFx(player, key) { const st = setStatus(player); return st && st.active ? st.fx[key] || 0 : 0; }
 // Skill capes: worn 99 cape boosts that skill's perks by 10%.
 export function capeBoosts(player) {
   const c = player.equipment && player.equipment.cape;
@@ -244,10 +274,10 @@ export function playerMaxHit(player, skills, mods = {}) {
   const style = currentStyle(player);
   let max;
   if (isRangedWeapon(player.equipment.weapon)) {
-    const lvl = skills.Ranged.level * (1 + prayerFx(player, 'rng'));
+    const lvl = boostedLevel(player, skills, 'Ranged') * (1 + prayerFx(player, 'rng'));
     max = 8 + Math.floor((lvl + style.str) * 2) + b.rstr * 3 + perk(skills, 'Ranged', 'rmaxHit') + questFx(player, 'rmaxHit');
   } else {
-    const lvl = skills.Strength.level * (1 + prayerFx(player, 'str'));
+    const lvl = boostedLevel(player, skills, 'Strength') * (1 + prayerFx(player, 'str'));
     max = 10 + Math.floor((lvl + style.str) * 2) + b.str * 3 + perk(skills, 'Strength', 'maxHit');
   }
   return Math.floor(max * (1 + (mods.dmg || 0)));
@@ -257,7 +287,7 @@ export function playerAccuracy(player, skills, mon, mods = {}) {
   const b = equipmentBonuses(player);
   const style = currentStyle(player);
   const ranged = isRangedWeapon(player.equipment.weapon);
-  const base = ranged ? skills.Ranged.level * (1 + prayerFx(player, 'rng')) : skills.Attack.level * (1 + prayerFx(player, 'att'));
+  const base = ranged ? boostedLevel(player, skills, 'Ranged') * (1 + prayerFx(player, 'rng')) : boostedLevel(player, skills, 'Attack') * (1 + prayerFx(player, 'att'));
   const lvl = base + style.att + 8;
   const att = lvl * Math.max(16, 64 + (ranged ? b.ranged : b.atk) * 3);
   const def = (mon.def + 8) * 64;
@@ -271,7 +301,7 @@ export function monsterAccuracy(mon, player, skills) {
   const att = (mon.att + 8) * 64;
   // Arrows are stopped by ranged defence, swords and fists by melee defence.
   const armour = mon.ranged ? b.rdef : b.def;
-  const def = (skills.Defence.level * (1 + prayerFx(player, 'def')) + style.def + 8) * Math.max(16, 64 + armour * 3);
+  const def = (boostedLevel(player, skills, 'Defence') * (1 + prayerFx(player, 'def')) + style.def + 8) * Math.max(16, 64 + armour * 3);
   return hitChance(att, def);
 }
 
@@ -281,7 +311,7 @@ export function rollPlayerHit(player, skills, mon, rng = Math.random, mods = {})
   if (rng() < playerAccuracy(player, skills, mon, mods)) {
     dmg = 1 + Math.floor(rng() * playerMaxHit(player, skills, mods));
     const ranged = isRangedWeapon(player.equipment.weapon);
-    const crit = ranged ? perk(skills, 'Ranged', 'rcrit') : perk(skills, 'Strength', 'crit');
+    const crit = Math.min(0.75, (ranged ? perk(skills, 'Ranged', 'rcrit') : perk(skills, 'Strength', 'crit')) + (gearEffects(player).crit || 0));
     if (rng() < crit) dmg = Math.floor(dmg * (1.5 + perk(skills, 'Strength', 'critMult')));
     dmg = Math.floor(dmg * damageMult(player, skills, mon));
   }
@@ -289,7 +319,7 @@ export function rollPlayerHit(player, skills, mon, rng = Math.random, mods = {})
 }
 // Quest bonuses against a monster type, and Executioner against weakened targets.
 export function damageMult(player, skills, mon) {
-  let m = 1 + questFx(player, 'dmgVs.' + mon.name);
+  let m = 1 + questFx(player, 'dmgVs.' + mon.name) + questFx(player, 'dmgVs.*') + (gearEffects(player).dmgPct || 0) + setFx(player, 'dmgPct');
   if (mon.maxHp && mon.hp < mon.maxHp * 0.25 && !isRangedWeapon(player.equipment.weapon)) m += perk(skills, 'Strength', 'execute');
   return m;
 }
@@ -324,8 +354,64 @@ export function reduceIncoming(dmg, player, skills, buffs = {}) {
 
 // ---- Loot ----------------------------------------------------------------
 // Each entry rolls separately. chance is 0-1, qty is [min, max]. Coins go to your gold.
+// herbs: [...] = one random grimy herb from the list.
+const LOW_HERBS = ['Guam leaf', 'Marrentill', 'Tarromin'];
+const MID_HERBS = ['Harralander', 'Ranarr weed', 'Toadflax', 'Irit leaf'];
+const HIGH_HERBS = ['Avantoe', 'Kwuarm', 'Snapdragon', 'Cadantine', 'Dwarf weed', 'Torstol'];
 export const LOOT_TABLES = {
+  Wolf: [
+    { item: 'Bones', chance: 1 }, { item: 'Goat horn dust', chance: 0.15 }, { item: 'White berries', chance: 0.1 },
+    { herbs: LOW_HERBS, chance: 0.2 }, { item: 'Raw beef', chance: 0.3 }, { item: 'Coins', chance: 0.3, qty: [3, 15] }
+  ],
+  Zombie: [
+    { item: 'Bones', chance: 1 }, { item: 'Coins', chance: 0.5, qty: [5, 25] }, { item: 'Eye of newt', chance: 0.25, qty: [1, 3] },
+    { herbs: LOW_HERBS, chance: 0.25 }, { item: 'Iron ore', chance: 0.1 }, { item: 'Vampyric blade', chance: 1 / 120 }
+  ],
+  Skeleton: [
+    { item: 'Bones', chance: 1 }, { item: 'Coins', chance: 0.6, qty: [8, 35] }, { item: 'Snape grass', chance: 0.15 }, { item: 'Iron arrows', chance: 0.15, qty: [5, 12] },
+    { herbs: [...LOW_HERBS, 'Harralander'], chance: 0.25 }, { item: 'Steel full helm', chance: 0.02 }, { item: 'Vampyric blade', chance: 1 / 150 }
+  ],
+  'Giant Spider': [
+    { item: 'Red spider eggs', chance: 0.6, qty: [1, 2] }, { item: 'Coins', chance: 0.4, qty: [5, 30] }, { herbs: [...LOW_HERBS, ...MID_HERBS.slice(0, 2)], chance: 0.25 },
+    { item: 'Venom dagger', chance: 1 / 80 }
+  ],
+  Bandit: [
+    { item: 'Bones', chance: 1 }, { item: 'Coins', chance: 0.9, qty: [20, 80] }, { item: 'Chocolate dust', chance: 0.15 }, { item: 'Unicorn horn dust', chance: 0.08 },
+    { herbs: MID_HERBS, chance: 0.2 }, { item: 'Wine of zamorak', chance: 0.03 }, { item: 'Steel arrows', chance: 0.15, qty: [5, 15] },
+    { item: 'Ring of recoil', chance: 1 / 60 }, { item: "Captain's cutlass", chance: 1 / 400 }
+  ],
+  'Moss Giant': [
+    { item: 'Big bones', chance: 1 }, { item: 'Coins', chance: 0.8, qty: [30, 100] }, { item: 'Limpwurt root', chance: 0.25 }, { item: 'Snape grass', chance: 0.2 },
+    { herbs: MID_HERBS, chance: 0.35 }, { item: 'Mithril ore', chance: 0.08 }, { item: 'Mithril sword', chance: 0.02 }
+  ],
+  Ogre: [
+    { item: 'Big bones', chance: 1 }, { item: 'Coins', chance: 0.8, qty: [40, 140] }, { item: 'Limpwurt root', chance: 0.25 }, { item: 'Goat horn dust', chance: 0.2 },
+    { herbs: [...MID_HERBS, 'Avantoe', 'Kwuarm'], chance: 0.35 }, { item: 'Adamantite ore', chance: 0.05 }, { item: 'Granite maul', chance: 1 / 80 }
+  ],
+  'Ice Giant': [
+    { item: 'Big bones', chance: 1 }, { item: 'Coins', chance: 0.8, qty: [40, 150] }, { item: 'White berries', chance: 0.3 }, { item: 'Raw shark', chance: 0.05 },
+    { herbs: [...MID_HERBS, 'Avantoe', 'Kwuarm', 'Snapdragon'], chance: 0.35 }, { item: 'Adamant platelegs', chance: 0.02 }, { item: 'Berserker ring', chance: 1 / 200 }
+  ],
+  'Green Dragon': [
+    { item: 'Dragon bones', chance: 1 }, { item: 'Coins', chance: 0.9, qty: [80, 300] }, { item: 'Dragon scale dust', chance: 0.4 },
+    { herbs: HIGH_HERBS, chance: 0.3 }, { item: 'Rune arrows', chance: 0.1, qty: [5, 15] }, { item: 'Dragon dagger', chance: 1 / 40 }, { item: 'Dragon longsword', chance: 1 / 120 }
+  ],
+  'Lesser Demon': [
+    { item: 'Big bones', chance: 1 }, { item: 'Coins', chance: 0.9, qty: [100, 350] }, { item: 'Wine of zamorak', chance: 0.3 },
+    { herbs: HIGH_HERBS, chance: 0.35 }, { item: 'Rune full helm', chance: 0.02 }, { item: 'Obsidian cape', chance: 1 / 100 }, { item: 'Dark bow', chance: 1 / 120 }
+  ],
+  Grumsh: [
+    { item: 'Big bones', chance: 1, qty: [2, 3] }, { item: 'Coins', chance: 1, qty: [500, 1500] }, { herbs: HIGH_HERBS, chance: 1 }, { item: 'Limpwurt root', chance: 1, qty: [3, 6] },
+    { item: 'Granite maul', chance: 1 / 8 }, { item: 'Berserker ring', chance: 1 / 6 }, { item: 'Obsidian cape', chance: 1 / 10 }, { item: 'Rune platelegs', chance: 0.1 }
+  ],
+  Scorchwing: [
+    { item: 'Dragon bones', chance: 1, qty: [3, 5] }, { item: 'Coins', chance: 1, qty: [2000, 5000] }, { item: 'Dragon scale dust', chance: 1, qty: [3, 8] }, { herbs: ['Torstol', 'Dwarf weed', 'Snapdragon'], chance: 1 },
+    { item: 'Wyrmscale helm', chance: 1 / 5 }, { item: 'Wyrmscale body', chance: 1 / 6 }, { item: 'Wyrmscale legs', chance: 1 / 6 }, { item: 'Wyrmscale shield', chance: 1 / 5 },
+    { item: 'Dragon longsword', chance: 1 / 6 }, { item: 'Dark bow', chance: 1 / 15 }
+  ],
   Goblin: [
+    { herbs: ['Guam leaf', 'Marrentill'], chance: 0.1 },
+    { item: 'Eye of newt', chance: 0.08 },
     { item: 'Bones', chance: 1 },
     { item: 'Coins', chance: 0.5, qty: [1, 15] },
     { item: 'Copper ore', chance: 0.25 },
@@ -337,7 +423,7 @@ export const LOOT_TABLES = {
     { item: 'Amulet of accuracy', chance: 0.01 }
   ],
   Cow: [
-    { item: 'Bones', chance: 1 },
+    { item: 'Bones', chance: 1 }, { herbs: ['Guam leaf'], chance: 0.05 },
     { item: 'Cowhide', chance: 1 },
     { item: 'Raw beef', chance: 1 }
   ],
@@ -355,7 +441,7 @@ export const LOOT_TABLES = {
     { item: 'Red cape', chance: 0.03 }
   ],
   'Hill Giant': [
-    { item: 'Big bones', chance: 1 },
+    { item: 'Big bones', chance: 1 }, { item: 'Limpwurt root', chance: 0.2 }, { herbs: [...LOW_HERBS, ...MID_HERBS], chance: 0.2 },
     { item: 'Coins', chance: 0.8, qty: [20, 80] },
     { item: 'Iron arrows', chance: 0.15, qty: [5, 20] },
     { item: 'Coal', chance: 0.2, qty: [1, 3] },
@@ -367,7 +453,7 @@ export const LOOT_TABLES = {
     { item: 'Warrior ring', chance: 0.01 }
   ],
   'Black Knight': [
-    { item: 'Bones', chance: 1 },
+    { item: 'Bones', chance: 1 }, { herbs: MID_HERBS, chance: 0.2 }, { item: 'Wine of zamorak', chance: 0.05 },
     { item: 'Coins', chance: 0.8, qty: [30, 120] },
     { item: 'Steel arrows', chance: 0.12, qty: [5, 15] },
     { item: 'Mithril bar', chance: 0.05 },
@@ -380,7 +466,7 @@ export const LOOT_TABLES = {
     { item: 'Amulet of glory', chance: 0.005 }
   ],
   'Dark Archer': [
-    { item: 'Bones', chance: 1 },
+    { item: 'Bones', chance: 1 }, { herbs: [...LOW_HERBS, 'Harralander'], chance: 0.15 }, { item: 'White berries', chance: 0.1 },
     { item: 'Coins', chance: 0.7, qty: [15, 60] },
     { item: 'Iron arrows', chance: 0.5, qty: [5, 15] },
     { item: 'Feather', chance: 0.3, qty: [5, 15] },
@@ -399,11 +485,14 @@ export function rollLoot(monName, rng = Math.random) {
   for (const d of LOOT_TABLES[monName] || [{ item: 'Bones', chance: 1 }]) {
     if (rng() < d.chance) {
       const [lo, hi] = d.qty || [1, 1];
-      drops.push({ item: d.item, qty: lo + Math.floor(rng() * (hi - lo + 1)) });
+      const item = d.herbs ? grimyOf(d.herbs[Math.floor(rng() * d.herbs.length) % d.herbs.length]) : d.item;
+      drops.push({ item, qty: lo + Math.floor(rng() * (hi - lo + 1)) });
     }
   }
   return drops;
 }
+// Unique and rare items get a coloured announcement in chat.
+export function isRareDrop(item) { return RARE_DROPS.has(item) || !!(ITEMS[item] && ITEMS[item].unique); }
 
 // ---- Shops ---------------------------------------------------------------
 // Supply Run makes shops pay more; Farmer's Hides gives a discount when buying.
@@ -453,6 +542,37 @@ export const TOOL_STOCK = [
   { item: 'Hammer', price: 3 }, { item: 'Knife', price: 3 }, { item: 'Needle', price: 2 }, { item: 'Tinderbox', price: 2 }
 ];
 
+const sell = (item, mult = 1.6) => ({ item, price: Math.max(1, Math.round(itemValue(item) * mult)) });
+export const HERB_STOCK = [
+  { item: 'Vial of water', price: 5 }, { item: 'Vial', price: 2 }, { item: 'Eye of newt', price: 6 }, { item: 'Unicorn horn dust', price: 25 },
+  { item: 'Chocolate dust', price: 18 }, { item: 'Limpwurt root', price: 30 }, { item: 'White berries', price: 45 }, { item: 'Snape grass', price: 40 },
+  { item: 'Grimy guam leaf', price: 12 }, { item: 'Grimy marrentill', price: 18 }, { item: 'Grimy tarromin', price: 25 },
+  { item: 'Attack potion', price: 60 }, { item: 'Antipoison', price: 90 }, { item: 'Energy potion', price: 120 }, { item: 'Prayer potion', price: 400, unlock: 'apprentice' }
+];
+const pieces = ['full helm', 'platebody', 'platelegs', 'shield'];
+export const ARMOUR_STOCK = [
+  ...['Mithril', 'Adamant', 'Rune'].flatMap(m => pieces.map(pc => sell(`${m} ${pc}`))),
+  sell('Hard leather body'), sell('Leather cowl'), sell('Leather chaps'), sell('Amulet of defence'), sell('Ring of recoil', 2)
+];
+export const WEAPON_STOCK = [
+  ...['Steel', 'Mithril', 'Adamant', 'Rune'].map(m => sell(`${m} sword`)),
+  ...['Willow shortbow', 'Maple shortbow', 'Yew shortbow', 'Magic shortbow'].map(b => sell(b)),
+  ...['Iron', 'Steel', 'Mithril', 'Adamant', 'Rune'].map(m => ({ item: `${m} arrows`, price: Math.max(2, Math.round(itemValue(`${m} arrows`) * 1.6)) })),
+  sell('Warrior ring'), sell('Archer ring'), sell('Amulet of strength')
+];
+// Every shop in the game. NPC/stall entities carry shop: '<id>'.
+export const SHOPS = {
+  shop: { title: "Merchant's General Store", stock: SHOP_STOCK },
+  tools: { title: "Bob's Brilliant Tools", stock: TOOL_STOCK },
+  herb: { title: "Mira's Remedies", stock: HERB_STOCK },
+  herb2: { title: "Nessa's Herb Stall", stock: HERB_STOCK },
+  armour: { title: 'Saltmere Armoury', stock: ARMOUR_STOCK },
+  weapons: { title: 'Highcrag Weaponsmith', stock: WEAPON_STOCK },
+  general2: { title: 'Saltmere General Store', stock: SHOP_STOCK },
+  general3: { title: 'Highcrag Trading Post', stock: SHOP_STOCK },
+  apothecary: { title: 'Brightwater Apothecary', stock: HERB_STOCK }
+};
+
 // ---- Items in hand ---------------------------------------------------------
 export function healAmount(item, skills) {
   const info = ITEMS[item];
@@ -482,7 +602,7 @@ export function equip(player, skills, item, onLog) {
       if (skills[sk].level < lvl) { onLog(`You need a ${sk} level of ${lvl} to wear this.`, 'warn'); return false; }
     }
   }
-  if (info.questCape && !isDone(player, 'all')) { onLog('You need to complete every quest to wear this cape.', 'warn'); return false; }
+  if (info.questCape && !questCapeAllowed(player)) { onLog('You need to complete every quest to wear this cape.', 'warn'); return false; }
   if (!player.equipment) player.equipment = {};
   const qty = slot === 'ammo' ? (player.inventory[item] || 0) : 1;
   if (!qty) return false;

@@ -20,6 +20,7 @@ export function createPlayerState() {
     maxMana: 100,
     gold: 0,
     inventory: {},
+    effects: [], poison: null, poisonImmune: 0, questCapeLegacy: false,
     equipment: { weapon: null, body: null, legs: null, shield: null, head: null, ammo: null, neck: null, ring: null, cape: null },
     tools: Object.fromEntries(STARTER_TOOLS.map(t => [t, true])),
     prayerPoints: 10,

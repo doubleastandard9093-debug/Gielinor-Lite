@@ -402,7 +402,26 @@ export function createWorld(scene) {
     scene.add(g);
     pickables.push(g);
     colliders.push({ minX: x - 0.8, maxX: x + 0.8, minZ: z - 0.8, maxZ: z + 0.8 });
-    return tag(g, { mesh: g, type: 'building', name: 'Well', examine: 'The town well. The water looks clean.', alive: true, x, z, radius: 0.8 });
+    return tag(g, { mesh: g, type: 'well', name: 'Well', examine: 'The town well. Use it to fill empty vials with water.', alive: true, x, z, radius: 0.8 });
+  }
+
+  // Herb patch (Herblore): a raised dirt bed with leafy herbs. Never runs out. One draw call.
+  const HERB_TINT = [0x4a8a2a, 0x5a9a3a, 0x3a7a3a, 0x6a8a2a, 0x2a6a2a, 0x7a9a3a, 0x4a7a4a, 0x3a8a5a, 0x5a7a2a, 0x8aaa3a, 0x2a5a2a, 0x6a6a2a, 0x3a5a4a];
+  function createHerbPatch(x, z, herb, tintIdx = 0) {
+    const g = new THREE.Group();
+    g.add(part(G.box, 0x5a3a20, 1.5, 0.22, 1.1, 0, 0.11, 0, false));
+    g.add(part(G.box, 0x7a5a3a, 1.6, 0.1, 0.12, 0, 0.18, 0.55, false));
+    g.add(part(G.box, 0x7a5a3a, 1.6, 0.1, 0.12, 0, 0.18, -0.55, false));
+    const c = HERB_TINT[tintIdx % HERB_TINT.length];
+    for (const [hx, hz] of [[-0.45, -0.2], [0, 0.2], [0.45, -0.2], [-0.2, 0.25], [0.25, -0.25]]) {
+      g.add(part(G.cone4, c, 0.32, 0.45, 0.32, hx, 0.42, hz, false));
+    }
+    g.position.set(x, 0, z);
+    mergeStatic(g);
+    scene.add(g);
+    pickables.push(g);
+    occupied.push({ x, z, r: 1.0 });
+    return tag(g, { mesh: g, type: 'herb', herb, name: `${herb} patch`, alive: true, x, z, radius: 0.8 });
   }
 
   // Straight fence (instanced posts: one draw call per fence line).
@@ -499,6 +518,9 @@ export function createWorld(scene) {
   nodes.push(createNpc(-1.8, 13, 'captain', 'Captain Rhea', { body: 0x8a2a2a, legs: 0x3a3a4a, hat: 0x9a9aa8, hatH: 0.28, skin: 0xc89a74 }, 0, 0));
   nodes.push(createNpc(-16, 2, 'ranger', 'Ranger Wyn', { body: 0x2a5a2a, legs: 0x3a2a1a, hat: 0x1e4a1e, hatH: 0.2, skin: 0xc89a74 }, -20, 2));
   nodes.push(createNpc(1.8, -17, 'knight', 'Sir Vyvin', { body: 0xb0b0c0, legs: 0x8a8a9a, hat: 0xc0c0d0, hatH: 0.3, apron: 0x2a4aa0 }, 0, -17));
+  // Brightwater herb patches + the apothecary (Herblore shop)
+  ['Guam leaf', 'Marrentill', 'Tarromin', 'Harralander'].forEach((h, i) => nodes.push(createHerbPatch(0.6 + i * 2, -14, h, i)));
+  nodes.push(Object.assign(createNpc(1.2, -12, 'apothecary', 'Apothecary Lin', { body: 0x4a7a5a, legs: 0x3a3a2a, hat: 0x2a5a3a, hatH: 0.22, apron: 0xe0e0d0 }, 1.2, -14), { shop: 'apothecary' }));
   nodes.push(createNpc(-10.8, -16, 'farmer', 'Farmer Gil', { body: 0x6a8a3a, legs: 0x4a5a8a, hat: 0xd8c070, hatW: 0.8, hatH: 0.12 }, 0, 0));
   fenceLine(-8, -16.5, 0, -16.5);
   fenceLine(10.5, 9.2, 14.5, 9.2);
@@ -521,6 +543,10 @@ export function createWorld(scene) {
   const spots = [['Net', 3.6], ['Net', 4.3], ['Net', 5.0], ['Lure', -0.6], ['Lure', 0.2], ['Cage', 1.2], ['Harpoon', 2.0]];
   for (const [kind, a] of spots) {
     nodes.push(createFish(LAKE.x + Math.cos(a) * (LAKE.r - 0.6), LAKE.z + Math.sin(a) * (LAKE.r - 0.6), kind));
+  }
+  // Wild herb patches further out (higher herbs need higher Herblore)
+  for (const [h, x, z, ti] of [['Ranarr weed', -27, -8, 4], ['Toadflax', 30, -16, 5], ['Irit leaf', -12, -32, 6], ['Avantoe', 35, 12, 7]]) {
+    const p = place(x, z, 4, 1.2); if (p) nodes.push(createHerbPatch(p.x, p.z, h, ti));
   }
   createTower(0, 29);
   fence(-18, -16, 12, 10);

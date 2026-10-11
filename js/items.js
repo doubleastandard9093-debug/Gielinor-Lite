@@ -26,6 +26,7 @@ WOODS.forEach((w, i) => def(w, { type: 'resource', value: [2, 6, 12, 20, 40, 90]
 for (const [n, v] of [['Flax', 2], ['Cowhide', 6], ['Feather', 1], ['Raw beef', 3], ['Bowstring', 5], ['Soft leather', 10], ['Hard leather', 20]]) def(n, { type: n === 'Bowstring' || /leather/.test(n) ? 'processed' : 'resource', value: v });
 def('Bones', { type: 'bones', prayerXp: 10, value: 2 });
 def('Big bones', { type: 'bones', prayerXp: 30, value: 15 });
+def('Dragon bones', { type: 'bones', prayerXp: 72, value: 200 });
 def('Burnt food', { type: 'junk', value: 0 });
 
 // ---- Food: [raw, cooked, cook level, stop-burn level, heal, xp, value] ----
@@ -92,17 +93,78 @@ def("Angler's ring", { type: 'ring', gather: { Fishing: 0.04 }, xp: { Fishing: 0
 def('Red cape', { type: 'cape', def: 1, rdef: 1, value: 15 });
 def('Blue cape', { type: 'cape', def: 1, rdef: 1, value: 15 });
 def('Quest point cape', { type: 'cape', atk: 3, str: 3, ranged: 3, def: 6, rdef: 6, prayer: 4, regen: 0.1, questCape: true, value: 99 });
-export const SKILL_CAPE_SKILLS = ['Attack', 'Strength', 'Defence', 'Hitpoints', 'Ranged', 'Prayer', 'Mining', 'Woodcutting', 'Fishing', 'Smithing', 'Crafting', 'Cooking', 'Fletching'];
+export const SKILL_CAPE_SKILLS = ['Attack', 'Strength', 'Defence', 'Hitpoints', 'Ranged', 'Prayer', 'Mining', 'Woodcutting', 'Fishing', 'Smithing', 'Crafting', 'Cooking', 'Fletching', 'Herblore'];
 for (const sk of SKILL_CAPE_SKILLS) def(`${sk} cape`, { type: 'cape', def: 4, rdef: 4, prayer: 2, capeSkill: sk, req: { [sk]: 99 }, value: 9900 });
 
 // Full matched sets. pieces = how many you need; fx feeds the combat maths.
 export const SETS = {
   Leather: { pieces: ['head', 'body', 'legs'], fx: { racc: 0.05, dr: 0.02 } },
-  ...Object.fromEntries(METALS.map((m, t) => [m, { pieces: ['head', 'body', 'legs', 'shield'], fx: { dr: 0.02 + 0.01 * t, acc: 0.03 } }]))
+  ...Object.fromEntries(METALS.map((m, t) => [m, { pieces: ['head', 'body', 'legs', 'shield'], fx: { dr: 0.02 + 0.01 * t, acc: 0.03 } }])),
+  Wyrmscale: { pieces: ['head', 'body', 'legs', 'shield'], fx: { dr: 0.12, dmgPct: 0.1 } }
 };
 export function setDesc(fx) {
-  return Object.entries(fx).map(([k, v]) => ({ dr: `take ${Math.round(v * 100)}% less damage`, acc: `+${Math.round(v * 100)}% melee accuracy`, racc: `+${Math.round(v * 100)}% ranged accuracy` })[k]).join(', ');
+  return Object.entries(fx).map(([k, v]) => ({ dr: `take ${Math.round(v * 100)}% less damage`, acc: `+${Math.round(v * 100)}% melee accuracy`, racc: `+${Math.round(v * 100)}% ranged accuracy`, dmgPct: `+${Math.round(v * 100)}% damage` })[k]).join(', ');
 }
+
+// ---- Herblore: herbs, secondaries, vials, potions ----
+// [clean herb, level to pick/clean/use, clean XP, value]
+export const HERBS = [
+  ['Guam leaf', 1, 2.5, 3], ['Marrentill', 5, 3.8, 5], ['Tarromin', 11, 5, 8], ['Harralander', 20, 6.3, 15], ['Ranarr weed', 25, 7.5, 40],
+  ['Toadflax', 30, 8, 20], ['Irit leaf', 40, 8.8, 30], ['Avantoe', 48, 10, 45], ['Kwuarm', 54, 11.3, 55], ['Snapdragon', 59, 11.8, 80],
+  ['Cadantine', 65, 12.5, 70], ['Dwarf weed', 70, 13.8, 60], ['Torstol', 75, 15, 120]
+];
+export const grimyOf = herb => 'Grimy ' + herb.toLowerCase();
+for (const [h, lvl, , v] of HERBS) {
+  def(h, { type: 'herb', herbLevel: lvl, value: v });
+  def(grimyOf(h), { type: 'grimy', clean: h, herbLevel: lvl, value: Math.max(1, Math.round(v * 0.8)) });
+}
+export const SECONDARIES = ['Eye of newt', 'Unicorn horn dust', 'Limpwurt root', 'Chocolate dust', 'White berries', 'Snape grass', 'Goat horn dust',
+  'Red spider eggs', 'Wine of zamorak', 'Dragon scale dust'];
+SECONDARIES.forEach((n, i) => def(n, { type: 'secondary', value: [3, 15, 10, 10, 20, 15, 18, 25, 40, 60][i] }));
+def('Vial', { type: 'vial', value: 1 });
+def('Vial of water', { type: 'vial', value: 2 });
+// [potion, herb, secondary, level, xp, value, tint]
+export const POTION_RECIPES = [
+  ['Attack potion', 'Guam leaf', 'Eye of newt', 3, 25, 20, '#4a8ad0'],
+  ['Antipoison', 'Marrentill', 'Unicorn horn dust', 5, 37.5, 30, '#e0e0e0'],
+  ['Strength potion', 'Tarromin', 'Limpwurt root', 12, 50, 40, '#d04a4a'],
+  ['Energy potion', 'Harralander', 'Chocolate dust', 26, 67.5, 50, '#c08ae0'],
+  ['Defence potion', 'Ranarr weed', 'White berries', 30, 75, 60, '#4ad08a'],
+  ["Prospector's brew", 'Toadflax', 'Snape grass', 34, 80, 80, '#c0a040'],
+  ['Combat potion', 'Harralander', 'Goat horn dust', 36, 84, 90, '#d0a060'],
+  ['Prayer potion', 'Ranarr weed', 'Snape grass', 38, 87.5, 150, '#40c0b0'],
+  ['Super attack', 'Irit leaf', 'Eye of newt', 45, 100, 120, '#3a6ae0'],
+  ["Sage's brew", 'Avantoe', 'Red spider eggs', 50, 112.5, 160, '#e0d040'],
+  ['Super strength', 'Kwuarm', 'Limpwurt root', 55, 125, 160, '#e03a3a'],
+  ['Super restore', 'Snapdragon', 'Red spider eggs', 63, 142.5, 250, '#e06ab0'],
+  ['Super defence', 'Cadantine', 'White berries', 66, 150, 200, '#3ae07a'],
+  ['Ranging potion', 'Dwarf weed', 'Wine of zamorak', 72, 162.5, 220, '#3a9ae0'],
+  ['Super combat potion', 'Torstol', 'Dragon scale dust', 90, 150, 600, '#3a8a3a']
+];
+for (const [n, , , , , v] of POTION_RECIPES) def(n, { type: 'potion', value: v });
+
+// ---- Uniques: named drops and quest rewards with special effects ----
+// rarity colours the name; eff holds the special (see gameplay.js / main.js):
+//   doubleHit, bigHit (+50% damage), lifesteal, poison {chance, dmg}, stun, multiArrow, dmgPct, crit, reflect, potionTime
+export const RARITY = { uncommon: '#3ad03a', rare: '#3aa0ff', epic: '#c060ff', legendary: '#ff9a2a' };
+const U = (name, o) => def(name, { unique: true, ...o });
+U('Venom dagger', { type: 'weapon', atk: 22, str: 16, speed: 3, rarity: 'rare', eff: { poison: { chance: 0.25, dmg: 30 } }, special: '25% chance to poison (30 damage, fading)', req: { Attack: 30 }, value: 4000 });
+U('Vampyric blade', { type: 'weapon', atk: 32, str: 30, speed: 4, rarity: 'epic', eff: { lifesteal: 0.15 }, special: 'Heals you for 15% of the damage you deal', req: { Attack: 40 }, value: 9000 });
+U('Granite maul', { type: 'weapon', atk: 40, str: 58, speed: 6, rarity: 'rare', eff: { stun: 0.15 }, special: '15% chance to stun for 3 seconds. Slow but brutal', req: { Attack: 50, Strength: 50 }, value: 12000 });
+U('Dragon dagger', { type: 'weapon', atk: 40, str: 38, speed: 3, rarity: 'rare', eff: { doubleHit: 0.2 }, special: 'Puncture: 20% chance to strike twice', req: { Attack: 60 }, value: 18000 });
+U('Dragon longsword', { type: 'weapon', atk: 69, str: 71, speed: 4, rarity: 'epic', eff: { bigHit: 0.15 }, special: 'Cleave: 15% chance of a hit with +50% damage', req: { Attack: 60 }, value: 60000 });
+U('Dark bow', { type: 'weapon', ranged: 95, speed: 6, rarity: 'epic', eff: { multiArrow: 2 }, special: 'Fires two arrows every shot (uses 2 arrows)', req: { Ranged: 60 }, value: 80000 });
+U('Obsidian cape', { type: 'cape', str: 4, def: 9, rdef: 9, rarity: 'rare', eff: { dmgPct: 0.05 }, special: '+5% damage dealt', value: 15000 });
+U('Berserker ring', { type: 'ring', str: 12, rarity: 'epic', eff: { crit: 0.05 }, special: '+5% critical hit chance', value: 40000 });
+U('Ring of recoil', { type: 'ring', def: 2, rdef: 2, rarity: 'uncommon', eff: { reflect: 0.1 }, special: 'Reflects 10% of damage you take', value: 1500 });
+U("Captain's cutlass", { type: 'weapon', atk: 35, str: 32, speed: 4, rarity: 'rare', eff: { doubleHit: 0.1 }, special: '10% chance to strike twice', req: { Attack: 40 }, value: 8000 });
+U('Highcrag warhammer', { type: 'weapon', atk: 48, str: 55, speed: 5, rarity: 'epic', eff: { stun: 0.1, dmgPct: 0.05 }, special: '10% chance to stun, +5% damage', req: { Attack: 50 }, value: 20000 });
+U("Herbalist's amulet", { type: 'neck', def: 3, rdef: 3, prayer: 4, rarity: 'rare', eff: { potionTime: 0.25 }, special: 'Potions last 25% longer', value: 5000 });
+for (const [piece, type, d, rd, extra] of [['helm', 'head', 30, 32, {}], ['body', 'body', 75, 80, { ranged: -6 }], ['legs', 'legs', 55, 58, { ranged: -3 }], ['shield', 'shield', 60, 60, {}]]) {
+  U(`Wyrmscale ${piece}`, { type, def: d, rdef: rd, ...extra, set: 'Wyrmscale', rarity: 'legendary', special: 'Wyrmscale set: 12% less damage and +10% damage with all 4 pieces', req: { Defence: 70 }, value: 50000 });
+}
+export function rarityOf(item) { return (ITEMS[item] && ITEMS[item].rarity) || null; }
+export function rarityColor(item) { const r = rarityOf(item); return r ? RARITY[r] : null; }
 
 // ---- Single-tier tools ----
 export const TOOL_TYPES = [
@@ -142,7 +204,7 @@ const KIND_ICON = { sword: '🗡️', 'full helm': '⛑️', shield: '🛡️', 
 const FIXED_ICONS = {
   Coal: ['🪨', '#11111180'], 'Copper ore': ['🪨', '#b8733340'], 'Tin ore': ['🪨', '#c8c8c840'], 'Iron ore': ['🪨', '#8a4b3a50'],
   'Mithril ore': ['🪨', '#5a6ad060'], 'Adamantite ore': ['🪨', '#3a9a5a60'], 'Runite ore': ['🪨', '#3ab8d060'],
-  Flax: ['🌾', ''], Cowhide: ['🐄', ''], Bones: ['🦴', ''], 'Big bones': ['🦴', '#e0d0a060'], 'Raw beef': ['🥩', ''], Feather: ['🪶', ''],
+  Flax: ['🌾', ''], Cowhide: ['🐄', ''], Bones: ['🦴', ''], 'Big bones': ['🦴', '#e0d0a060'], 'Dragon bones': ['🦴', '#3a8a3a60'], 'Raw beef': ['🥩', ''], Feather: ['🪶', ''],
   Bowstring: ['🧵', ''], 'Soft leather': ['🟫', ''], 'Hard leather': ['🟫', '#5a3a1a60'], 'Burnt food': ['🍘', '#22222280'],
   'Raw shrimp': ['🦐', ''], 'Cooked shrimp': ['🍤', ''], 'Raw trout': ['🐟', ''], 'Cooked trout': ['🐠', ''], 'Raw salmon': ['🐟', '#e0806040'],
   'Cooked salmon': ['🍣', ''], 'Cooked meat': ['🍖', ''], 'Raw lobster': ['🦞', '#40608040'], 'Cooked lobster': ['🦞', ''],
@@ -157,8 +219,26 @@ const FIXED_ICONS = {
   'Red cape': ['🧣', '#c0303060'], 'Blue cape': ['🧣', '#3050c060'], 'Quest point cape': ['🧣', '#3060ff80']
 };
 const WOOD_TINT = ['', '#c49a5a40', '#7a9a4a40', '#c0702a40', '#4a6a3a50', '#3a5ad050'];
+const UNIQUE_ICON = { 'Venom dagger': '🗡️', 'Vampyric blade': '🗡️', 'Granite maul': '🔨', 'Dragon dagger': '🗡️', 'Dragon longsword': '⚔️', 'Dark bow': '🏹',
+  'Obsidian cape': '🧣', 'Berserker ring': '💍', 'Ring of recoil': '💍', "Captain's cutlass": '🗡️', 'Highcrag warhammer': '🔨', "Herbalist's amulet": '📿' };
+const SECOND_ICON = { 'Eye of newt': '👁️', 'Unicorn horn dust': '🦄', 'Limpwurt root': '🥕', 'Chocolate dust': '🍫', 'White berries': '🫐', 'Snape grass': '🌱',
+  'Goat horn dust': '🐐', 'Red spider eggs': '🔴', 'Wine of zamorak': '🍷', 'Dragon scale dust': '🐉' };
 export function iconFor(item) {
   if (FIXED_ICONS[item]) return FIXED_ICONS[item];
+  const info0 = ITEMS[item];
+  if (info0) {
+    if (info0.unique) {
+      const tint = RARITY[info0.rarity] + '50';
+      if (/^Wyrmscale/.test(item)) return [{ head: '⛑️', body: '🦺', legs: '👖', shield: '🛡️' }[info0.type], '#2a8a3a80'];
+      return [UNIQUE_ICON[item] || '✨', tint];
+    }
+    if (info0.type === 'herb') return ['🌿', '#3ad03a30'];
+    if (info0.type === 'grimy') return ['🌿', '#6a5a2a60'];
+    if (info0.type === 'secondary') return [SECOND_ICON[item] || '🧂', ''];
+    if (item === 'Vial') return ['⚱️', ''];
+    if (item === 'Vial of water') return ['🧪', '#3a7ad040'];
+    if (info0.type === 'potion') { const r = POTION_RECIPES.find(p => p[0] === item); return ['🧪', (r ? r[6] : '#888888') + '60']; }
+  }
   if (ITEMS[item] && ITEMS[item].capeSkill) return ['🧣', '#d4af3780'];
   const w = WOODS.indexOf(item);
   if (w >= 0) return ['🪵', WOOD_TINT[w]];
@@ -199,17 +279,33 @@ export function examineItem(item) {
     : `It's ${/^[aeiou]/i.test(item) ? 'an' : 'a'} ${item.toLowerCase()}.`);
   if (info.capeSkill) text = `The cape worn by masters of ${info.capeSkill}. Boosts your ${info.capeSkill} perks by 10%.`;
   if (info.questCape) text = 'The cape of a true adventurer. Needs every quest complete.';
+  if (info.type === 'grimy') text = `I need to clean this herb before I can use it (Herblore ${info.herbLevel}).`;
+  if (info.type === 'herb') text = `A clean ${item.toLowerCase()}, ready for a potion.`;
+  if (info.type === 'potion' && POTION_INFO[item]) text = `${item}: ${POTION_INFO[item]}.`;
+  if (info.unique) text = `[${info.rarity[0].toUpperCase() + info.rarity.slice(1)}] ${item}. Special: ${info.special}.`;
   const bits = [];
   if (info.heal) bits.push(`heals ${info.heal * HEAL_SCALE}`);
   if (info.prayerXp) bits.push(`bury for ${info.prayerXp} Prayer xp`);
   const st = statLine(item);
   if (st) bits.push(st);
   if (info.set) bits.push(`${info.set} set piece`);
+  if (info.eff && info.eff.potionTime) bits.push(`potions +${Math.round(info.eff.potionTime * 100)}% duration`);
   if (info.tool && info.toolTier !== undefined) bits.push(`tier ${info.toolTier + 1} tool`);
   if (info.req) bits.push('needs ' + Object.entries(info.req).map(([k, v]) => `${k} ${v}`).join(', '));
   if (bits.length) text += ` (${bits.join(', ')})`;
   return text;
 }
+
+// Short potion descriptions for examine (effects live in potions.js).
+export const POTION_INFO = {
+  'Attack potion': '+3 +10% Attack for 5 minutes', Antipoison: 'cures poison and protects you for 90 seconds',
+  'Strength potion': '+3 +10% Strength for 5 minutes', 'Energy potion': 'restores 30% run energy',
+  'Defence potion': '+3 +10% Defence for 5 minutes', "Prospector's brew": '+10% mining, woodcutting, fishing and herb success for 5 minutes',
+  'Combat potion': '+3 +10% Attack and Strength for 5 minutes', 'Prayer potion': 'restores 7 + 25% of your prayer points',
+  'Super attack': '+5 +15% Attack for 5 minutes', "Sage's brew": '+10% XP in every skill for 5 minutes', 'Super strength': '+5 +15% Strength for 5 minutes',
+  'Super restore': 'restores 8 + 25% of your prayer points and 20% run energy', 'Super defence': '+5 +15% Defence for 5 minutes',
+  'Ranging potion': '+4 +10% Ranged for 5 minutes', 'Super combat potion': '+5 +15% Attack, Strength and Defence for 5 minutes'
+};
 
 // ---- Recipes ----
 // cat = Crafting panel sub-tab, group = heading inside it. station: furnace, anvil, range. tool: needed on the belt.
@@ -250,7 +346,11 @@ for (const [raw, cooked, lvl, stop, , xp] of FOODS) {
   R({ name: `Cook ${cooked.replace('Cooked ', '')}`, cat: 'Cooking', group: 'Range or fire', skill: 'Cooking', level: lvl, inputs: { [raw]: 1 }, output: cooked, xp, station: 'range', burnStop: stop });
 }
 
-export const CRAFT_TABS = ['Smithing', 'Crafting', 'Fletching', 'Cooking'];
+// Herblore: clean grimy herbs, then herb + vial of water + secondary = potion.
+for (const [n, herb, sec, lvl, xp] of POTION_RECIPES) R({ name: `Brew ${n}`, cat: 'Herblore', group: 'Potions', skill: 'Herblore', level: lvl, inputs: { [herb]: 1, 'Vial of water': 1, [sec]: 1 }, output: n, xp });
+for (const [h, lvl, xp] of HERBS) R({ name: `Clean ${h}`, cat: 'Herblore', group: 'Cleaning', skill: 'Herblore', level: lvl, inputs: { [grimyOf(h)]: 1 }, output: h, xp });
+
+export const CRAFT_TABS = ['Smithing', 'Crafting', 'Fletching', 'Cooking', 'Herblore'];
 
 export function recipeOutputQty(recipe) {
   const info = ITEMS[recipe.output];

@@ -2,7 +2,8 @@
 import { ITEMS, RECIPES, iconFor, CRAFT_TABS, METALS, TOOL_TYPES, statLine, setDesc } from './items.js';
 import { SKILLS, SKILL_ICONS, xpToNext, levelProgress, nextLevelXp, combatLevel, totalLevel, PERKS, maxPrayer, perkTotals, CAPS_TEXT } from './skills.js';
 import { INV_SIZE, slotsUsed } from './playerState.js';
-import { stylesFor, currentStyle, equipmentBonuses, playerMaxHit, playerAccuracy, monsterAccuracy, MONSTER_TYPES, SHOP_STOCK, TOOL_STOCK, sellPrice, buyPrice, stockVisible, bestTool } from './gameplay.js';
+import { stylesFor, currentStyle, equipmentBonuses, playerMaxHit, playerAccuracy, monsterAccuracy, MONSTER_TYPES, SHOP_STOCK, TOOL_STOCK, sellPrice, buyPrice, stockVisible, bestTool, SHOPS } from './gameplay.js';
+import { boostOf, POTIONS } from './potions.js';
 import { PRAYERS, isActive, drainPerTick, prayerBonus } from './prayer.js';
 import { ABILITIES, unlocked } from './abilities.js';
 import { QUESTS, questStatus, questPoints, QUEST_POINTS_TOTAL, activeQuestBonuses } from './quests.js';
@@ -107,7 +108,7 @@ export function createInventoryUI(api) {
 
   function renderInv() {
     const used = slotsUsed(player);
-    const hint = mode === 'bank' ? 'Tap an item to bank it' : (mode === 'shop' || mode === 'tools') ? 'Tap an item to sell it' : 'Tap to use · hold for options';
+    const hint = mode === 'bank' ? 'Tap an item to bank it' : SHOPS[mode] ? 'Tap an item to sell it' : 'Tap to use · hold for options';
     return `<div class="tab-head"><b>Inventory</b><span>${used}/${INV_SIZE} · <span class="gold">${fmt(player.gold)} gp</span></span></div>
       <div class="invgrid">${invCells().map(c => c ? itemCell(c.item, c.qty) : '<div class="slot"></div>').join('')}</div>
       <div class="hint">${hint}</div>`;
@@ -127,12 +128,15 @@ export function createInventoryUI(api) {
     let html = `<div class="tab-head"><b>Skills</b><span>Total ${totalLevel(skills)}</span></div><div class="skillgrid">`;
     for (const s of SKILLS) {
       const k = skills[s];
-      html += `<div class="skill ${selectedSkill === s ? 'sel' : ''}" data-skill="${s}"><span>${SKILL_ICONS[s]}</span><b>${k.level}</b><i style="width:${(levelProgress(k) * 100).toFixed(0)}%"></i></div>`;
+      const bst = boostOf(player, s);
+      html += `<div class="skill ${selectedSkill === s ? 'sel' : ''}" data-skill="${s}"><span>${SKILL_ICONS[s]}</span><b${bst ? ' class="boosted"' : ''}>${bst ? `${k.level + bst}/${k.level}` : k.level}</b><i style="width:${(levelProgress(k) * 100).toFixed(0)}%"></i></div>`;
     }
     html += '</div>';
     if (selectedSkill) {
       const k = skills[selectedSkill];
-      html += `<div class="skilldetail"><b>${selectedSkill}</b> level ${k.level}<br>XP: ${fmt(k.xp)}<br>` +
+      const bst = boostOf(player, selectedSkill);
+      html += `<div class="skilldetail"><b>${selectedSkill}</b> level ${bst ? `<span class="boosted">${k.level + bst}</span>/${k.level} (potion boost)` : k.level}<br>XP: ${fmt(k.xp)}<br>` +
+        (selectedSkill === 'Herblore' ? '<small>Herblore (herbology): pick grimy herbs from patches, clean them, then brew potions with a vial of water and a secondary from monster drops.</small><br>' : '') +
         (k.level >= 99 ? 'Maximum level!' : `Next level at: ${fmt(nextLevelXp(k))}<br>Remaining: ${fmt(xpToNext(k))}`) +
         `<div class="bar"><i style="width:${(levelProgress(k) * 100).toFixed(1)}%"></i></div>
         ${perkPanel(selectedSkill, k)}</div>`;
@@ -292,7 +296,7 @@ export function createInventoryUI(api) {
     return `<div class="qtybar">${label}${opts.map(q => `<button data-qty="${q}" class="${qtyMode === q ? 'on' : ''}">${q}</button>`).join('')}</div>`;
   }
   function shopStock() {
-    const list = mode === 'tools' ? TOOL_STOCK : SHOP_STOCK;
+    const list = (SHOPS[mode] || SHOPS.shop).stock;
     return list.filter(s => stockVisible(s, player, skills));
   }
   function renderWindow() {
@@ -308,7 +312,7 @@ export function createInventoryUI(api) {
     } else if (mode === 'help') {
       html = `<div class="win-head"><b>What's new in Gielinor</b><button class="close" data-act="close">✕</button></div><div class="helptext">${WHATS_NEW}</div>`;
     } else {
-      const title = mode === 'tools' ? "Bob's Brilliant Tools" : "Merchant's General Store";
+      const title = (SHOPS[mode] || SHOPS.shop).title;
       html = `<div class="win-head"><b>${title}</b><span class="gold">${fmt(player.gold)} gp</span><button class="close" data-act="close">✕</button></div>
         ${qtyBar('Buy/sell: ')}
         <div class="bankgrid">${shopStock().map(s => {
@@ -359,7 +363,7 @@ export function createInventoryUI(api) {
   bindPress(content, '.slot.item:not(.worn):not(.tool)', el => {
     const item = el.dataset.item;
     if (mode === 'bank') api.deposit(item, qtyMode);
-    else if (mode === 'shop' || mode === 'tools') api.sell(item, qtyMode);
+    else if (SHOPS[mode]) api.sell(item, qtyMode);
     else api.useItem(item);
   }, (el, x, y) => api.itemMenu(el.dataset.item, x, y, mode));
   bindPress(content, '.slot.item.worn', el => api.unequip(el.dataset.slot), (el, x, y) => api.wornMenu(el.dataset.slot, x, y));

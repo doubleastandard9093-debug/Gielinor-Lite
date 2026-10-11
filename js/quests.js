@@ -24,6 +24,8 @@ export function isDone(player, id) {
   if (id === 'all') return QUESTS.every(x => q(player, x.id).stage === 'done');
   return q(player, id).stage === 'done';
 }
+// Quest point cape: every quest done, or kept from an older save that had it.
+export function questCapeAllowed(player) { return isDone(player, 'all') || !!player.questCapeLegacy; }
 export function questPoints(player) {
   return QUESTS.reduce((t, x) => t + (isDone(player, x.id) ? x.points : 0), 0);
 }
