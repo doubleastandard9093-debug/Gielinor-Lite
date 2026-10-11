@@ -677,18 +677,16 @@ function doGatherTick(a) {
   if (r.bank) player.bank[r.item] = (player.bank[r.item] || 0) + (r.qty || 1);
   else addItem(player, r.item, r.qty || 1);
   giveXP(r.skill, r.xp);
-  // Handle extra skill drops (bird nests, gems, etc.)
-  if (r.extras && r.extras.length) {
-    for (const ex of r.extras) {
-      if (canAdd(player, ex.item)) addItem(player, ex.item, ex.qty || 1);
-      else player.bank[ex.item] = (player.bank[ex.item] || 0) + (ex.qty || 1);
-      log(`You also find a ${ex.item}!`, 'skill');
-    }
-  }
   log((GOT(r.item) || (node.type === 'rock' ? `You manage to mine some ${r.item.replace(' ore', '').toLowerCase()}.` : `You catch some ${r.item.replace('Raw ', '').toLowerCase()}.`)) +
     (r.qty > 1 ? ' Your perk doubles it!' : '') + (r.bank ? ' It is sent straight to your bank.' : ''), 'skill');
-  // Resources never run out: keep going until the pack is full.
-  if (!r.bank && !canAdd(player, r.item)) {
+  // OSRS-style depletion
+  if (r.depleted) {
+    const info = gatherInfo(node);
+    const respawnMs = (info && info.respawn) || 8000;
+    depleteNode(node, respawnMs);
+    log(node.type === 'tree' ? 'The tree falls.' : 'The rock is depleted.', 'skill');
+    stopAction();
+  } else if (!r.bank && !canAdd(player, r.item)) {
     log('Your inventory is too full to hold any more.', 'warn');
     stopAction();
   }
