@@ -573,6 +573,7 @@ export function createWorld(scene) {
   // Brightwater herb patches + the apothecary (Herblore shop)
   ['Guam leaf', 'Marrentill', 'Tarromin', 'Harralander'].forEach((h, i) => nodes.push(createHerbPatch(0.6 + i * 2, -14, h, i)));
   nodes.push(Object.assign(createNpc(1.2, -12, 'apothecary', 'Apothecary Lin', { body: 0x4a7a5a, legs: 0x3a3a2a, hat: 0x2a5a3a, hatH: 0.22, apron: 0xe0e0d0 }, 1.2, -14), { shop: 'apothecary' }));
+  nodes.push(createNpc(-10.8, -16, 'farmer', 'Farmer Gil', { body: 0x6a8a3a, legs: 0x4a5a8a, hat: 0xd8c070, hatW: 0.8, hatH: 0.12 }, 0, 0));
   nodes.push(createNpc(-22, 18, 'fisherman', 'Fisherman Fred', { body: 0x4a6a8a, legs: 0x3a3a2a, hat: 0x2a4a6a, hatH: 0.2, skin: 0xc89a74 }, -20, 16));
   // Ashford NPCs
   nodes.push(createNpc(50, -22, 'mayor', 'Mayor Aldric', { body: 0x4a3a2a, legs: 0x3a2a1a, hat: 0x8a6a3a, hatH: 0.25, beard: 0x6a4a2a }, 48, -25));

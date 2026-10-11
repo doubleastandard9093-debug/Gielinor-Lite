@@ -6,7 +6,7 @@
 //   { choose: [['Option label', [...entries]], ...] }
 //   { run: () => {} }   (runs when the conversation reaches it)
 
-export const QUEST_POINTS_TOTAL = 24;
+export const QUEST_POINTS_TOTAL = 25;
 
 export function q(player, id) {
   player.quests = player.quests || {};
@@ -358,9 +358,9 @@ export const QUESTS = [
     reward(g) { g.xp('Fishing', 2000); g.gold(1000); g.tool('Harpoon'); },
     talk(player, g) {
       const s = q(player, 'fishing').stage;
-      if (s === 'done') return [['npc', 'Those trout and salmon were perfect! The lake's been good to us both.']];
+      if (s === 'done') return [['npc', "Those trout and salmon were perfect! The lake's been good to us both."]];
       if (s === 0) return [
-        ['npc', 'Ahoy! The market wants more fish, but my old bones aren't what they used to be.'],
+        ['npc', "Ahoy! The market wants more fish, but my old bones aren't what they used to be."],
         ['npc', 'Could you bring me 5 Raw trout and 3 Raw salmon from the lake? Lure spots for trout, harpoon for salmon.'],
         { choose: [
           ['Happy to fish for you.', [{ run: () => setQ(player, 'fishing', { stage: 1 }) }, ['npc', 'Grand! The lake is just south-west.']]],
@@ -746,11 +746,11 @@ export function questForNpc(npc) { return QUESTS.find(x => x.giver === npc); }
 export function onKill(player, monName) {
   const out = [];
   for (const [id, mon, need, returnTo] of [
-    ['archers', 'Dark Archer', 3, 'Ranger Wyn'],
-    ['honour', 'Black Knight', 2, 'Sir Vyvin'],
-    ['eastern_guards', 'Goblin', 8, 'Guard Captain Ryn'],
-    ['scout_report', 'Dark Archer', 4, 'Scout Vey'],
-    ['knight_honour_east', 'Black Knight', 3, 'Sir Elric']
+    ['archers', "Dark Archer', 3, 'Ranger Wyn"],
+    ['honour', "Black Knight', 2, 'Sir Vyvin"],
+    ['eastern_guards', "Goblin', 8, 'Guard Captain Ryn"],
+    ['scout_report', "Dark Archer', 4, 'Scout Vey"],
+    ['knight_honour_east', "Black Knight', 3, 'Sir Elric"]
   ]) {
     const st = q(player, id);
     if (st.stage === 1 && monName === mon) {
@@ -828,7 +828,7 @@ export const QP_MILESTONES = [
   { qp: 3, desc: 'Run energy restores 25% faster', fx: { runRegen: 0.25 } },
   { qp: 6, desc: '+2% XP in every skill', fx: { 'xp.*': 0.02 } },
   { qp: 9, desc: '+20 max hitpoints', fx: { maxHp: 20 } },
-  { qp: 24, desc: 'Every quest done: Quest point cape and +3% XP in every skill', fx: { 'xp.*': 0.03 } }
+  { qp: 25, desc: 'Every quest done: Quest point cape and +3% XP in every skill', fx: { 'xp.*': 0.03 } }
 ];
 // Sum of one bonus from every completed quest and reached milestone.
 export function questFx(player, key) {
