@@ -362,14 +362,25 @@ export function createWorld(scene) {
   // Generic humanoid NPC. look: { body, legs, hat, skin, beard, apron }
   function createNpc(x, z, npc, name, look, faceX = 0, faceZ = 0) {
     const g = new THREE.Group();
-    g.add(part(G.box, look.body, 0.7, 0.9, 0.42, 0, 1.0, 0));
-    g.add(part(G.box, look.skin || 0xd4a574, 0.5, 0.48, 0.48, 0, 1.68, 0));
-    g.add(part(G.box, look.legs || 0x3a2a1a, 0.6, 0.55, 0.36, 0, 0.28, 0));
-    g.add(part(G.box, look.skin || 0xd4a574, 0.16, 0.65, 0.16, -0.45, 1.0, 0));
-    g.add(part(G.box, look.skin || 0xd4a574, 0.16, 0.65, 0.16, 0.45, 1.0, 0));
-    if (look.hat) g.add(part(G.box, look.hat, look.hatW || 0.56, look.hatH || 0.18, look.hatW || 0.56, 0, 2.0 + (look.hatH || 0.18) / 2 - 0.08, 0));
-    if (look.beard) g.add(part(G.box, look.beard, 0.42, 0.25, 0.1, 0, 1.5, 0.26, false));
-    if (look.apron) g.add(part(G.box, look.apron, 0.6, 0.8, 0.05, 0, 0.9, 0.23, false));
+    const skin = look.skin || 0xd4a574;
+    // Torso with slight taper
+    g.add(part(G.box, look.body, 0.68, 0.85, 0.38, 0, 1.05, 0));
+    // Shoulders
+    g.add(part(G.box, look.body, 0.82, 0.22, 0.42, 0, 1.38, 0));
+    // Head (sphere for rounder look)
+    g.add(part(G.sphere, skin, 0.42, 0.46, 0.42, 0, 1.78, 0));
+    // Legs
+    g.add(part(G.box, look.legs || 0x3a2a1a, 0.28, 0.62, 0.28, -0.18, 0.31, 0));
+    g.add(part(G.box, look.legs || 0x3a2a1a, 0.28, 0.62, 0.28, 0.18, 0.31, 0));
+    // Arms
+    g.add(part(G.cyl, skin, 0.12, 0.58, 0.12, -0.42, 1.05, 0));
+    g.add(part(G.cyl, skin, 0.12, 0.58, 0.12, 0.42, 1.05, 0));
+    // Hands
+    g.add(part(G.sphere, skin, 0.1, 0.1, 0.1, -0.42, 0.72, 0));
+    g.add(part(G.sphere, skin, 0.1, 0.1, 0.1, 0.42, 0.72, 0));
+    if (look.hat) g.add(part(G.box, look.hat, look.hatW || 0.5, look.hatH || 0.16, look.hatW || 0.5, 0, 2.05, 0));
+    if (look.beard) g.add(part(G.box, look.beard, 0.36, 0.22, 0.08, 0, 1.55, 0.22, false));
+    if (look.apron) g.add(part(G.box, look.apron, 0.55, 0.7, 0.04, 0, 0.95, 0.2, false));
     g.position.set(x, 0, z);
     g.rotation.y = Math.atan2(faceX - x, faceZ - z);
     mergeStatic(g);
