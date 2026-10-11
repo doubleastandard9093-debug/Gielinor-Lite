@@ -361,7 +361,7 @@ for (const [raw, cooked, lvl, stop, , xp] of FOODS) {
 
 
 // Dragon metal
-R({ name: 'Smelt Dragon bar', cat: 'Smithing', group: 'Bars', skill: 'Smithing', level: 90, inputs: { 'Dragon ore': 1 }, output: 'Dragon bar', xp: 90, station: 'furnace' });
+R({ name: 'Smelt Dragon bar', cat: 'Smithing', group: 'Smelting', skill: 'Smithing', level: 90, inputs: { 'Dragon ore': 1 }, output: 'Dragon bar', xp: 90, station: 'furnace' });
 
 // Herblore: clean grimy herbs, then herb + vial of water + secondary = potion.
 for (const [n, herb, sec, lvl, xp] of POTION_RECIPES) R({ name: `Brew ${n}`, cat: 'Herblore', group: 'Potions', skill: 'Herblore', level: lvl, inputs: { [herb]: 1, 'Vial of water': 1, [sec]: 1 }, output: n, xp });
