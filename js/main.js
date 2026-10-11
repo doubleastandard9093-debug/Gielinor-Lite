@@ -359,16 +359,28 @@ function setting(act) {
   if (act === 'save') { if (saveToLocal(skills, player, pm)) log('Game saved.', 'game'); }
   else if (act === 'export') { exportSave(skills, player, pm); log('Save exported.', 'game'); }
   else if (act === 'import') {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json,application/json';
-    input.onchange = () => {
-      if (!input.files[0]) return;
-      importSave(input.files[0], skills, player, pm, ok => {
-        if (ok) { afterLoad(); log('Save imported.', 'game'); } else log('Import failed.', 'warn');
+    // iPhone Safari needs the file input to live in the page and not filter file types too strictly.
+    let input = document.getElementById('saveFileInput');
+    if (!input) {
+      input = document.createElement('input');
+      input.type = 'file';
+      input.id = 'saveFileInput';
+      input.accept = '.json,application/json,text/plain,text/*';
+      input.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;';
+      document.body.appendChild(input);
+      input.addEventListener('change', () => {
+        const f = input.files && input.files[0];
+        input.value = '';
+        if (!f) return;
+        importSave(f, skills, player, pm, ok => finishImport(ok));
       });
-    };
+    }
+    input.value = '';
     input.click();
+  }
+  else if (act === 'paste') {
+    const text = window.prompt('Paste your save text here (open the .json file, Select All, Copy):');
+    if (text && text.trim()) finishImport(applySaveData(text.trim(), skills, player, pm));
   }
   else if (act === 'dpad') { s.showDpad = !s.showDpad; inputCtl.setDpadVisible(s.showDpad); }
   else if (act === 'shadows') { s.shadows = !shadowsOn(); setShadows(renderer, dirLight, s.shadows); }
@@ -377,6 +389,10 @@ function setting(act) {
   else if (act === 'autoloot') s.autoLoot = !s.autoLoot;
   else if (act === 'camera') { rig.targetYaw = 0; rig.targetPitch = 0.9; rig.targetDist = window.innerHeight > window.innerWidth ? 19 : 17; }
   markDirty();
+}
+function finishImport(ok) {
+  if (ok) { afterLoad(); saveToLocal(skills, player, pm); log('Save imported.', 'game'); }
+  else log('Import failed: that file is not a Gielinor save.', 'warn');
 }
 function toggleRun() {
   if (!player.settings.run && player.runEnergy < 1) { log('You have no run energy left.', 'warn'); return; }

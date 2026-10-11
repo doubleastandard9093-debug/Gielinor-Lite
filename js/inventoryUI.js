@@ -280,7 +280,7 @@ export function createInventoryUI(api) {
     const s = player.settings;
     const t = (act, label, on) => `<button class="toggle ${on ? 'on' : ''}" data-act="${act}">${label}: ${on ? 'On' : 'Off'}</button>`;
     return `<div class="tab-head"><b>Settings</b></div>
-      <div class="savebtns"><button data-act="save">💾 Save</button><button data-act="export">Export</button><button data-act="import">Import</button></div>
+      <div class="savebtns"><button data-act="save">💾 Save</button><button data-act="export">Export</button><button data-act="import">Import</button><button data-act="paste">Paste save</button></div>
       <button class="toggle new" data-act="help">✨ What's new</button>
       ${t('dpad', 'On-screen D-pad', s.showDpad)}
       ${t('shadows', 'Shadows', api.shadowsOn())}
