@@ -7,13 +7,13 @@
 
 export const HEAL_SCALE = 10; // hitpoints are 10x classic RuneScape
 
-export const METALS = ['Bronze', 'Iron', 'Steel', 'Mithril', 'Adamant', 'Rune'];
-export const METAL_TINT = { Bronze: '#b87333', Iron: '#9a9a9a', Steel: '#d0d8e0', Mithril: '#5a6ad0', Adamant: '#3a9a5a', Rune: '#3ab8d0' };
-const TIER_REQ = [1, 10, 20, 30, 40, 50];          // Attack / Defence to wear
-const TOOL_REQ = [1, 1, 6, 21, 31, 41];             // Woodcutting / Mining to use
-const SMITH_BASE = [1, 15, 30, 50, 70, 85];
-const BAR_XP = [12.5, 25, 37.5, 50, 62.5, 75];
-const VALUE_MULT = [1, 3, 8, 20, 50, 130];
+export const METALS = ['Bronze', 'Iron', 'Steel', 'Mithril', 'Adamant', 'Rune', 'Dragon'];
+export const METAL_TINT = { Bronze: '#b87333', Iron: '#9a9a9a', Steel: '#d0d8e0', Mithril: '#5a6ad0', Adamant: '#3a9a5a', Rune: '#3ab8d0', Dragon: '#c04040' };
+const TIER_REQ = [1, 10, 20, 30, 40, 50, 60];          // Attack / Defence to wear
+const TOOL_REQ = [1, 1, 6, 21, 31, 41, 61];             // Woodcutting / Mining to use
+const SMITH_BASE = [1, 15, 30, 50, 70, 85, 90];
+const BAR_XP = [12.5, 25, 37.5, 50, 62.5, 75, 90];
+const VALUE_MULT = [1, 3, 8, 20, 50, 130, 350];
 export const WOODS = ['Logs', 'Oak logs', 'Willow logs', 'Maple logs', 'Yew logs', 'Magic logs'];
 
 export const ITEMS = {};
@@ -27,19 +27,6 @@ for (const [n, v] of [['Flax', 2], ['Cowhide', 6], ['Feather', 1], ['Raw beef', 
 def('Bones', { type: 'bones', prayerXp: 10, value: 2 });
 def('Big bones', { type: 'bones', prayerXp: 30, value: 15 });
 def('Dragon bones', { type: 'bones', prayerXp: 72, value: 200 });
-def('Uncut sapphire', { type: 'resource', value: 25 });
-def('Uncut emerald', { type: 'resource', value: 50 });
-def('Uncut ruby', { type: 'resource', value: 100 });
-def('Uncut diamond', { type: 'resource', value: 250 });
-def('Sapphire', { type: 'processed', value: 40 });
-def('Emerald', { type: 'processed', value: 80 });
-def('Ruby', { type: 'processed', value: 160 });
-def('Diamond', { type: 'processed', value: 400 });
-def('Gold bar', { type: 'processed', value: 120 });
-def('Bird nest', { type: 'resource', value: 30 });
-def('Raw pike', { type: 'resource', value: 8 });
-def('Raw tuna', { type: 'resource', value: 20 });
-
 def('Burnt food', { type: 'junk', value: 0 });
 
 // ---- Food: [raw, cooked, cook level, stop-burn level, heal, xp, value] ----
@@ -47,9 +34,7 @@ export const FOODS = [
   ['Raw shrimp', 'Cooked shrimp', 1, 34, 3, 30, 4], ['Raw beef', 'Cooked meat', 1, 34, 4, 30, 4],
   ['Raw trout', 'Cooked trout', 15, 50, 7, 70, 10], ['Raw salmon', 'Cooked salmon', 25, 58, 9, 90, 15],
   ['Raw lobster', 'Cooked lobster', 40, 74, 12, 120, 40], ['Raw swordfish', 'Cooked swordfish', 45, 86, 14, 140, 60],
-  ['Raw shark', 'Cooked shark', 80, 99, 20, 210, 150],
-  ['Raw pike', 'Cooked pike', 20, 55, 6, 60, 12],
-  ['Raw tuna', 'Cooked tuna', 30, 64, 10, 100, 25]
+  ['Raw shark', 'Cooked shark', 80, 99, 20, 210, 150]
 ];
 for (const [raw, cooked, , , heal, , v] of FOODS) {
   if (!ITEMS[raw]) def(raw, { type: 'resource', value: Math.max(2, Math.round(v * 1.2)) });
@@ -64,7 +49,7 @@ function armour(def, t, rangedPenalty) {
   return o;
 }
 const GEAR = {
-  sword:  { suffix: 'sword', slot: 'weapon', bars: 1, off: 2,  stat: t => ({ atk: [5, 9, 14, 20, 28, 38][t], str: [3, 6, 10, 15, 22, 32][t], speed: 4, req: { Attack: TIER_REQ[t] } }), val: 15 },
+  sword:  { suffix: 'sword', slot: 'weapon', bars: 1, off: 2,  stat: t => ({ atk: [5, 9, 14, 20, 28, 38, 52][t], str: [3, 6, 10, 15, 22, 32, 48][t], speed: 4, req: { Attack: TIER_REQ[t] } }), val: 15 },
   helm:   { suffix: 'full helm', slot: 'head', bars: 2, off: 4, stat: t => armour([3, 5, 8, 11, 15, 21][t], t, 0), val: 12 },
   shield: { suffix: 'shield', slot: 'shield', bars: 2, off: 6, stat: t => armour([7, 11, 16, 22, 30, 42][t], t, 0), val: 20 },
   legs:   { suffix: 'platelegs', slot: 'legs', bars: 3, off: 12, stat: t => armour([6, 10, 15, 21, 29, 40][t], t, -0.5), val: 30 },
@@ -112,15 +97,6 @@ export const SKILL_CAPE_SKILLS = ['Attack', 'Strength', 'Defence', 'Hitpoints', 
 for (const sk of SKILL_CAPE_SKILLS) def(`${sk} cape`, { type: 'cape', def: 4, rdef: 4, prayer: 2, capeSkill: sk, req: { [sk]: 99 }, value: 9900 });
 
 // Full matched sets. pieces = how many you need; fx feeds the combat maths.
-
-def('Sapphire ring', { type: 'ring', atk: 2, ranged: 2, value: 200 });
-def('Emerald ring', { type: 'ring', atk: 3, str: 2, value: 350 });
-def('Ruby ring', { type: 'ring', str: 4, def: 2, value: 600 });
-def('Diamond ring', { type: 'ring', atk: 4, str: 4, ranged: 4, value: 1200 });
-def('Sapphire amulet', { type: 'neck', atk: 3, ranged: 3, value: 300 });
-def('Emerald amulet', { type: 'neck', atk: 4, str: 3, value: 500 });
-def('Oak crossbow', { type: 'weapon', ranged: 32, speed: 5, req: { Ranged: 39 }, value: 200 });
-
 export const SETS = {
   Leather: { pieces: ['head', 'body', 'legs'], fx: { racc: 0.05, dr: 0.02 } },
   ...Object.fromEntries(METALS.map((m, t) => [m, { pieces: ['head', 'body', 'legs', 'shield'], fx: { dr: 0.02 + 0.01 * t, acc: 0.03 } }])),
@@ -371,26 +347,8 @@ for (const [raw, cooked, lvl, stop, , xp] of FOODS) {
 }
 
 
-// ---- Extra skill activities ----
-// Jewellery (Crafting)
-R({ name: 'Cut Sapphire', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 20, inputs: { 'Uncut sapphire': 1 }, output: 'Sapphire', xp: 50 });
-R({ name: 'Cut Emerald', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 27, inputs: { 'Uncut emerald': 1 }, output: 'Emerald', xp: 67.5 });
-R({ name: 'Cut Ruby', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 34, inputs: { 'Uncut ruby': 1 }, output: 'Ruby', xp: 85 });
-R({ name: 'Cut Diamond', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 43, inputs: { 'Uncut diamond': 1 }, output: 'Diamond', xp: 107.5 });
-R({ name: 'Sapphire ring', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 20, inputs: { 'Gold bar': 1, Sapphire: 1 }, output: 'Sapphire ring', xp: 40 });
-R({ name: 'Emerald ring', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 27, inputs: { 'Gold bar': 1, Emerald: 1 }, output: 'Emerald ring', xp: 55 });
-R({ name: 'Ruby ring', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 34, inputs: { 'Gold bar': 1, Ruby: 1 }, output: 'Ruby ring', xp: 70 });
-R({ name: 'Diamond ring', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 43, inputs: { 'Gold bar': 1, Diamond: 1 }, output: 'Diamond ring', xp: 85 });
-R({ name: 'Sapphire amulet', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 24, inputs: { 'Gold bar': 1, Sapphire: 1 }, output: 'Sapphire amulet', xp: 65 });
-R({ name: 'Emerald amulet', cat: 'Crafting', group: 'Jewellery', skill: 'Crafting', level: 31, inputs: { 'Gold bar': 1, Emerald: 1 }, output: 'Emerald amulet', xp: 80 });
-
-// Extra Smithing (gold bars)
-R({ name: 'Smelt Gold bar', cat: 'Smithing', group: 'Bars', skill: 'Smithing', level: 40, inputs: { 'Gold ore': 1 }, output: 'Gold bar', xp: 22.5, station: 'furnace' });
-
-// Extra Fletching
-R({ name: 'Fletch Oak crossbow', cat: 'Fletching', group: 'Crossbows', skill: 'Fletching', level: 39, inputs: { 'Oak logs': 1, Bowstring: 1 }, output: 'Oak crossbow', xp: 45, tool: 'knife' });
-
-// Extra Cooking already added via FOODS
+// Dragon metal
+R({ name: 'Smelt Dragon bar', cat: 'Smithing', group: 'Bars', skill: 'Smithing', level: 90, inputs: { 'Dragon ore': 1 }, output: 'Dragon bar', xp: 90, station: 'furnace' });
 
 // Herblore: clean grimy herbs, then herb + vial of water + secondary = potion.
 for (const [n, herb, sec, lvl, xp] of POTION_RECIPES) R({ name: `Brew ${n}`, cat: 'Herblore', group: 'Potions', skill: 'Herblore', level: lvl, inputs: { [herb]: 1, 'Vial of water': 1, [sec]: 1 }, output: n, xp });
