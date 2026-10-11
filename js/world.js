@@ -215,7 +215,7 @@ export function createWorld(scene) {
   }
 
   // ---- Rocks ----
-  const ORE_COLOR = { Copper: 0xc07a3a, Tin: 0xc8c8c8, Iron: 0x7a3a2a, Coal: 0x151515, Mithril: 0x5a6ad0, Adamantite: 0x3a9a5a, Runite: 0x3ab8d0 };
+  const ORE_COLOR = { Copper: 0xc07a3a, Tin: 0xc8c8c8, Iron: 0x7a3a2a, Coal: 0x151515, Mithril: 0x5a6ad0, Adamantite: 0x3a9a5a, Runite: 0x3ab8d0, Dragon: 0xc04040 };
   function createRock(x, z, ore) {
     const root = new THREE.Group();
     // Base rock using sphere for more organic shape

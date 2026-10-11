@@ -20,7 +20,7 @@ export const ITEMS = {};
 const def = (name, o) => { ITEMS[name] = { value: 1, ...o }; };
 
 // ---- Resources ----
-const ORES = [['Copper ore', 3], ['Tin ore', 3], ['Iron ore', 10], ['Coal', 12], ['Mithril ore', 40], ['Adamantite ore', 90], ['Runite ore', 300]];
+const ORES = [['Copper ore', 3], ['Tin ore', 3], ['Iron ore', 10], ['Coal', 12], ['Mithril ore', 40], ['Adamantite ore', 90], ['Runite ore', 300], ['Dragon ore', 800]];
 for (const [o, v] of ORES) def(o, { type: 'resource', value: v });
 WOODS.forEach((w, i) => def(w, { type: 'resource', value: [2, 6, 12, 20, 40, 90][i] }));
 for (const [n, v] of [['Flax', 2], ['Cowhide', 6], ['Feather', 1], ['Raw beef', 3], ['Bowstring', 5], ['Soft leather', 10], ['Hard leather', 20]]) def(n, { type: n === 'Bowstring' || /leather/.test(n) ? 'processed' : 'resource', value: v });
@@ -50,10 +50,10 @@ function armour(def, t, rangedPenalty) {
 }
 const GEAR = {
   sword:  { suffix: 'sword', slot: 'weapon', bars: 1, off: 2,  stat: t => ({ atk: [5, 9, 14, 20, 28, 38, 52][t], str: [3, 6, 10, 15, 22, 32, 48][t], speed: 4, req: { Attack: TIER_REQ[t] } }), val: 15 },
-  helm:   { suffix: 'full helm', slot: 'head', bars: 2, off: 4, stat: t => armour([3, 5, 8, 11, 15, 21][t], t, 0), val: 12 },
-  shield: { suffix: 'shield', slot: 'shield', bars: 2, off: 6, stat: t => armour([7, 11, 16, 22, 30, 42][t], t, 0), val: 20 },
-  legs:   { suffix: 'platelegs', slot: 'legs', bars: 3, off: 12, stat: t => armour([6, 10, 15, 21, 29, 40][t], t, -0.5), val: 30 },
-  body:   { suffix: 'platebody', slot: 'body', bars: 5, off: 16, stat: t => armour([8, 14, 20, 28, 38, 52][t], t, -1), val: 60 },
+  helm:   { suffix: 'full helm', slot: 'head', bars: 2, off: 4, stat: t => armour([3, 5, 8, 11, 15, 21, 30][t], t, 0), val: 12 },
+  shield: { suffix: 'shield', slot: 'shield', bars: 2, off: 6, stat: t => armour([7, 11, 16, 22, 30, 42, 58][t], t, 0), val: 20 },
+  legs:   { suffix: 'platelegs', slot: 'legs', bars: 3, off: 12, stat: t => armour([6, 10, 15, 21, 29, 40, 55][t], t, -0.5), val: 30 },
+  body:   { suffix: 'platebody', slot: 'body', bars: 5, off: 16, stat: t => armour([8, 14, 20, 28, 38, 52, 72][t], t, -1), val: 60 },
   axe:    { suffix: 'axe', tool: 'axe', bars: 1, off: 0, stat: t => ({ toolTier: t, req: { Woodcutting: TOOL_REQ[t] } }), val: 10 },
   pickaxe:{ suffix: 'pickaxe', tool: 'pickaxe', bars: 2, off: 1, stat: t => ({ toolTier: t, req: { Mining: TOOL_REQ[t] } }), val: 14 }
 };

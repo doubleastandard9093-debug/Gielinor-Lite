@@ -406,11 +406,8 @@ export const LOOT_TABLES = {
     { herbs: [...MID_HERBS, 'Avantoe', 'Kwuarm', 'Snapdragon'], chance: 0.35 }, { item: 'Adamant platelegs', chance: 0.02 }, { item: 'Berserker ring', chance: 1 / 200 }
   ],
   'Green Dragon': [
-    { item: 'Dragon bones', chance: 1 }, { item: 'Coins', chance: 0.9, qty: [80, 300,
-    { item: 'Dragon ore', chance: 0.08 },
-    { item: 'Dragon sword', chance: 0.015 },
-    { item: 'Dragon platelegs', chance: 0.008 }
-  ] }, { item: 'Dragon scale dust', chance: 0.4 },
+    { item: 'Dragon bones', chance: 1 }, { item: 'Coins', chance: 0.9, qty: [80, 300] }, { item: 'Dragon scale dust', chance: 0.4 },
+    { item: 'Dragon ore', chance: 0.08 }, { item: 'Dragon sword', chance: 0.015 }, { item: 'Dragon platelegs', chance: 0.008 },
     { herbs: HIGH_HERBS, chance: 0.3 }, { item: 'Rune arrows', chance: 0.1, qty: [5, 15] }, { item: 'Dragon dagger', chance: 1 / 40 }, { item: 'Dragon longsword', chance: 1 / 120 }
   ],
   'Lesser Demon': [
@@ -422,12 +419,9 @@ export const LOOT_TABLES = {
     { item: 'Granite maul', chance: 1 / 8 }, { item: 'Berserker ring', chance: 1 / 6 }, { item: 'Obsidian cape', chance: 1 / 10 }, { item: 'Rune platelegs', chance: 0.1 }
   ],
   Scorchwing: [
-    { item: 'Dragon bones', chance: 1, qty: [3, 5,
-    { item: 'Dragon ore', chance: 0.25 },
-    { item: 'Dragon sword', chance: 0.06 },
-    { item: 'Dragon full helm', chance: 0.03 },
-    { item: 'Dragon platebody', chance: 0.02 }
-  ] }, { item: 'Coins', chance: 1, qty: [2000, 5000] }, { item: 'Dragon scale dust', chance: 1, qty: [3, 8] }, { herbs: ['Torstol', 'Dwarf weed', 'Snapdragon'], chance: 1 },
+    { item: 'Dragon bones', chance: 1, qty: [3, 5] },
+    { item: 'Dragon ore', chance: 0.25 }, { item: 'Dragon sword', chance: 0.06 }, { item: 'Dragon full helm', chance: 0.03 }, { item: 'Dragon platebody', chance: 0.02 },
+    { item: 'Coins', chance: 1, qty: [2000, 5000] }, { item: 'Dragon scale dust', chance: 1, qty: [3, 8] }, { herbs: ['Torstol', 'Dwarf weed', 'Snapdragon'], chance: 1 },
     { item: 'Wyrmscale helm', chance: 1 / 5 }, { item: 'Wyrmscale body', chance: 1 / 6 }, { item: 'Wyrmscale legs', chance: 1 / 6 }, { item: 'Wyrmscale shield', chance: 1 / 5 },
     { item: 'Dragon longsword', chance: 1 / 6 }, { item: 'Dark bow', chance: 1 / 15 }
   ],
