@@ -4,7 +4,7 @@ import { ITEMS, isTool, STARTER_TOOLS } from './items.js';
 import { PRAYERS } from './prayer.js';
 import { questPoints } from './quests.js';
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 export const POS_LIMIT = 146; // world half-size (150) minus a margin
 const KEY = 'gielinor3d';
 
@@ -119,6 +119,12 @@ export function migrateSave(saved) {
   if (fromVersion < 5) notes.push('New: perks every 5 levels, gear bonuses with jewellery, capes and armour sets, and lasting quest bonuses. See Settings → What\'s new.');
   // v7: Magic, Agility, Thieving and Runecrafting (normalizeSkills starts them at level 1).
   if (fromVersion < 7) notes.push('New skills: Magic, Agility, Thieving and Runecrafting, plus the towns of Port Sarim, Varrock and Falador. See Settings → What\'s new.');
+  // v8: 100 new quests. Anyone who had finished all 22 earlier quests keeps the Quest point cape.
+  if (fromVersion < 8) {
+    const OLD22 = ['cook', 'fallen', 'doric', 'goblins', 'hides', 'tools', 'supply', 'archers', 'honour', 'fishing', 'ashford_help', 'eastern_guards', 'herbs_for_wren', 'smith_order', 'eastern_feast', 'scout_report', 'miner_tools', 'sister_prayers', 'trader_supplies', 'knight_honour_east', 'angler_catch', 'carpenter_wood'];
+    if (OLD22.every(id => p.quests[id] && p.quests[id].stage === 'done') && !p.questCapeLegacy) { p.questCapeLegacy = true; notes.push('You keep your Quest point cape, even with the new quests.'); }
+    notes.push('New: 100 new quests across every town and the wilds. Look for blue dots on the minimap. See Settings → What\'s new.');
+  }
   saved.version = SAVE_VERSION;
   return notes;
 }

@@ -6,7 +6,8 @@
 //   { choose: [['Option label', [...entries]], ...] }
 //   { run: () => {} }   (runs when the conversation reaches it)
 
-export const QUEST_POINTS_TOTAL = 25;
+import { QUEST_NPCS } from './questnpcs.js';
+import { QUEST_DATA, buildQuest, progress, talkOverride } from './quests2.js';
 
 export function q(player, id) {
   player.quests = player.quests || {};
@@ -739,8 +740,30 @@ export const QUESTS = [
   }
 ];
 
+// The 100 data-driven quests (quests2.js / questdata*.js).
+const LIB = { q, setQ, finish: (p, qd, g) => finish(p, qd, g), isDone: (p, id) => isDone(p, id), questName: id => (questById(id) || { name: id }).name, get NPC_INFO() { return NPC_INFO; } };
+for (const qd of QUEST_DATA) QUESTS.push(buildQuest(qd, LIB));
+const OLD_TOWN = { ashford_help: 'Ashford', eastern_guards: 'Ashford', herbs_for_wren: 'Ashford', smith_order: 'Ashford', eastern_feast: 'Ashford', scout_report: 'Ashford', miner_tools: 'Ashford', sister_prayers: 'Ashford', trader_supplies: 'Ashford', knight_honour_east: 'Ashford', angler_catch: 'Ashford', carpenter_wood: 'Ashford' };
+for (const x of QUESTS) { if (!x.town) x.town = OLD_TOWN[x.id] || 'Brightwater'; if (!x.diff) x.diff = x.points > 1 ? 'Intermediate' : 'Novice'; }
+export const QUEST_POINTS_TOTAL = QUESTS.reduce((t, x) => t + x.points, 0);
+export const QUEST_TOWNS = ['Brightwater', 'Ashford', 'Port Sarim', 'Varrock', 'Falador', 'Wilds'];
+
 export function questById(id) { return QUESTS.find(x => x.id === id); }
-export function questForNpc(npc) { return QUESTS.find(x => x.giver === npc); }
+// One NPC can give several quests: the one in progress, else the first one you can start, else the next locked one.
+export function questForNpc(npc, player, g) {
+  const list = QUESTS.filter(x => x.giver === npc);
+  if (!list.length) return undefined;
+  if (!player) return list[0];
+  const st = x => q(player, x.id).stage;
+  return list.find(x => st(x) !== 'done' && st(x) !== 0) ||
+    list.find(x => st(x) === 0 && (!x.reqsMet || !g || x.reqsMet(player, g))) ||
+    list.find(x => st(x) === 0) || list[list.length - 1];
+}
+export function questsForNpc(npc) { return QUESTS.filter(x => x.giver === npc); }
+// Steps of the new quests that happen at someone other than the giver.
+export function questTalk(player, npc, g) { return talkOverride(player, QUESTS, npc, g, LIB); }
+export function onXp(player, skill, amount) { return progress(player, QUESTS, 'xp', skill, amount, LIB); }
+export function onVisit(player, x, z) { return progress(player, QUESTS, 'visit', x, z, LIB); }
 
 // ---- Hooks from the game. Each returns chat messages. ----
 export function onKill(player, monName) {
@@ -769,6 +792,7 @@ export function onKill(player, monName) {
     setQ(player, 'goblins', { stage: 4 });
     out.push('Goblin Trouble: you slew a Hill Giant! Return to Captain Rhea.');
   }
+  out.push(...progress(player, QUESTS, 'kill', monName, 0, LIB));
   return out;
 }
 export function onBury(player) {
@@ -785,6 +809,7 @@ export function onBury(player) {
     setQ(player, 'sister_prayers', { buried, stage: buried >= 8 ? 2 : 1 });
     out.push(buried >= 8 ? 'Rest for the East: the spirits settle. Return to Sister Lira.' : `Rest for the East: ${buried}/8 bones buried.`);
   }
+  out.push(...progress(player, QUESTS, 'bury', null, 0, LIB));
   return out;
 }
 export function onPray(player) {
@@ -822,14 +847,20 @@ export const NPC_INFO = {
   carpenter: { name: 'Carpenter Olan', examine: 'Builds and repairs in Ashford.' }
 };
 
+for (const n of QUEST_NPCS) NPC_INFO[n.id] = { name: n.name, examine: n.examine };
+
 // ---- Lasting quest bonuses ----
 // Quest-point milestones give extra bonuses on top of each quest's own bonus.
 export const QP_MILESTONES = [
   { qp: 3, desc: 'Run energy restores 25% faster', fx: { runRegen: 0.25 } },
   { qp: 6, desc: '+2% XP in every skill', fx: { 'xp.*': 0.02 } },
   { qp: 9, desc: '+20 max hitpoints', fx: { maxHp: 20 } },
-  { qp: 25, desc: 'Every quest done: Quest point cape and +3% XP in every skill', fx: { 'xp.*': 0.03 } }
-];
+  { qp: 25, desc: '+3% XP in every skill', fx: { 'xp.*': 0.03 } },
+  { qp: 50, desc: '+20 max hitpoints', fx: { maxHp: 20 } },
+  { qp: 80, desc: '3% off everything in shops', fx: { shopDiscount: 0.03 } },
+  { qp: 110, desc: '+3% damage against every monster', fx: { 'dmgVs.*': 0.03 } },
+  { qp: 140, desc: 'Run energy restores 25% faster and +20 max hitpoints', fx: { runRegen: 0.25, maxHp: 20 } }
+].filter(m => m.qp < QUEST_POINTS_TOTAL).concat([{ qp: QUEST_POINTS_TOTAL, desc: 'Every quest done: Quest point cape and +3% XP in every skill', fx: { 'xp.*': 0.03 } }]);
 // Sum of one bonus from every completed quest and reached milestone.
 export function questFx(player, key) {
   let v = 0;

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { makeRng } from './rng.js';
 import { MONSTER_TYPES, AGILITY_COURSES, RUNE_ALTARS } from './gameplay.js';
+import { QUEST_NPCS } from './questnpcs.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
 import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap } from './models.js';
 
@@ -865,6 +866,21 @@ export function createWorld(scene) {
   for (const [x, z] of [[113, -121], [128, -117], [120, -130]]) monsters.push(createMonster('Green Dragon', x, z, 3));
   monsters.push(createMonster('Scorchwing', 134, -136, 3));
   for (const [x, z] of [[-30, -56], [-24, -48]]) monsters.push(createMonster('Wolf', x, z, 3));
+
+  // Quest givers from the 100-quest update: a free spot near each one's home (own rng so the rest of the world is unchanged).
+  const qrng = makeRng(9091);
+  for (const n of QUEST_NPCS) {
+    let p = null;
+    for (let i = 0; i < 60 && !p; i++) {
+      const sp = 1 + i * 0.12, x = n.x + (qrng() - 0.5) * sp * 2, z = n.z + (qrng() - 0.5) * sp * 2;
+      if (insideLake(x, z, 1.5) || colliders.some(b => x > b.minX - 0.8 && x < b.maxX + 0.8 && z > b.minZ - 0.8 && z < b.maxZ + 0.8)) continue;
+      if (occupied.some(o => o.r < 6 && Math.hypot(o.x - x, o.z - z) < Math.min(o.r, 2.5) + 0.6)) continue;
+      p = { x, z };
+    }
+    p = p || { x: n.x, z: n.z };
+    occupied.push({ x: p.x, z: p.z, r: 0.8 });
+    nodes.push(createNpc(p.x, p.z, n.id, n.name, n.look, p.x + 1, p.z + 1));
+  }
 
   scatterDecor(scene, rng, occupied);
   return { ground, nodes, monsters, pickables, buildings };

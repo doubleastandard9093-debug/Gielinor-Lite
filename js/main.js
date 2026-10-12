@@ -25,7 +25,8 @@ import {
 import { POTIONS, isPotion, drinkPotion, effectsTick, applyPoison, poisonTick } from './potions.js';
 import { PRAYERS, prayerById, togglePrayer, drainTick, prayerFx, rechargePrayer, ppRegenPerTick } from './prayer.js';
 import { ABILITIES, abilityById, unlocked as abilityUnlocked, cooldownTicks } from './abilities.js';
-import { QUESTS, questForNpc, questStatus, isDone, onKill, onBury, onPray, NPC_INFO, questPoints, questFx } from './quests.js';
+import { QUESTS, questForNpc, questsForNpc, questTalk, onXp, onVisit, questStatus, isDone, onKill, onBury, onPray, NPC_INFO, questPoints, questFx } from './quests.js';
+import { QUEST_NPCS } from './questnpcs.js';
 import { createInventoryUI } from './inventoryUI.js';
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from './save.js';
 
@@ -105,6 +106,7 @@ function giveXP(skill, amount) {
     if (s === 'Prayer') player.prayerPoints = Math.min(maxPrayer(skills), (player.prayerPoints || 0) + (l - old) * 10);
   });
   ui.xpDrop(skill, SKILL_ICONS[skill], amount);
+  if (!questHelpers.rewarding) for (const m of onXp(player, skill, amount)) log(m, 'game');
   markDirty();
 }
 
@@ -725,7 +727,7 @@ function optionsFor(ent) {
       const o = [{ action: 'Talk-to', target: ent.name, color: '#ffff00', fn: () => startAction({ kind: 'talk', node: ent }) }];
       if (ent.npc === 'bob') o.push({ action: 'Trade', target: ent.name, color: '#ffff00', fn: () => startAction({ kind: 'shop', node: ent, shop: 'tools' }) });
       else if (ent.shop) o.push({ action: 'Trade', target: ent.name, color: '#ffff00', fn: () => startAction({ kind: 'shop', node: ent, shop: ent.shop }) });
-      const qd = questForNpc(ent.npc);
+      const qd = questForNpc(ent.npc, player, questHelpers);
       if (qd) o.push({ action: 'Quest', target: `${qd.name} (${questStatus(player, qd.id)})`, color: '#3ad0ff', fn: () => { invUI.showTab('quests'); } });
       if (ent.thieve) o.push({ action: 'Pickpocket', target: ent.name, color: '#ffff00', fn: () => startAction({ kind: 'thieve', node: ent, target: ent.thieve }) });
       return [...o, { ...ex, color: '#ffff00' }];
@@ -1002,8 +1004,11 @@ function removeFire(f) {
 
 // ---- Talking ----
 const NPC_FACE = { mizgog: '🧙', betty: '🧙‍♀️', aubury: '🧙', man: '👨', woman: '👩', sailor: '🧑‍✈️', vguard: '💂', warrior: '🤺', wknight: '🤺', paladin: '🛡️', hero: '🦸', cassie: '👩‍🔧', nessa: '🧑‍🌾', horvik: '🧔', gerrant: '🧑‍💼', vshop: '🧑‍💼', cook: '👨‍🍳', priest: '🧔', doric: '🧔‍♂️', captain: '💂‍♀️', farmer: '👨‍🌾', bob: '👷', merchant: '🧑‍💼', ranger: '🧝', knight: '🤺', apothecary: '🧑‍⚕️' };
+for (const n of QUEST_NPCS) NPC_FACE[n.id] = n.face;
 const SHOP_GREET = { magic0: 'Runes for beginners! Wind Strike needs an air rune and a mind rune. Open the Combat tab to pick a spell to autocast.', magic: 'Welcome to my emporium. A staff of an element gives you all the runes of that element you need.', runes: 'Runes and essence! Mine rune essence in the rocks just south-east of here, then take it to an altar.', apothecary: 'Herbs, vials and potions! Fill empty vials at the well. Pick grimy herbs from the patches out back, clean them, then mix herb + vial of water + a secondary.' };
 const questHelpers = {
+  rewarding: false,
+  level: s => (skills[s] ? skills[s].level : 1),
   has: (item, n) => (player.inventory[item] || 0) >= n,
   take: (item, n) => { removeItem(player, item, n); markDirty(); },
   give: (item, n) => { giveItem(item, n); markDirty(); },
@@ -1026,9 +1031,11 @@ const questHelpers = {
 function talkTo(ent) {
   const name = ent.name;
   const face = NPC_FACE[ent.npc] || (ent.type === 'shop' ? NPC_FACE.merchant : '🙂');
-  const qd = questForNpc(ent.npc);
+  const qd = questForNpc(ent.npc, player, questHelpers);
+  const side = questTalk(player, ent.npc, questHelpers);
   let script;
-  if (qd) {
+  if (side) script = side;
+  else if (qd) {
     script = qd.talk(player, questHelpers);
     // Shopkeepers with quests still offer to trade afterwards.
     const sh = ent.npc === 'bob' ? 'tools' : ent.npc === 'merchant' ? 'shop' : ent.shop;
@@ -1048,7 +1055,7 @@ function talkTo(ent) {
   ui.dialogue(name, face, script, () => { updateQuestMarks(); markDirty(); });
 }
 function updateQuestMarks() {
-  for (const n of nodes) if (n.type === 'npc') { const qd = questForNpc(n.npc); n.questMark = !!qd && !isDone(player, qd.id); }
+  for (const n of nodes) if (n.type === 'npc') n.questMark = questsForNpc(n.npc).some(x => !isDone(player, x.id));
 }
 
 // ---- Combat ----
@@ -1604,6 +1611,7 @@ function animate(now) {
   }
 
   if (frame % 15 === 0) cullWorld();
+  if (frame % 30 === 7) { const vm = onVisit(player, pm.mesh.position.x, pm.mesh.position.z); for (const m of vm) log(m, 'game'); if (vm.length) markDirty(); }
   updateMonsters(dt, now);
   updateFish(dt);
   updateFires(now);

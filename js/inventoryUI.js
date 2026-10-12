@@ -6,7 +6,7 @@ import { stylesFor, currentStyle, equipmentBonuses, playerMaxHit, playerAccuracy
 import { boostOf, POTIONS } from './potions.js';
 import { PRAYERS, isActive, drainPerTick, prayerBonus } from './prayer.js';
 import { ABILITIES, unlocked } from './abilities.js';
-import { QUESTS, questStatus, questPoints, QUEST_POINTS_TOTAL, activeQuestBonuses } from './quests.js';
+import { QUESTS, questStatus, questPoints, QUEST_POINTS_TOTAL, QUEST_TOWNS, activeQuestBonuses } from './quests.js';
 import { esc } from './ui.js';
 
 const TABS = [
@@ -90,7 +90,7 @@ export function createInventoryUI(api) {
   let mode = null;          // null | 'bank' | 'shop' | 'tools' | 'help'
   let qtyMode = 1;          // bank / shop quantity
   let selectedSkill = null;
-  let selectedQuest = null;
+  let selectedQuest = null, questTown = 'All', questState = 'all';
   let shopInfo = null;
   let craftTab = 'Smithing';
   let smithGroup = 'Smelting';
@@ -251,20 +251,32 @@ export function createInventoryUI(api) {
 
   function renderQuests() {
     const qp = questPoints(player);
-    let html = `<div class="tab-head"><b>Quests</b><span>Quest Points: ${qp}/${QUEST_POINTS_TOTAL}</span></div><div class="questlist">`;
-    for (const qd of QUESTS) {
-      const st = questStatus(player, qd.id);
-      html += `<div class="quest q-${st.replace(' ', '-')} ${selectedQuest === qd.id ? 'sel' : ''}" data-quest="${qd.id}">${esc(qd.name)}</div>`;
-    }
-    html += '</div>';
+    const sts = QUESTS.map(qd => questStatus(player, qd.id));
+    const count = st => sts.filter(x => x === st).length;
+    let html = `<div class="tab-head"><b>Quests</b><span>Quest Points: ${qp}/${QUEST_POINTS_TOTAL}</span></div>`;
+    html += `<div class="qcount">${count('complete')} done · ${count('in progress')} started · ${QUESTS.length} quests</div>`;
+    html += '<div class="qfilters">' + ['All', ...QUEST_TOWNS].map(t => `<span class="qchip ${questTown === t ? 'on' : ''}" data-qtown="${t}">${t}</span>`).join('') + '</div>';
+    html += '<div class="qfilters">' + [['all', 'Any status'], ['not started', 'Not started'], ['in progress', 'In progress'], ['complete', 'Complete']].map(([k, l]) => `<span class="qchip ${questState === k ? 'on' : ''}" data-qstate="${k}">${l}</span>`).join('') + '</div>';
     if (selectedQuest) {
       const qd = QUESTS.find(x => x.id === selectedQuest);
       const st = questStatus(player, qd.id);
-      html += `<div class="journal"><b>${esc(qd.name)}</b>${qd.journal(player).map(l => `<div class="${l.done ? 'done' : ''}">${esc(l.text)}</div>`).join('')}
+      html += `<div class="journal"><b>${esc(qd.name)}</b><div class="qmeta">${esc(qd.town)} · ${esc(qd.diff)}</div>${qd.journal(player).map(l => `<div class="${l.done ? 'done' : ''}">${esc(l.text)}</div>`).join('')}
         ${st === 'complete' ? '<div class="qdone">QUEST COMPLETE!</div>' : ''}
         <div class="rewards">Rewards: ${qd.points} quest point${qd.points > 1 ? 's' : ''}, ${qd.rewards.map(esc).join(', ')}</div>
         <div class="qbonus ${st === 'complete' ? 'on' : ''}">★ Lasting bonus: ${esc(qd.bonus.desc)}${st === 'complete' ? ' (active)' : ''}</div></div>`;
-    } else html += '<div class="hint">Red: not started · Yellow: in progress · Green: complete. Tap a quest for its journal.</div>';
+    }
+    html += '<div class="questlist">';
+    let shown = 0;
+    QUESTS.forEach((qd, i) => {
+      const st = sts[i];
+      if (questTown !== 'All' && qd.town !== questTown) return;
+      if (questState !== 'all' && st !== questState) return;
+      shown++;
+      html += `<div class="quest q-${st.replace(' ', '-')} ${selectedQuest === qd.id ? 'sel' : ''}" data-quest="${qd.id}">${esc(qd.name)}<small>${esc(qd.town)} · ${esc(qd.diff)}</small></div>`;
+    });
+    if (!shown) html += '<div class="hint">No quests match this filter.</div>';
+    html += '</div>';
+    if (!selectedQuest) html += '<div class="hint">Red: not started · Yellow: in progress · Green: complete. Tap a quest for its journal. Quest givers have a blue dot on the minimap.</div>';
     const qb = activeQuestBonuses(player);
     const on = qb.quests.filter(x => x.active);
     html += `<div class="craftskill">Quest bonuses</div><div class="qbonuses">` +
@@ -408,7 +420,11 @@ export function createInventoryUI(api) {
     const sk = e.target.closest('[data-skill]');
     if (sk) { selectedSkill = selectedSkill === sk.dataset.skill ? null : sk.dataset.skill; render(); return; }
     const qq = e.target.closest('[data-quest]');
-    if (qq) { selectedQuest = selectedQuest === qq.dataset.quest ? null : qq.dataset.quest; render(); return; }
+    if (qq) { selectedQuest = selectedQuest === qq.dataset.quest ? null : qq.dataset.quest; render(); if (selectedQuest) { const j = content.querySelector('.journal'); if (j) j.scrollIntoView({ block: 'nearest' }); } return; }
+    const qt = e.target.closest('[data-qtown]');
+    if (qt) { questTown = qt.dataset.qtown; render(); return; }
+    const qs = e.target.closest('[data-qstate]');
+    if (qs) { questState = qs.dataset.qstate; render(); return; }
     const st = e.target.closest('[data-style]');
     if (st) { player.attackStyle = +st.dataset.style; render(); return; }
     const ct = e.target.closest('[data-ctab]');
