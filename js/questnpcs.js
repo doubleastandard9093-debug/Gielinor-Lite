@@ -56,6 +56,17 @@ const RAW = [
   ['gertrude', 'Gertrude', 109, -34, 'granny', 'She is looking for her cat.', '👵'],
   ['ellis', 'Ellis the Tanner', 131, -45, 'worker', 'His hands are stained brown from tanning.', '🧑‍🏭'],
   ['vorn', 'Apothecary Vorn', 114, -28, 'herbal', 'Varrock\u2019s potion maker.', '⚗️'],
-  ['vannaka', 'Slayer Master Vannaka', 110, -80, 'soldier', 'A grizzled monster hunter.', '⚔️']
+  ['vannaka', 'Slayer Master Vannaka', 110, -80, 'soldier', 'A grizzled monster hunter.', '⚔️'],
+  // Falador
+  ['amik', 'Sir Amik Varze', -61, -87, 'knight', 'Leader of the White Knights.', '🛡️'],
+  ['squire', 'The Squire', -65, -85, 'soldier', 'A nervous young squire.', '🧑‍🦱'],
+  ['sabreen', 'Sister Sabreen', -54, -84, 'priest', 'A healer of the Saradomin church.', '🙏'],
+  ['boot', 'Boot the Dwarf', -70, -72, 'dwarf', 'A dwarf with very muddy boots.', '⛏️'],
+  ['sarah', 'Farmer Sarah', -49, -72, 'farmer', 'She farms the fields east of Falador.', '👩‍🌾'],
+  ['wayne', 'Wayne the Armourer', -68, -78, 'smith', 'He makes the White Knights\u2019 armour.', '🔨'],
+  ['pete', 'Party Pete', -58, -70, 'noble', 'He loves a party.', '🎉'],
+  ['kaylee', 'Kaylee the Barmaid', -52, -78, 'cook', 'She runs the Rising Sun inn.', '🍻'],
+  ['elwyn', 'Elwyn the Bowyer', -71, -86, 'ranger', 'He makes the finest bows in Falador.', '🏹'],
+  ['oswin', 'Oswin the Exile', -88, -100, 'hermit', 'A knight who was cast out of Falador.', '🧔']
 ];
 export const QUEST_NPCS = RAW.map(([id, name, x, z, look, examine, face]) => ({ id, name, x, z, look: L[look], examine, face }));
