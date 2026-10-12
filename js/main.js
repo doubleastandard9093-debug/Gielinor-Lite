@@ -1,8 +1,4 @@
 import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, IS_TOUCH } from './scene.js';
 import { createWorld, createPileMesh, SPAWN } from './world.js';
 import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt } from './player.js';
@@ -32,11 +28,6 @@ import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, apply
 const scene = createScene();
 const camera = createCamera();
 const renderer = createRenderer();
-const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.35, 0.4, 0.85);
-composer.addPass(bloom);
-composer.addPass(new OutputPass());
 document.body.prepend(renderer.domElement);
 const { dirLight } = createLights(scene);
 const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);
@@ -1225,10 +1216,12 @@ function updateMonsters(dt, now) {
         m.mesh.rotation.y = Math.atan2(dx, dz);
       }
     }
-    m.walkT = (m.walkT || 0) + (moving ? dt * 9 : 0);
-    const sw = moving ? Math.sin(m.walkT) * 0.6 : 0;
+    m.walkT = (m.walkT || 0) + (moving ? dt * 10 : 0);
+    const sw = moving ? Math.sin(m.walkT) * 0.55 : 0;
+    const bob = moving ? Math.abs(Math.sin(m.walkT * 2)) * 0.06 : 0;
     m.legs.forEach((l, i) => { l.rotation.x = (i % 2 ? sw : -sw); });
-    if (m.lungeT > 0) { m.lungeT = Math.max(0, m.lungeT - dt * 3); m.body.position.z = Math.sin(m.lungeT * Math.PI) * 0.35; }
+    if (m.body) m.body.position.y = bob;
+    if (m.lungeT > 0) { m.lungeT = Math.max(0, m.lungeT - dt * 2.5); m.body.position.z = Math.sin(m.lungeT * Math.PI) * 0.4; }
   }
 }
 
@@ -1353,10 +1346,6 @@ const barEnts = [...monsters, playerEnt];
 let last = performance.now();
 let frame = 0;
 function animate(now) {
-  // Simple water wave
-  if (window._water && window._water.userData.wave) {
-    window._water.position.y = 0.05 + Math.sin((now || performance.now()) * 0.0012) * 0.025;
-  }
   requestAnimationFrame(animate);
   if (document.hidden) return;
   now = now || performance.now();
@@ -1390,7 +1379,7 @@ function animate(now) {
   updateArrow(dt);
   updateRig(rig, camera, pm.mesh.position.x, pm.mesh.position.z, dt);
   followLight(dirLight, rig.fx, rig.fz);
-  composer.render();
+  renderer.render(scene, camera);
 
   overlays.update(camera, barEnts, now);
   if (frame % 3 === 0) {
