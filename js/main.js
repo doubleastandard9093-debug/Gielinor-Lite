@@ -6,7 +6,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, IS_TOUCH } from './scene.js';
-import { createWorld, createPileMesh, SPAWN } from './world.js';
+import { createWorld, createPileMesh, SPAWN, setDecorQuality } from './world.js';
 import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt } from './player.js';
 import { createCameraRig, rotateRig, zoomRig, updateRig } from './camera.js';
 import { setupInput } from './input.js';
@@ -118,6 +118,7 @@ function applyGfx() {
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(window.innerWidth, window.innerHeight);
   sky.setQuality(gfx.quality);
+  setDecorQuality(gfx.quality);
   SWAY.value = gfx.quality === 'low' ? 0 : 1;
   setShadows(renderer, dirLight, shadowsOn());
 }
