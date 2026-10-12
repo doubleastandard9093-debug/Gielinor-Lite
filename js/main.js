@@ -684,6 +684,7 @@ function entExamine(ent) {
   if (ent.type === 'fish') return EXAMINE[ent.kind];
   if (ent.type === 'herb') return `A herb patch growing ${ent.herb.toLowerCase()}. It never runs out. (Herblore ${HERB_LEVEL(ent.herb)})`;
   if (ent.type === 'well') return ent.examine;
+  if (ent.type === 'sign') return 'A wooden signpost. Read it to see which way the towns are.';
   if (ent.type === 'agility') { const o = AGILITY_OBSTACLES[ent.obstacle]; return `${ent.name}: part of the ${AGILITY_COURSES[o.course].name} (Agility ${o.level}). Do every obstacle in order for a lap bonus.`; }
   if (ent.type === 'runealtar') { const a = RUNE_ALTARS[ent.altar]; return `A mysterious ${ent.altar.toLowerCase()} altar. Bring ${a.pure ? 'pure' : 'rune'} essence here to craft ${a.rune.toLowerCase()}s. (Runecrafting ${a.level})`; }
   if (ent.type === 'rock' && ent.ore === 'Essence') return 'Rune essence rock. Mine it for essence (pure essence from Mining 30).';
@@ -734,6 +735,7 @@ function optionsFor(ent) {
       return [{ action: verb, target: ent.name, color: cy, fn: () => startAction({ kind: 'station', node: ent }) }, ex];
     }
     case 'altar': return [{ action: 'Pray-at', target: 'Altar', color: cy, fn: () => startAction({ kind: 'altar', node: ent }) }, ex];
+    case 'sign': return [{ action: 'Read', target: 'Signpost', color: cy, fn: () => log(ent.text, 'examine') }, ex];
     case 'agility': return [{ action: ent.verb, target: ent.name, color: cy, fn: () => startAction({ kind: 'agility', node: ent, obstacle: ent.obstacle }) }, ex];
     case 'runealtar': return [{ action: 'Craft-rune', target: ent.name, color: cy, fn: () => startAction({ kind: 'runecraft', node: ent, altar: ent.altar }) }, ex];
     case 'building': return [ex];
@@ -1000,7 +1002,7 @@ function removeFire(f) {
 
 // ---- Talking ----
 const NPC_FACE = { mizgog: '🧙', betty: '🧙‍♀️', aubury: '🧙', man: '👨', woman: '👩', sailor: '🧑‍✈️', vguard: '💂', warrior: '🤺', wknight: '🤺', paladin: '🛡️', hero: '🦸', cassie: '👩‍🔧', nessa: '🧑‍🌾', horvik: '🧔', gerrant: '🧑‍💼', vshop: '🧑‍💼', cook: '👨‍🍳', priest: '🧔', doric: '🧔‍♂️', captain: '💂‍♀️', farmer: '👨‍🌾', bob: '👷', merchant: '🧑‍💼', ranger: '🧝', knight: '🤺', apothecary: '🧑‍⚕️' };
-const SHOP_GREET = { magic0: 'Runes for beginners! Wind Strike needs an air rune and a mind rune. Open the Combat tab to pick a spell to autocast.', magic: 'Welcome to my emporium. A staff of an element gives you all the runes of that element you need.', runes: 'Runes and essence! Mine rune essence in the rocks just north-east of here, then take it to an altar.', apothecary: 'Herbs, vials and potions! Fill empty vials at the well. Pick grimy herbs from the patches out back, clean them, then mix herb + vial of water + a secondary.' };
+const SHOP_GREET = { magic0: 'Runes for beginners! Wind Strike needs an air rune and a mind rune. Open the Combat tab to pick a spell to autocast.', magic: 'Welcome to my emporium. A staff of an element gives you all the runes of that element you need.', runes: 'Runes and essence! Mine rune essence in the rocks just south-east of here, then take it to an altar.', apothecary: 'Herbs, vials and potions! Fill empty vials at the well. Pick grimy herbs from the patches out back, clean them, then mix herb + vial of water + a secondary.' };
 const questHelpers = {
   has: (item, n) => (player.inventory[item] || 0) >= n,
   take: (item, n) => { removeItem(player, item, n); markDirty(); },

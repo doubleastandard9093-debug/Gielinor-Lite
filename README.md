@@ -61,6 +61,10 @@ The game saves itself every 15 seconds and whenever you leave the app. Old saves
   - Cook's Assistant, Rest for the Fallen, Doric's Quest, Goblin Trouble, Farmer's Hides, Tools of the Trade, Supply Run, Archers in the Woods, Knight's Honour, Fisherman's Catch
   - Ashford’s Plea, Guard Duty, Herb Gathering, Torin’s Order, Eastern Feast, Scout’s Report, Kael’s Tools, Rest for the East, Supply the Store, Eastern Honour, Tess’s Catch, Olan’s Timber
   - Quest-point milestones: 3 QP faster run regen, 6 QP +2% all XP, 9 QP +20 max HP, 24 QP (all quests) Quest point cape and +3% all XP.
+- **Magic:** 16 spells (Wind Strike 1 … Fire Wave 75) using air, mind, water, earth, fire, chaos, death and blood runes. Elemental staffs give unlimited runes of their element; wizard and mystic robes add magic attack. Long-press a monster → Cast, or tap a spell in the Combat tab to autocast it.
+- **Agility:** courses at Brightwater (1), Varrock (30), Port Sarim (45) and Falador (60). Do the obstacles in order for a lap bonus; failing hurts a little. Agility speeds up run-energy regen.
+- **Thieving:** Pickpocket townsfolk (men/women 1, farmers 10, sailors 20, warriors 25, guards 40, White Knights 55, paladins 70, heroes 80) for coins, runes and more. Failing stuns you briefly.
+- **Runecrafting:** mine essence south-east of Varrock (pure essence at Mining 30) or buy it, then Craft-rune at an altar: Air (south-west of Brightwater), Mind, Water, Earth, Fire, Body, Chaos, Death, Blood. More runes per essence at higher levels.
 - **Death:** you keep every item and wake up in town with full hitpoints.
 
 ## Map
@@ -73,4 +77,7 @@ The game saves itself every 15 seconds and whenever you leave the app. Old saves
 - **Hill Giants**, **Black Knights**, magic trees and a runite rock in the northern hills; Sir Vyvin on the north road
 - **Dark Archers** (level 25, shoot from range) west of the lake past the yews; Ranger Wyn on the west edge of town
 - **Guards** (level 21) at the tower to the south
-- Expanded world (WORLD_HALF = 70) with paths connecting to Ashford
+- **Port Sarim** (south-west): bank, general store, Betty's Magic Emporium, the docks agility course, sailors to pickpocket; bandits and the Chaos altar to the south-east
+- **Varrock** (far east): palace, bank, weaponsmith, general store, Aubury's Rune Shop, essence mine, agility course; the scorched wilderness with demons and dragons to the north
+- **Falador** (north-west): White Knights' Castle, bank, armoury, inn, Nessa's herb stall, agility course; ogres and Grumsh to the north-west
+- Signposts at the town roads point the way. The world is 300 x 300 (WORLD_HALF = 150); distant objects are hidden in the fog to keep phones fast.

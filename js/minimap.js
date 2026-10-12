@@ -109,6 +109,7 @@ export function createMinimap({ onWalk, onCompass, onRunToggle, onPrayerOrb }) {
       else if (n.type === 'altar') dot(n.x, n.z, DOT.altar, r * 1.5);
       else if (n.type === 'runealtar') dot(n.x, n.z, '#ff60ff', r * 1.7);
       else if (n.type === 'agility') dot(n.x, n.z, '#40e0a0', r * 1.2);
+      else if (n.type === 'sign') dot(n.x, n.z, '#c89a5a', r * 1.2);
     }
     for (const p of piles) dot(p.x, p.z, DOT.pile, r);
     for (const mo of monsters) if (mo.alive) dot(mo.mesh.position.x, mo.mesh.position.z, DOT.monster, r);

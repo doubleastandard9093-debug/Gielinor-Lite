@@ -690,6 +690,30 @@ export function createWorld(scene) {
     return tag(g, { mesh: g, type: 'runealtar', altar, name: `${altar} altar`, alive: true, x, z, radius: 1.0, anim: { glow, t: rng() * 6 } });
   }
 
+  // ---- Signposts: boards point at the nearest towns; Read lists every town's direction ----
+  function compass(dx, dz) {
+    const a = (Math.atan2(dx, -dz) * 180 / Math.PI + 360) % 360;
+    return ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round(a / 45) % 8];
+  }
+  function createSignpost(x, z) {
+    const g = new THREE.Group();
+    const parts = [[prim.box(0.14, 2.1, 0.14), 0x5a3a1e, 0, 1.05, 0, 0, 0, 0, 0.3], [prim.box(0.4, 0.12, 0.4), 0x6a6458, 0, 0.06, 0, 0, 0, 0, 0.3]];
+    const towns = Object.entries(TOWNS).map(([n, t]) => ({ n, dx: t.x - x, dz: t.z - z, d: Math.hypot(t.x - x, t.z - z) })).sort((a, b) => a.d - b.d);
+    const away = towns.filter(t => t.d > 14);
+    away.slice(0, 3).forEach((t, i) => {
+      const ux = t.dx / t.d, uz = t.dz / t.d, ry = Math.atan2(-uz, ux), y = 1.85 - i * 0.32;
+      parts.push([prim.box(1.0, 0.22, 0.06), [0xb08a5a, 0xa07a4a, 0x9a7448][i], ux * 0.5, y, uz * 0.5, 0, ry, 0, 0.25],
+        [prim.box(0.2, 0.16, 0.065), 0x3a2a1a, ux * 0.92, y, uz * 0.92, 0, ry + Math.PI / 4, 0, 0.1]);
+    });
+    g.add(kit(parts));
+    g.position.set(x, 0, z);
+    scene.add(g);
+    pickables.push(g);
+    colliders.push({ minX: x - 0.15, maxX: x + 0.15, minZ: z - 0.15, maxZ: z + 0.15 });
+    const text = 'The signpost reads: ' + away.map(t => `${t.n}, ${compass(t.dx, t.dz)} (${Math.round(t.d)} steps)`).join(' · ');
+    return tag(g, { mesh: g, type: 'sign', name: 'Signpost', text, alive: true, x, z, radius: 0.6 });
+  }
+
   // ---- Populate ----
   // Town first so trees keep clear of it
   const buildings = BUILDINGS.map(createBuilding);
@@ -738,7 +762,7 @@ export function createWorld(scene) {
   townsfolk(-84.5, 54, 'gerrant', 'Shopkeeper Gerrant', { body: 0x3a5a8a, legs: 0x3a3a2a, apron: 0xe0d8c8 }, { shop: 'general2' }, -80, 60);
   townsfolk(-75.5, 54, 'betty', 'Betty', { body: 0x6a2a8a, legs: 0x4a2a5a, hat: 0x4a1a6a, hatH: 0.45, hatW: 0.4 }, { shop: 'magic' }, -80, 60);
   townsfolk(-78, 71, 'sailor', 'Sailor', { body: 0x2a4a7a, legs: 0xe0e0e0, hat: 0xf0f0f0, hatH: 0.12 }, { thieve: 'Sailor', say: 'Arr, the docks are no place for landlubbers. Try the rigging course if ye dare.' }, -80, 60);
-  townsfolk(-84, 73, 'sailor', 'Sailor', { body: 0x2a4a7a, legs: 0xe0e0e0, hat: 0xf0f0f0, hatH: 0.12 }, { thieve: 'Sailor', say: 'Water altar is west of town, past the willows.' }, -80, 60);
+  townsfolk(-84, 73, 'sailor', 'Sailor', { body: 0x2a4a7a, legs: 0xe0e0e0, hat: 0xf0f0f0, hatH: 0.12 }, { thieve: 'Sailor', say: 'The Water altar is south-west of town, past the willows.' }, -80, 60);
   townsfolk(-76, 62, 'man', 'Man', MAN, { thieve: 'Man', say: 'Welcome to Port Sarim.' }, -80, 60);
   townsfolk(-85, 61, 'woman', 'Woman', WOMAN, { thieve: 'Woman', say: 'Bandits camp to the south-east near a strange dark altar.' }, -80, 60);
   nodes.push(createBank(-80, 51));
@@ -748,9 +772,9 @@ export function createWorld(scene) {
   townsfolk(126.5, -33, 'aubury', 'Aubury', { body: 0x6a2a2a, legs: 0x4a2a2a, hat: 0x7a2a2a, hatH: 0.45, hatW: 0.4, beard: 0xcccccc }, { shop: 'runes' }, 120, -40);
   townsfolk(116, -49.5, 'vguard', 'Varrock Guard', { body: 0x8a8a9a, legs: 0x5a5a6a, hat: 0x9a9aa8, hatH: 0.28 }, { thieve: 'Guard', say: 'Move along, citizen.' }, 120, -40);
   townsfolk(124, -49.5, 'vguard', 'Varrock Guard', { body: 0x8a8a9a, legs: 0x5a5a6a, hat: 0x9a9aa8, hatH: 0.28 }, { thieve: 'Guard', say: 'The wilderness to the north is full of demons and dragons.' }, 120, -40);
-  townsfolk(114, -37, 'warrior', 'Warrior', { body: 0x8a3a2a, legs: 0x4a3a2a, hat: 0x7a7a7a, hatH: 0.2 }, { thieve: 'Warrior', say: 'I train on the agility course west of town.' }, 120, -40);
-  townsfolk(122.5, -36, 'man', 'Man', MAN, { thieve: 'Man', say: 'Aubury sells runes. He mines essence just north-east of his shop.' }, 120, -40);
-  townsfolk(117, -30, 'woman', 'Woman', WOMAN, { thieve: 'Woman', say: 'The Earth altar is south-west of the palace.' }, 120, -40);
+  townsfolk(114, -37, 'warrior', 'Warrior', { body: 0x8a3a2a, legs: 0x4a3a2a, hat: 0x7a7a7a, hatH: 0.2 }, { thieve: 'Warrior', say: 'I train on the agility course south-west of town.' }, 120, -40);
+  townsfolk(122.5, -36, 'man', 'Man', MAN, { thieve: 'Man', say: 'Aubury sells runes. The essence mine is just south-east of his shop.' }, 120, -40);
+  townsfolk(117, -30, 'woman', 'Woman', WOMAN, { thieve: 'Woman', say: 'The Earth altar is north-west of the palace.' }, 120, -40);
   nodes.push(createBank(124, -27));
   // Falador
   townsfolk(-66.5, -84, 'cassie', 'Cassie', { body: 0xb0b0c0, legs: 0x6a6a7a, apron: 0x3a5aa0 }, { shop: 'armour' }, -60, -80);
@@ -760,10 +784,13 @@ export function createWorld(scene) {
   townsfolk(-52.5, -89, 'paladin', 'Paladin', { body: 0xd8c070, legs: 0xb0b0c0, hat: 0xd8c070, hatH: 0.3 }, { thieve: 'Paladin', say: 'Only the nimble fingered dare try my purse.' }, -60, -80);
   townsfolk(-68, -89, 'hero', 'Hero', { body: 0x8a1a1a, legs: 0x3a3a4a, hat: 0xd4af37, hatH: 0.18, beard: 0x6a4a2a }, { thieve: 'Hero', say: 'I have slain dragons in the far north-east.' }, -60, -80);
   townsfolk(-63, -76, 'man', 'Man', MAN, { thieve: 'Man', say: 'Welcome to Falador, the white city.' }, -60, -80);
-  townsfolk(-56.5, -70, 'woman', 'Woman', WOMAN, { thieve: 'Woman', say: 'The Mind altar is south-east of the castle.' }, -60, -80);
+  townsfolk(-56.5, -70, 'woman', 'Woman', WOMAN, { thieve: 'Woman', say: 'The Mind altar is north-east of the castle.' }, -60, -80);
   nodes.push(createBank(-56, -75));
   // Farmers can be pickpocketed too
   for (const n of nodes) if (n.npc === 'farmer' || n.npc === 'farmer2') n.thieve = 'Farmer';
+
+  // ---- Signposts at the town roads ----
+  for (const [x, z] of [[-7, 30.5], [62, -25], [-17.5, -15.5], [-75.5, 64.5], [124.5, -35.5], [-65, -79]]) nodes.push(createSignpost(x, z));
 
   // ---- Agility courses ----
   const COURSE_LAYOUT = {

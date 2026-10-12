@@ -25,6 +25,13 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>New skills and towns</b></p>
+<p><b>Magic.</b> 16 combat spells from Wind Strike (Magic 1) to Fire Wave (Magic 75). Each cast uses runes; an elemental staff gives unlimited runes of its element. Long-press a monster and choose <b>Cast</b>, or open the Combat tab and tap a spell to <b>autocast</b> it, then tap a monster. Runes come from Wizard Mizgog (by the south tower), Betty in Port Sarim, Aubury in Varrock, monster drops and Runecrafting.</p>
+<p><b>Agility.</b> Four courses: Brightwater (level 1, south-east past the mine), Varrock (30), Port Sarim docks (45) and Falador (60). Do the obstacles in order for a lap bonus. Higher Agility also refills run energy faster.</p>
+<p><b>Thieving.</b> Long-press townsfolk and choose <b>Pickpocket</b>: men and women (1), farmers (10), sailors (20), warriors (25), guards (40), White Knights (55), paladins (70) and heroes (80). Get caught and you're stunned for a few seconds.</p>
+<p><b>Runecrafting.</b> Mine rune essence at the essence mine south-east of Varrock (pure essence from Mining 30), or buy it from the magic shops. Take it to a rune altar (ring of standing stones) and choose <b>Craft-rune</b>. Air altar is just south-west of Brightwater; Mind, Water, Earth, Fire, Body, Chaos, Death and Blood altars are out in the world.</p>
+<p><b>Three new towns.</b> Port Sarim (south-west, by the docks), Varrock (far east, past Ashford) and Falador (north-west, the white city), each with a bank, shops and people. Signposts at the roads show the way. Giants, ogres, demons and dragons now roam the wider world.</p>
+<p><b>Earlier today</b></p>
 <p><b>New look</b></p>
 <p><b>Modern graphics.</b> A sky with a warm sun and drifting clouds, textured ground with dirt paths, sandy shores and cobbled squares, hills on the horizon and a rippling lake with foam at the edge. Leafy trees sway in the wind, rocks show their ore veins, and the towns have timber-framed and stone buildings with tiled roofs, windows and chimneys. Grass, flowers and bushes cover the fields. You, the townsfolk and the monsters have new rounded models, and walking, running and attacking animate more smoothly. The panels have a new dark-and-gold look.</p>
 <p><b>Graphics quality</b> (Settings): Auto, High or Low. Low turns off the glow, clouds, swaying, grass and shadows and lowers the resolution, for older phones. On Auto the game switches to Low by itself if your phone can't keep up.</p>
