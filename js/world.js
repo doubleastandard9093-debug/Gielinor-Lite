@@ -1,14 +1,28 @@
 import * as THREE from 'three';
 import { makeRng } from './rng.js';
-import { MONSTER_TYPES } from './gameplay.js';
+import { MONSTER_TYPES, AGILITY_COURSES, RUNE_ALTARS } from './gameplay.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
 import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap } from './models.js';
 
-export const WORLD_HALF = 70;
+// The world is now about 300 x 300 with five towns. (Aaron's edit asked for 250 each way;
+// 150 fits every town with room to spare and keeps phones fast.)
+export const WORLD_HALF = 150;
 export const SPAWN = { x: 0, z: 0 };
 export const LAKE = { x: -20, z: 16, r: 7 };
+// Town centres. Names with spaces need quotes.
+export const TOWNS = {
+  Brightwater: { x: 0, z: 0 },
+  Ashford: { x: 50, z: -24 },
+  'Port Sarim': { x: -80, z: 60 },
+  Varrock: { x: 120, z: -40 },
+  Falador: { x: -60, z: -80 }
+};
 export const TOWN_NAME = 'Brightwater';
-export const PATHS = [[0, 0, 13, -12], [0, 0, -15, -13], [0, 0, -15, 12], [0, 0, 20, 17], [0, 0, 0, 24], [0, 0, 0, -27], [0, 0, 5, -7.4], [0, 0, 50, -20], [50, -20, 55, -35]];
+export const PATHS = [[0, 0, 13, -12], [0, 0, -15, -13], [0, 0, -15, 12], [0, 0, 20, 17], [0, 0, 0, 24], [0, 0, 0, -27], [0, 0, 5, -7.4], [0, 0, 50, -20], [50, -20, 55, -35],
+  // roads to the new towns
+  [0, 24, -30, 45], [-30, 45, -80, 60], [60, -22, 90, -30], [90, -30, 120, -40], [-15, -13, -35, -50], [-35, -50, -60, -80],
+  // town streets and side roads
+  [-80, 60, -80, 76], [120, -40, 120, -26], [120, -40, 132, -22], [-60, -80, -60, -68], [120, -40, 138, -40], [138, -40, 138, -60], [138, -60, 122, -112], [-60, -80, -95, -110], [-80, 76, -50, 88]];
 // Buildings: [x, z, width(x), depth(z), wall colour, roof colour, name, examine]
 export const BUILDINGS = [
   [-9.6, -2, 4, 6, 0x9a9488, 0x6a2a2a, 'Bank of Brightwater', 'Your money is safe here.'],
@@ -26,8 +40,30 @@ export const BUILDINGS = [
   [55, -18, 4, 5, 0xb8a878, 0x4a5a3a, 'Ashford Store', 'Local goods and supplies.'],
   [42, -32, 4, 4, 0x6a5a4a, 0x3a3a3a, 'Ashford Smithy', 'Hammering rings from the forge.'],
   [52, -35, 3, 3, 0xd0c0a0, 0x7a3a2a, 'Ashford House', 'A farmhouse.'],
-  [60, -22, 3, 3, 0xc0b090, 0x5a4a3a, 'Ashford House', 'Another cottage.']
+  [60, -22, 3, 3, 0xc0b090, 0x5a4a3a, 'Ashford House', 'Another cottage.'],
+  // Port Sarim (south-west, by the docks)
+  [-88, 54, 5, 5, 0xc8b48a, 0x3a5a8a, 'Port Sarim General Store', 'Supplies for sailors and travellers.'],
+  [-72, 54, 5, 5, 0x7a6a9a, 0x3a2a6a, "Betty's Magic Emporium", 'Runes, staffs and robes. Smells of incense.'],
+  [-88, 67, 4, 4, 0xd0c0a0, 0x7a3a2a, 'Port Sarim House', 'A fisherman\'s cottage.'],
+  [-71, 67, 6, 4, 0x8a6a4a, 0x4a3a2a, 'The Rusty Anchor', 'A noisy sailors\' tavern.'],
+  // Varrock (far east)
+  [120, -54, 11, 7, 0x9a9488, 0x5a5a6a, 'Varrock Palace', 'Home of King Roald.'],
+  [110, -44, 5, 5, 0x6a5a4a, 0x3a3a3a, 'Varrock Weaponsmith', 'Swords and bows line the walls.'],
+  [130, -44, 5, 5, 0xc8b48a, 0x8a3a2a, 'Varrock General Store', 'All sorts of odds and ends.'],
+  [130, -33, 5, 4, 0x7a6a9a, 0x3a2a6a, "Aubury's Rune Shop", 'Aubury sells runes and knows the way to the essence mine.'],
+  [110, -33, 4, 4, 0xd0c0a0, 0x5a4a3a, 'Varrock House', 'A townhouse.'],
+  // Falador (north-west, the white city)
+  [-60, -94, 11, 7, 0xe8e4dc, 0x4a5a7a, "White Knights' Castle", 'The White Knights guard Falador.'],
+  [-70, -84, 5, 5, 0xd8d4cc, 0x5a5a6a, 'Falador Armoury', 'Cassie sells shields and plate armour.'],
+  [-50, -84, 6, 4, 0xd8d0c0, 0x6a2a2a, 'Falador Inn', 'The Rising Sun inn.'],
+  [-70, -72, 4, 4, 0xe0dcd0, 0x4a5a7a, 'Falador House', 'A white stone house.'],
+  [-50, -72, 4, 4, 0xe0dcd0, 0x3a5a3a, 'Falador House', 'A white stone house.']
 ];
+function nearestTown(x, z) {
+  let best = TOWNS.Brightwater, bd = Infinity;
+  for (const t of Object.values(TOWNS)) { const d = Math.hypot(t.x - x, t.z - z); if (d < bd) { bd = d; best = t; } }
+  return best;
+}
 // Solid areas the player can't walk through (filled in by createWorld).
 export const colliders = [];
 
@@ -107,7 +143,7 @@ export function terrainHeight(x, z) {
 
 // Paint the ground mask in code: R = dirt (paths, mines), G = sand (shore), B = cobbles (squares).
 function paintGroundMask(size) {
-  const N = 512, k = N / size;
+  const N = 1024, k = N / size;
   const cv = document.createElement('canvas'); cv.width = cv.height = N;
   const g = cv.getContext('2d');
   g.fillStyle = '#000'; g.fillRect(0, 0, N, N);
@@ -132,6 +168,10 @@ function paintGroundMask(size) {
   blob(LAKE.x, LAKE.z, LAKE.r + 2.6, '0,255,0', 1);
   blob(0, 0, 5.4, '0,0,255', 1);        // Brightwater square
   blob(50, -24, 3.5, '0,0,255', 0.9);   // Ashford square
+  for (const [name, t] of Object.entries(TOWNS)) if (name !== 'Brightwater' && name !== 'Ashford') { blob(t.x, t.z, 12, '255,0,0', 0.35); blob(t.x, t.z, 5, '0,0,255', 1); }
+  blob(132, -22, 6, '255,0,0', 0.9);     // Varrock essence mine
+  blob(-80, 74, 6, '0,255,0', 0.8);      // Port Sarim sandy docks
+  blob(122, -122, 18, '255,0,0', 0.45);  // scorched wilderness
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.NoColorSpace;
   tex.flipY = false;
@@ -151,9 +191,9 @@ export function createWorld(scene) {
 
   // ---- Terrain: one textured mesh (grass / dirt paths / sand / cobbles) ----
   // The play area is flat (feet stay on the ground); rolling hills rise beyond it.
-  const MASK = 170;
+  const MASK = WORLD_HALF * 2 + 10;
   const mask = paintGroundMask(MASK);
-  const GSIZE = 420, GSEG = 100;
+  const GSIZE = WORLD_HALF * 2 + 140, GSEG = 110;
   const groundGeo = new THREE.PlaneGeometry(GSIZE, GSIZE, GSEG, GSEG);
   const pos = groundGeo.attributes.position;
   for (let i = 0; i < pos.count; i++) pos.setZ(i, terrainHeight(pos.getX(i), -pos.getY(i)));
@@ -214,7 +254,7 @@ export function createWorld(scene) {
   }
 
   // ---- Rocks (boulders with ore veins and crystals) ----
-  const ORE_COLOR = { Copper: 0xd0803a, Tin: 0xd8d8d0, Iron: 0x8a4a32, Coal: 0x1a1a1a, Mithril: 0x5a6ad8, Adamantite: 0x3aa860, Runite: 0x40c8e0, Dragon: 0xd03030 };
+  const ORE_COLOR = { Copper: 0xd0803a, Tin: 0xd8d8d0, Iron: 0x8a4a32, Coal: 0x1a1a1a, Mithril: 0x5a6ad8, Adamantite: 0x3aa860, Runite: 0x40c8e0, Dragon: 0xd03030, Essence: 0xd8e0f0 };
   function createRock(x, z, ore) {
     const root = new THREE.Group();
     const mesh = new THREE.Mesh(rockGeometry(ORE_COLOR[ore] ?? 0x888888, rng), vcMat);
@@ -224,7 +264,7 @@ export function createWorld(scene) {
     root.rotation.y = rng() * Math.PI * 2;
     scene.add(root);
     pickables.push(root);
-    return tag(root, { mesh: root, full: root, type: 'rock', ore, name: 'Rocks', alive: true, x, z, radius: 0.8 });
+    return tag(root, { mesh: root, full: root, type: 'rock', ore, name: ore === 'Essence' ? 'Essence rock' : 'Rocks', alive: true, x, z, radius: 0.8 });
   }
 
   // ---- Fishing spots ----
@@ -348,7 +388,7 @@ export function createWorld(scene) {
     const h = 2.7, base = 0.55;
     const TIMBER = 0x4a3020, STONE = 0x7d776c;
     const add = (geo, hex, amt, px, py, pz, rx = 0, ry = 0, rz = 0) => parts.push(put(col(geo, hex, amt), px, py, pz, rx, ry, rz));
-    const big = w * d > 22 || /Bank|Church|Smithy/.test(name);
+    const big = w * d > 22 || /Bank|Church|Smithy|Palace|Castle|Armoury|Emporium|Rune Shop/.test(name);
     // stone footing with block texture painted on
     const footC = new THREE.Color(STONE), fc = new THREE.Color();
     const foot = paint(prim.box(w + 0.16, base, d + 0.16), (px, py, pz) => fc.copy(footC).multiplyScalar(0.8 + 0.25 * (0.5 + 0.5 * snoise(Math.floor(px * 2.2 + pz * 2.2), Math.floor(py * 4), 0, 3))));
@@ -411,7 +451,8 @@ export function createWorld(scene) {
       add(prim.box(0.55, 0.12, 0.55), 0x56504a, 0, cx, h + rise + 0.95, cz);
     }
     // door with frame and a stone step on the side facing the town square
-    const toCentre = Math.abs(x) > Math.abs(z) ? [Math.sign(-x), 0] : [0, Math.sign(-z)];
+    const tc = nearestTown(x, z), rx = x - tc.x, rz = z - tc.z;
+    const toCentre = Math.abs(rx) > Math.abs(rz) ? [Math.sign(-rx), 0] : [0, Math.sign(-rz) || 1];
     const fx = toCentre[0] * (w / 2 + 0.04), fz = toCentre[1] * (d / 2 + 0.04);
     const alongXdoor = !toCentre[0];
     add(alongXdoor ? prim.box(0.85, 1.55, 0.06) : prim.box(0.06, 1.55, 0.85), 0x5a3a1e, 0.25, fx, base + 0.75, fz);
@@ -586,6 +627,69 @@ export function createWorld(scene) {
     });
   }
 
+  // ---- Agility obstacles: the root sits at the start point, the model spans to the end point ----
+  function createObstacle(id, obs, sx, sz, ex, ez) {
+    const g = new THREE.Group();
+    const L = Math.hypot(ex - sx, ez - sz);
+    const parts = [];
+    const W = 0x6a4a2a, DW = 0x4a3020, ST = 0x8a8478;
+    if (obs.kind === 'log') {
+      parts.push([prim.cyl(0.22, 0.22, L, 10), 0x7a5a3a, 0, 0.45, L / 2, Math.PI / 2, 0, 0],
+        [prim.box(0.5, 0.45, 0.3), DW, 0, 0.22, 0.2], [prim.box(0.5, 0.45, 0.3), DW, 0, 0.22, L - 0.2]);
+    } else if (obs.kind === 'net') {
+      for (const x of [-0.9, 0.9]) parts.push([prim.cyl(0.07, 0.08, 2.4, 7), W, x, 1.2, L / 2]);
+      parts.push([prim.box(1.9, 0.1, 0.1), W, 0, 2.35, L / 2]);
+      for (let i = 0; i < 6; i++) parts.push([prim.box(1.8, 0.03, 0.03), 0xcab88a, 0, 0.3 + i * 0.36, L / 2, 0, 0, 0, 0.05]);
+      for (let i = 0; i < 6; i++) parts.push([prim.box(0.03, 2.1, 0.03), 0xcab88a, -0.75 + i * 0.3, 1.25, L / 2, 0, 0, 0, 0.05]);
+    } else if (obs.kind === 'rope') {
+      for (const z of [0, L]) parts.push([prim.cyl(0.08, 0.1, 2.2, 7), W, 0, 1.1, z], [prim.box(0.5, 0.15, 0.5), DW, 0, 0.08, z]);
+      parts.push([prim.cyl(0.03, 0.03, L, 5), 0xd8c89a, 0, 1.0, L / 2, Math.PI / 2, 0, 0, 0.05], [prim.cyl(0.025, 0.025, L, 5), 0xd8c89a, 0, 2.0, L / 2, Math.PI / 2, 0, 0, 0.05]);
+    } else if (obs.kind === 'pipe') {
+      parts.push([prim.cyl(0.5, 0.5, L, 14), 0x6a6a70, 0, 0.5, L / 2, Math.PI / 2, 0, 0, 0.3], [prim.cyl(0.38, 0.38, 0.05, 14), 0x101012, 0, 0.5, -0.01, Math.PI / 2, 0, 0, 0],
+        [prim.cyl(0.38, 0.38, 0.05, 14), 0x101012, 0, 0.5, L + 0.01, Math.PI / 2, 0, 0, 0]);
+    } else if (obs.kind === 'wall') {
+      parts.push([prim.box(2.0, 2.2, 0.6), ST, 0, 1.1, L / 2, 0, 0, 0, 0.3]);
+      for (let i = 0; i < 5; i++) parts.push([prim.box(0.18, 0.1, 0.12), 0x5a524a, -0.4 + (i % 2) * 0.7, 0.4 + i * 0.4, L / 2 - 0.34]);
+    } else {
+      // gap: two wooden platforms with a drop between them
+      for (const z of [0.4, L - 0.4]) {
+        parts.push([prim.box(1.4, 0.8, 0.9), 0x7a5a3a, 0, 0.4, z, 0, 0, 0, 0.2]);
+        for (const x of [-0.6, 0.6]) parts.push([prim.cyl(0.06, 0.06, 0.9, 6), DW, x, 0.45, z]);
+      }
+      parts.push([prim.box(1.2, 0.04, Math.max(0.2, L - 1.8)), 0x2a2018, 0, 0.02, L / 2, 0, 0, 0, 0]);
+    }
+    const m = kit(parts);
+    m.castShadow = true; m.receiveShadow = true;
+    m.rotation.y = Math.atan2(ex - sx, ez - sz);
+    g.add(m);
+    g.position.set(sx, 0, sz);
+    scene.add(g);
+    pickables.push(g);
+    occupied.push({ x: (sx + ex) / 2, z: (sz + ez) / 2, r: L / 2 + 1 });
+    return tag(g, { mesh: g, type: 'agility', obstacle: id, name: obs.name, verb: obs.verb, alive: true, x: sx, z: sz, toX: ex, toZ: ez, radius: 0.6 });
+  }
+
+  // ---- Rune altars: a ring of standing stones around a glowing altar ----
+  const ALTAR_GLOW = { Air: 0xe8f4ff, Mind: 0xffa040, Water: 0x40a0ff, Earth: 0xa07a40, Fire: 0xff5020, Body: 0x7090ff, Chaos: 0xffd030, Death: 0xf0f0f0, Blood: 0xd01818 };
+  function createRuneAltar(x, z, altar) {
+    const g = new THREE.Group();
+    const parts = [[prim.cyl(2.6, 2.8, 0.15, 24), 0x7a746a, 0, 0.07, 0, 0, 0, 0, 0.2], [prim.box(1.3, 0.8, 1.0), 0x9a948a, 0, 0.45, 0, 0, 0, 0, 0.25]];
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * Math.PI * 2;
+      parts.push([prim.box(0.45, 1.6 + (i % 2) * 0.4, 0.35), 0x8a8478, Math.cos(a) * 2.3, 0.85, Math.sin(a) * 2.3, 0, -a, (i % 3 - 1) * 0.06, 0.3]);
+    }
+    g.add(kit(parts));
+    const glow = new THREE.Mesh(prim.sphere(0.32, 14, 10), glowMat(ALTAR_GLOW[altar] || 0xffffff));
+    glow.position.set(0, 1.25, 0);
+    g.add(glow);
+    g.position.set(x, 0, z);
+    scene.add(g);
+    pickables.push(g);
+    occupied.push({ x, z, r: 3 });
+    colliders.push({ minX: x - 0.65, maxX: x + 0.65, minZ: z - 0.5, maxZ: z + 0.5 });
+    return tag(g, { mesh: g, type: 'runealtar', altar, name: `${altar} altar`, alive: true, x, z, radius: 1.0, anim: { glow, t: rng() * 6 } });
+  }
+
   // ---- Populate ----
   // Town first so trees keep clear of it
   const buildings = BUILDINGS.map(createBuilding);
@@ -622,6 +726,64 @@ export function createWorld(scene) {
   nodes.push(createNpc(44, -18, 'knight2', 'Sir Elric', { body: 0xb0b0c0, legs: 0x8a8a9a, hat: 0xc0c0d0, hatH: 0.28 }, 48, -25));
   nodes.push(createNpc(54, -26, 'herbalist', 'Herbalist Wren', { body: 0x4a7a5a, legs: 0x3a3a2a, hat: 0x2a5a3a, apron: 0xe0e0d0 }, 52, -35));
   nodes.push(createNpc(59, -28, 'carpenter', 'Carpenter Olan', { body: 0x8a6a4a, legs: 0x5a4a3a, hat: 0x6a4a2a, hatH: 0.15 }, 55, -18));
+  // ---- New towns: Port Sarim, Varrock and Falador ----
+  const townsfolk = (x, z, npc, name, look, extra, fx, fz) => nodes.push(Object.assign(createNpc(x, z, npc, name, look, fx, fz), extra));
+  const MAN = { body: 0x7a6a4a, legs: 0x4a3a2a }, WOMAN = { body: 0x9a4a6a, legs: 0x5a3a4a, apron: 0xe0d8c8 };
+  // Brightwater: townsfolk to pickpocket and a wizard selling runes by the tower
+  townsfolk(-2.6, 3.8, 'man', 'Man', MAN, { thieve: 'Man', say: 'Nice day for it, eh? Mind your pockets around here.' }, 0, 0);
+  townsfolk(2.8, -3.6, 'woman', 'Woman', WOMAN, { thieve: 'Woman', say: 'Have you seen the new agility course past the mine?' }, 0, 0);
+  townsfolk(-4, 22, 'mizgog', 'Wizard Mizgog', { body: 0x2a3a9a, legs: 0x2a3a9a, hat: 0x2a3a9a, hatH: 0.5, hatW: 0.42, beard: 0xdddddd }, { shop: 'magic0' }, 0, 24);
+  // Port Sarim
+  for (const [n, t] of Object.entries(TOWNS)) if (n !== 'Brightwater' && n !== 'Ashford') occupied.push({ x: t.x, z: t.z, r: 9 });
+  townsfolk(-84.5, 54, 'gerrant', 'Shopkeeper Gerrant', { body: 0x3a5a8a, legs: 0x3a3a2a, apron: 0xe0d8c8 }, { shop: 'general2' }, -80, 60);
+  townsfolk(-75.5, 54, 'betty', 'Betty', { body: 0x6a2a8a, legs: 0x4a2a5a, hat: 0x4a1a6a, hatH: 0.45, hatW: 0.4 }, { shop: 'magic' }, -80, 60);
+  townsfolk(-78, 71, 'sailor', 'Sailor', { body: 0x2a4a7a, legs: 0xe0e0e0, hat: 0xf0f0f0, hatH: 0.12 }, { thieve: 'Sailor', say: 'Arr, the docks are no place for landlubbers. Try the rigging course if ye dare.' }, -80, 60);
+  townsfolk(-84, 73, 'sailor', 'Sailor', { body: 0x2a4a7a, legs: 0xe0e0e0, hat: 0xf0f0f0, hatH: 0.12 }, { thieve: 'Sailor', say: 'Water altar is west of town, past the willows.' }, -80, 60);
+  townsfolk(-76, 62, 'man', 'Man', MAN, { thieve: 'Man', say: 'Welcome to Port Sarim.' }, -80, 60);
+  townsfolk(-85, 61, 'woman', 'Woman', WOMAN, { thieve: 'Woman', say: 'Bandits camp to the south-east near a strange dark altar.' }, -80, 60);
+  nodes.push(createBank(-80, 51));
+  // Varrock
+  townsfolk(113.5, -44, 'horvik', 'Horvik', { body: 0x5a3a2a, beard: 0x5a3a1a, apron: 0x3a3a3a }, { shop: 'weapons' }, 120, -40);
+  townsfolk(126.5, -44, 'vshop', 'Shopkeeper', { body: 0xc8b48a, legs: 0x5a4a3a, apron: 0xe0d8c8 }, { shop: 'general3' }, 120, -40);
+  townsfolk(126.5, -33, 'aubury', 'Aubury', { body: 0x6a2a2a, legs: 0x4a2a2a, hat: 0x7a2a2a, hatH: 0.45, hatW: 0.4, beard: 0xcccccc }, { shop: 'runes' }, 120, -40);
+  townsfolk(116, -49.5, 'vguard', 'Varrock Guard', { body: 0x8a8a9a, legs: 0x5a5a6a, hat: 0x9a9aa8, hatH: 0.28 }, { thieve: 'Guard', say: 'Move along, citizen.' }, 120, -40);
+  townsfolk(124, -49.5, 'vguard', 'Varrock Guard', { body: 0x8a8a9a, legs: 0x5a5a6a, hat: 0x9a9aa8, hatH: 0.28 }, { thieve: 'Guard', say: 'The wilderness to the north is full of demons and dragons.' }, 120, -40);
+  townsfolk(114, -37, 'warrior', 'Warrior', { body: 0x8a3a2a, legs: 0x4a3a2a, hat: 0x7a7a7a, hatH: 0.2 }, { thieve: 'Warrior', say: 'I train on the agility course west of town.' }, 120, -40);
+  townsfolk(122.5, -36, 'man', 'Man', MAN, { thieve: 'Man', say: 'Aubury sells runes. He mines essence just north-east of his shop.' }, 120, -40);
+  townsfolk(117, -30, 'woman', 'Woman', WOMAN, { thieve: 'Woman', say: 'The Earth altar is south-west of the palace.' }, 120, -40);
+  nodes.push(createBank(124, -27));
+  // Falador
+  townsfolk(-66.5, -84, 'cassie', 'Cassie', { body: 0xb0b0c0, legs: 0x6a6a7a, apron: 0x3a5aa0 }, { shop: 'armour' }, -60, -80);
+  townsfolk(-55, -77, 'nessa', 'Nessa', { body: 0x4a7a5a, legs: 0x3a3a2a, hat: 0x2a5a3a, hatH: 0.2, apron: 0xe0e0d0 }, { shop: 'herb2' }, -60, -80);
+  townsfolk(-64, -89.5, 'wknight', 'White Knight', { body: 0xe0e0e8, legs: 0xb0b0c0, hat: 0xd0d0d8, hatH: 0.3, apron: 0x2a4aa0 }, { thieve: 'Knight', say: 'For Saradomin and Falador!' }, -60, -80);
+  townsfolk(-56, -89.5, 'wknight', 'White Knight', { body: 0xe0e0e8, legs: 0xb0b0c0, hat: 0xd0d0d8, hatH: 0.3, apron: 0x2a4aa0 }, { thieve: 'Knight', say: 'Ogres roam the hills to the north-west.' }, -60, -80);
+  townsfolk(-52.5, -89, 'paladin', 'Paladin', { body: 0xd8c070, legs: 0xb0b0c0, hat: 0xd8c070, hatH: 0.3 }, { thieve: 'Paladin', say: 'Only the nimble fingered dare try my purse.' }, -60, -80);
+  townsfolk(-68, -89, 'hero', 'Hero', { body: 0x8a1a1a, legs: 0x3a3a4a, hat: 0xd4af37, hatH: 0.18, beard: 0x6a4a2a }, { thieve: 'Hero', say: 'I have slain dragons in the far north-east.' }, -60, -80);
+  townsfolk(-63, -76, 'man', 'Man', MAN, { thieve: 'Man', say: 'Welcome to Falador, the white city.' }, -60, -80);
+  townsfolk(-56.5, -70, 'woman', 'Woman', WOMAN, { thieve: 'Woman', say: 'The Mind altar is south-east of the castle.' }, -60, -80);
+  nodes.push(createBank(-56, -75));
+  // Farmers can be pickpocketed too
+  for (const n of nodes) if (n.npc === 'farmer' || n.npc === 'farmer2') n.thieve = 'Farmer';
+
+  // ---- Agility courses ----
+  const COURSE_LAYOUT = {
+    brightwater: [[16, 33, 22, 33], [23.5, 33, 26.5, 33], [28, 34, 28, 40], [26, 42, 19, 42]],
+    varrock: [[100, -22, 100, -19], [100, -17, 106, -17], [107.5, -17, 110.5, -17], [111.5, -19, 111.5, -25]],
+    portsarim: [[-64, 70, -64, 73], [-64, 75, -58, 75], [-56, 75, -56, 72], [-56, 70, -56, 66]],
+    falador: [[-84, -66, -84, -63], [-84, -61, -78, -61], [-76, -61, -76, -58], [-76, -56, -80, -56], [-82, -56, -88, -56]]
+  };
+  for (const [cid, list] of Object.entries(COURSE_LAYOUT)) list.forEach(([sx, sz, ex, ez], i) => nodes.push(createObstacle(`${cid}:${i}`, AGILITY_COURSES[cid].obstacles[i], sx, sz, ex, ez)));
+
+  // ---- Rune altars and the essence mines ----
+  for (const [altar, x, z] of [['Air', -26, 34], ['Mind', -40, -102], ['Water', -104, 76], ['Earth', 100, -66], ['Fire', 143, -72], ['Body', -28, -64],
+    ['Chaos', -44, 100], ['Death', 98, -126], ['Blood', -128, -134]]) if (RUNE_ALTARS[altar]) nodes.push(createRuneAltar(x, z, altar));
+  for (let i = 0; i < 5; i++) { const p = place(132, -22, 4.5, 1.0); if (p) nodes.push(createRock(p.x, p.z, 'Essence')); }
+
+  // ---- Trees around the new towns ----
+  for (const [kind, cx, cz, spread, n] of [['Tree', -80, 60, 26, 14], ['Tree', 120, -40, 26, 14], ['Tree', -60, -80, 26, 14], ['Tree', -40, 30, 18, 8], ['Tree', 85, -30, 15, 8],
+    ['Oak', -60, 45, 8, 5], ['Oak', 95, -50, 8, 5], ['Willow', -98, 66, 6, 4], ['Maple', 100, -6, 6, 4], ['Yew', -38, -88, 5, 3], ['Magic', 104, -112, 4, 2]]) {
+    for (let i = 0; i < n; i++) { const p = place(cx, cz, spread, 1.8); if (p) nodes.push(createTree(p.x, p.z, kind)); }
+  }
   fenceLine(-8, -16.5, 0, -16.5);
   fenceLine(10.5, 9.2, 14.5, 9.2);
   fenceLine(10.5, -8.2, 15, -8.2);
@@ -665,6 +827,18 @@ export function createWorld(scene) {
   for (const [x, z] of [[24, -38], [28, -36]]) monsters.push(createMonster('Skeleton', x, z, 2.5));
   for (const [x, z] of [[-38, -18], [-36, -22]]) monsters.push(createMonster('Giant Spider', x, z, 2.5));
 
+  // Monsters of the wider world (most were defined but never placed before)
+  for (const [x, z] of [[-52, 86], [-46, 92], [-54, 95]]) monsters.push(createMonster('Bandit', x, z, 3));
+  for (const [x, z] of [[-108, 38], [-113, 45], [-104, 47]]) monsters.push(createMonster('Moss Giant', x, z, 3));
+  for (const [x, z] of [[-116, 96], [-110, 104]]) monsters.push(createMonster('Ice Giant', x, z, 3));
+  for (const [x, z] of [[136, -8], [139, -16]]) monsters.push(createMonster('Ice Giant', x, z, 3));
+  for (const [x, z] of [[-96, -112], [-102, -107], [-100, -119]]) monsters.push(createMonster('Ogre', x, z, 3));
+  monsters.push(createMonster('Grumsh', -112, -124, 3));
+  for (const [x, z] of [[112, -100], [123, -97]]) monsters.push(createMonster('Lesser Demon', x, z, 3));
+  for (const [x, z] of [[113, -121], [128, -117], [120, -130]]) monsters.push(createMonster('Green Dragon', x, z, 3));
+  monsters.push(createMonster('Scorchwing', 134, -136, 3));
+  for (const [x, z] of [[-30, -56], [-24, -48]]) monsters.push(createMonster('Wolf', x, z, 3));
+
   scatterDecor(scene, rng, occupied);
   return { ground, nodes, monsters, pickables, buildings };
 }
@@ -680,6 +854,8 @@ function distToSeg(px, pz, x1, z1, x2, z2) {
 function scatterDecor(scene, rng, occupied) {
   const ok = (x, z, pad) => {
     if (Math.hypot(x, z) < 6.5 || Math.hypot(x - 50, z + 24) < 4) return false;
+    for (const t of Object.values(TOWNS)) if (Math.hypot(x - t.x, z - t.z) < 6) return false;
+    if (Math.hypot(x - 132, z + 22) < 6) return false;
     if (insideLake(x, z, 2.6)) return false;
     for (const p of PATHS) if (distToSeg(x, z, ...p) < 1.4) return false;
     for (const b of colliders) if (x > b.minX - pad && x < b.maxX + pad && z > b.minZ - pad && z < b.maxZ + pad) return false;
@@ -707,14 +883,14 @@ function scatterDecor(scene, rng, occupied) {
     return inst;
   }
   const grassMat = makeFoliageMat({}, 2.5);
-  const grass = scatter(tuftGeometry(), grassMat, 3800, WORLD_HALF - 2, 0.3, 0.7, 1.4, cc => cc.setHSL(0.22 + rng() * 0.06, 0.35, 0.75 + rng() * 0.2));
+  const grass = scatter(tuftGeometry(), grassMat, 8000, WORLD_HALF - 2, 0.3, 0.7, 1.4, cc => cc.setHSL(0.22 + rng() * 0.06, 0.35, 0.75 + rng() * 0.2));
   const FLOWER = [0xf0e040, 0xffffff, 0xe05a8a, 0x9a6ae0, 0xff8a3a];
-  const flowers = scatter(flowerGeometry(), makeFoliageMat({}, 2.5), 420, WORLD_HALF - 2, 0.3, 0.8, 1.3, cc => cc.setHex(FLOWER[(rng() * FLOWER.length) | 0]));
+  const flowers = scatter(flowerGeometry(), makeFoliageMat({}, 2.5), 900, WORLD_HALF - 2, 0.3, 0.8, 1.3, cc => cc.setHex(FLOWER[(rng() * FLOWER.length) | 0]));
   const bushGeo = bake([paint(blob(0.6, 0.45, 0.6, { detail: 1, lump: 0.28, seed: 4, flat: 0.6 }), (x, y, z, nx, ny) => new THREE.Color(0x2e6a22).multiplyScalar(0.7 + 0.45 * (0.5 + ny * 0.5)))]);
   bushGeo.translate(0, 0.25, 0);
-  scatter(bushGeo, foliageMat, 140, WORLD_HALF - 3, 1.0, 0.7, 1.4, cc => cc.setHSL(0.27 + rng() * 0.07, 0.4 + rng() * 0.2, 0.55 + rng() * 0.15), true);
+  scatter(bushGeo, foliageMat, 320, WORLD_HALF - 3, 1.0, 0.7, 1.4, cc => cc.setHSL(0.27 + rng() * 0.07, 0.4 + rng() * 0.2, 0.55 + rng() * 0.15), true);
   const pebGeo = bake([col(blob(0.12, 0.07, 0.1, { detail: 0, lump: 0.3, seed: 9 }), 0x8a857c, 0.3)]);
-  scatter(pebGeo, vcMat, 300, WORLD_HALF - 2, 0.2, 0.6, 2.0, cc => cc.setScalar(0.75 + rng() * 0.35));
+  scatter(pebGeo, vcMat, 650, WORLD_HALF - 2, 0.2, 0.6, 2.0, cc => cc.setScalar(0.75 + rng() * 0.35));
   decorFine = [grass, flowers];
 }
 

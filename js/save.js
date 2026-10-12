@@ -4,8 +4,8 @@ import { ITEMS, isTool, STARTER_TOOLS } from './items.js';
 import { PRAYERS } from './prayer.js';
 import { questPoints } from './quests.js';
 
-export const SAVE_VERSION = 6;
-export const POS_LIMIT = 128; // world half-size minus a margin
+export const SAVE_VERSION = 7;
+export const POS_LIMIT = 146; // world half-size (150) minus a margin
 const KEY = 'gielinor3d';
 
 export function getSaveData(skills, player, playerMesh) {
@@ -117,6 +117,8 @@ export function migrateSave(saved) {
   p.questCapeLegacy = !!p.questCapeLegacy;
   if (fromVersion < 6) notes.push('New: Herblore and potions, endless trees, rocks and fishing spots, and 5x level bonuses. See Settings → What\'s new.');
   if (fromVersion < 5) notes.push('New: perks every 5 levels, gear bonuses with jewellery, capes and armour sets, and lasting quest bonuses. See Settings → What\'s new.');
+  // v7: Magic, Agility, Thieving and Runecrafting (normalizeSkills starts them at level 1).
+  if (fromVersion < 7) notes.push('New skills: Magic, Agility, Thieving and Runecrafting, plus the towns of Port Sarim, Varrock and Falador. See Settings → What\'s new.');
   saved.version = SAVE_VERSION;
   return notes;
 }

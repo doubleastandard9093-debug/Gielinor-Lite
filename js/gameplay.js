@@ -1,6 +1,6 @@
 // Pure game rules (no rendering), so they can be unit-tested in node.
 import { addItem, removeItem, canAdd } from './playerState.js';
-import { ITEMS, HEAL_SCALE, slotFor, isRangedWeapon, itemValue, isTool, toolType, FOODS, SETS, SKILL_CAPE_SKILLS, HERBS, grimyOf, METALS } from './items.js';
+import { ITEMS, HEAL_SCALE, slotFor, isRangedWeapon, itemValue, isTool, toolType, FOODS, SETS, SKILL_CAPE_SKILLS, HERBS, grimyOf, METALS, RUNES } from './items.js';
 import { boostedLevel, effectFx } from './potions.js';
 import { perk } from './skills.js';
 import { prayerFx } from './prayer.js';
@@ -25,7 +25,9 @@ export const ROCKS = {
   Mithril:    { level: 55, xp: 80,   item: 'Mithril ore',    respawn: 30000 },
   Adamantite: { level: 70, xp: 95,   item: 'Adamantite ore', respawn: 50000 },
   Runite:     { level: 85, xp: 125,  item: 'Runite ore',     respawn: 90000 },
-  Dragon:     { level: 95, xp: 180,  item: 'Dragon ore',     respawn: 120000 }
+  Dragon:     { level: 95, xp: 180,  item: 'Dragon ore',     respawn: 120000 },
+  // Rune essence rocks (Varrock mine and a pair near Brightwater): Pure essence from Mining 30.
+  Essence:    { level: 1,  xp: 5,    item: 'Rune essence',   respawn: 1000, pureAt: 30, pure: 'Pure essence' }
 };
 // Herb patches: pick grimy herbs. Never run out.
 export const HERB_PATCHES = Object.fromEntries(HERBS.map(([h, lvl, xp]) => [h, { level: lvl, xp: Math.round(xp * 3 * 10) / 10, item: grimyOf(h) }]));
@@ -115,10 +117,11 @@ export function gatherTick(node, skills, player, rng = Math.random) {
     }
     return null;
   }
-  if (!canAdd(player, info.item)) return { error: 'Your inventory is too full to hold any more.' };
+  const item = info.pureAt && lvl >= info.pureAt ? info.pure : info.item;
+  if (!canAdd(player, item)) return { error: 'Your inventory is too full to hold any more.' };
   if (rng() >= Math.min(0.95, successChance(lvl, info.level) + bonus)) return null;
   // Resources are infinite: trees, rocks and herb patches never run out.
-  return { item: info.item, qty: doubled(), xp: info.xp * xpMult, skill: info.skill, depleted: false, bank: banked() };
+  return { item, qty: doubled(), xp: info.xp * xpMult, skill: info.skill, depleted: false, bank: banked() };
 }
 // Chain Chop / Rich Vein / Quick Picker: chance the next attempt comes 1 tick sooner (never below 1 tick).
 export function nextGatherWait(skills, skill, rng = Math.random) {
@@ -203,7 +206,7 @@ export function currentStyle(player) {
   return list[Math.min(list.length - 1, Math.max(0, player.attackStyle | 0))];
 }
 
-export const BONUS_KEYS = ['atk', 'str', 'ranged', 'rstr', 'def', 'rdef', 'prayer'];
+export const BONUS_KEYS = ['atk', 'str', 'ranged', 'rstr', 'def', 'rdef', 'prayer', 'mag'];
 // Specials from unique items, added up from everything worn.
 export function gearEffects(player) {
   const out = {};
@@ -219,7 +222,7 @@ export function gearEffects(player) {
 }
 // Totals of everything worn, plus extras and set bonus.
 export function equipmentBonuses(player) {
-  const b = { atk: 0, str: 0, ranged: 0, rstr: 0, def: 0, rdef: 0, prayer: 0, regen: 0, gather: {}, xp: {}, capeSkill: null };
+  const b = { atk: 0, str: 0, ranged: 0, rstr: 0, def: 0, rdef: 0, prayer: 0, mag: 0, regen: 0, gather: {}, xp: {}, capeSkill: null };
   const eq = player.equipment || {};
   for (const [slot, item] of Object.entries(eq)) {
     const info = item && ITEMS[item];
@@ -649,3 +652,252 @@ export function unequip(player, slot, onLog) {
   return true;
 }
 
+
+// ===========================================================================
+// Magic: RuneScape-style combat spells. Each cast uses runes (an elemental staff
+// counts as unlimited runes of its element). Damage is 10x classic, like the rest.
+// ===========================================================================
+const strike = (el, n) => ({ 'Air rune': 1, 'Mind rune': 1, ...(el ? { [el]: n } : {}) });
+export const SPELLS = [
+  { id: 'wind_strike',  name: 'Wind Strike',  level: 1,  maxHit: 20,  xp: 5.5,  icon: '💨', runes: strike(null) },
+  { id: 'water_strike', name: 'Water Strike', level: 5,  maxHit: 40,  xp: 7.5,  icon: '💧', runes: strike('Water rune', 1) },
+  { id: 'earth_strike', name: 'Earth Strike', level: 9,  maxHit: 60,  xp: 9.5,  icon: '🪨', runes: strike('Earth rune', 2) },
+  { id: 'fire_strike',  name: 'Fire Strike',  level: 13, maxHit: 80,  xp: 11.5, icon: '🔥', runes: { 'Air rune': 2, 'Mind rune': 1, 'Fire rune': 3 } },
+  { id: 'wind_bolt',    name: 'Wind Bolt',    level: 17, maxHit: 90,  xp: 13.5, icon: '💨', runes: { 'Air rune': 2, 'Chaos rune': 1 } },
+  { id: 'water_bolt',   name: 'Water Bolt',   level: 23, maxHit: 100, xp: 16.5, icon: '💧', runes: { 'Air rune': 2, 'Water rune': 2, 'Chaos rune': 1 } },
+  { id: 'earth_bolt',   name: 'Earth Bolt',   level: 29, maxHit: 110, xp: 19.5, icon: '🪨', runes: { 'Air rune': 2, 'Earth rune': 3, 'Chaos rune': 1 } },
+  { id: 'fire_bolt',    name: 'Fire Bolt',    level: 35, maxHit: 120, xp: 22.5, icon: '🔥', runes: { 'Air rune': 3, 'Fire rune': 4, 'Chaos rune': 1 } },
+  { id: 'wind_blast',   name: 'Wind Blast',   level: 41, maxHit: 130, xp: 25.5, icon: '💨', runes: { 'Air rune': 3, 'Death rune': 1 } },
+  { id: 'water_blast',  name: 'Water Blast',  level: 47, maxHit: 140, xp: 28.5, icon: '💧', runes: { 'Air rune': 3, 'Water rune': 3, 'Death rune': 1 } },
+  { id: 'earth_blast',  name: 'Earth Blast',  level: 53, maxHit: 150, xp: 31.5, icon: '🪨', runes: { 'Air rune': 3, 'Earth rune': 4, 'Death rune': 1 } },
+  { id: 'fire_blast',   name: 'Fire Blast',   level: 59, maxHit: 160, xp: 34.5, icon: '🔥', runes: { 'Air rune': 4, 'Fire rune': 5, 'Death rune': 1 } },
+  { id: 'wind_wave',    name: 'Wind Wave',    level: 62, maxHit: 170, xp: 36,   icon: '💨', runes: { 'Air rune': 5, 'Blood rune': 1 } },
+  { id: 'water_wave',   name: 'Water Wave',   level: 65, maxHit: 180, xp: 37.5, icon: '💧', runes: { 'Air rune': 5, 'Water rune': 7, 'Blood rune': 1 } },
+  { id: 'earth_wave',   name: 'Earth Wave',   level: 70, maxHit: 190, xp: 40,   icon: '🪨', runes: { 'Air rune': 5, 'Earth rune': 7, 'Blood rune': 1 } },
+  { id: 'fire_wave',    name: 'Fire Wave',    level: 75, maxHit: 200, xp: 42.5, icon: '🔥', runes: { 'Air rune': 5, 'Fire rune': 7, 'Blood rune': 1 } }
+];
+export const SPELL_TICKS = 5; // 3 seconds per cast
+export function spellById(id) { return SPELLS.find(s => s.id === id) || null; }
+// Runes your staff supplies for free.
+export function staffRune(player) {
+  const w = player.equipment && player.equipment.weapon;
+  return (w && ITEMS[w] && ITEMS[w].runeSource) || null;
+}
+// Which runes a cast actually takes from your inventory.
+export function runeCost(spell, player) {
+  const free = staffRune(player);
+  return Object.entries(spell.runes).filter(([r]) => r !== free);
+}
+// How many casts your runes allow (Infinity with a staff covering everything).
+export function castsLeft(spell, player) {
+  let n = Infinity;
+  for (const [r, q] of runeCost(spell, player)) n = Math.min(n, Math.floor((player.inventory[r] || 0) / q));
+  return n;
+}
+// { ok, reason }
+export function canCast(spell, skills, player) {
+  if (!spell) return { ok: false, reason: 'Choose a spell first.' };
+  if (skills.Magic.level < spell.level) return { ok: false, reason: `You need a Magic level of ${spell.level} to cast ${spell.name}.` };
+  if (castsLeft(spell, player) < 1) {
+    const miss = runeCost(spell, player).filter(([r, q]) => (player.inventory[r] || 0) < q).map(([r, q]) => `${q} ${r}`);
+    return { ok: false, reason: `You don't have enough runes to cast ${spell.name} (need ${miss.join(', ')}).` };
+  }
+  return { ok: true };
+}
+// Best spell you can cast right now (for the Cast option and autocast fallback).
+export function bestSpell(skills, player) {
+  let best = null;
+  for (const sp of SPELLS) if (canCast(sp, skills, player).ok) best = sp;
+  return best;
+}
+export function magicMaxHit(spell, player, skills) {
+  const b = equipmentBonuses(player);
+  return Math.floor(spell.maxHit * (1 + perk(skills, 'Magic', 'magicDmg') + b.mag * 0.01));
+}
+export function magicAccuracy(player, skills, mon) {
+  const b = equipmentBonuses(player);
+  const att = (boostedLevel(player, skills, 'Magic') + 8) * Math.max(16, 64 + b.mag * 3);
+  const def = (mon.def + 8) * 64;
+  return Math.min(0.98, hitChance(att, def) * (1 + perk(skills, 'Magic', 'magicAcc')));
+}
+// Cast one spell at a monster: uses runes, rolls the hit. Returns { dmg, xp: { Magic, Hitpoints }, saved }
+// or { error } when it can't be cast.
+export function castSpell(spell, skills, player, mon, rng = Math.random) {
+  const c = canCast(spell, skills, player);
+  if (!c.ok) return { error: c.reason };
+  const saved = rng() < perk(skills, 'Magic', 'runeSave');
+  if (!saved) for (const [r, q] of runeCost(spell, player)) removeItem(player, r, q);
+  let dmg = 0;
+  if (rng() < magicAccuracy(player, skills, mon)) {
+    dmg = 1 + Math.floor(rng() * magicMaxHit(spell, player, skills));
+    dmg = Math.floor(dmg * (1 + questFx(player, 'dmgVs.' + mon.name) + questFx(player, 'dmgVs.*') + (gearEffects(player).dmgPct || 0)));
+  }
+  dmg = Math.min(dmg, mon.hp);
+  // Like RuneScape, a cast always gives its base XP; damage adds more.
+  return { dmg, saved, xp: { Magic: spell.xp * 2 + dmg * 0.6, Hitpoints: dmg * 0.4 } };
+}
+
+// ===========================================================================
+// Agility: obstacle courses. Do the obstacles in order for a lap bonus.
+// ===========================================================================
+// course: { name, level, lapXp, obstacles: [{ name, verb, kind, level, xp, failDmg }] }
+export const AGILITY_COURSES = {
+  brightwater: { name: 'Brightwater Agility Course', level: 1, lapXp: 39, obstacles: [
+    { name: 'Log balance', verb: 'Walk-across', kind: 'log', level: 1, xp: 7.5, failDmg: 10 },
+    { name: 'Obstacle net', verb: 'Climb-over', kind: 'net', level: 1, xp: 7.5, failDmg: 10 },
+    { name: 'Balancing rope', verb: 'Walk-on', kind: 'rope', level: 1, xp: 7.5, failDmg: 10 },
+    { name: 'Obstacle pipe', verb: 'Squeeze-through', kind: 'pipe', level: 1, xp: 7.5, failDmg: 10 }] },
+  varrock: { name: 'Varrock Agility Course', level: 30, lapXp: 125, obstacles: [
+    { name: 'Rough wall', verb: 'Climb', kind: 'wall', level: 30, xp: 12, failDmg: 20 },
+    { name: 'Clothes line', verb: 'Cross', kind: 'rope', level: 30, xp: 21, failDmg: 30 },
+    { name: 'Gap', verb: 'Leap', kind: 'gap', level: 30, xp: 17, failDmg: 30 },
+    { name: 'Wall ledge', verb: 'Balance', kind: 'log', level: 30, xp: 25, failDmg: 30 }] },
+  portsarim: { name: 'Port Sarim Docks Course', level: 45, lapXp: 190, obstacles: [
+    { name: 'Rigging net', verb: 'Climb-over', kind: 'net', level: 45, xp: 30, failDmg: 40 },
+    { name: 'Mast rope', verb: 'Swing-on', kind: 'rope', level: 45, xp: 35, failDmg: 40 },
+    { name: 'Crate stack', verb: 'Climb', kind: 'wall', level: 45, xp: 30, failDmg: 40 },
+    { name: 'Pier gap', verb: 'Jump', kind: 'gap', level: 45, xp: 40, failDmg: 50 }] },
+  falador: { name: 'Falador Agility Course', level: 60, lapXp: 300, obstacles: [
+    { name: 'Rough wall', verb: 'Climb', kind: 'wall', level: 60, xp: 45, failDmg: 50 },
+    { name: 'Tightrope', verb: 'Cross', kind: 'rope', level: 60, xp: 50, failDmg: 60 },
+    { name: 'Hand holds', verb: 'Cross', kind: 'net', level: 60, xp: 55, failDmg: 60 },
+    { name: 'Gap', verb: 'Jump', kind: 'gap', level: 60, xp: 50, failDmg: 60 },
+    { name: 'Ledge', verb: 'Balance', kind: 'log', level: 60, xp: 60, failDmg: 60 }] }
+};
+// Flat list (one entry per obstacle) with ids like 'varrock:2'.
+export const AGILITY_OBSTACLES = Object.fromEntries(Object.entries(AGILITY_COURSES).flatMap(([cid, c]) =>
+  c.obstacles.map((o, i) => [`${cid}:${i}`, { ...o, id: `${cid}:${i}`, course: cid, index: i, last: i === c.obstacles.length - 1 }])));
+// Chance to cross an obstacle without slipping.
+export function agilitySuccess(level, req, failLess = 0) {
+  const fail = Math.max(0.02, Math.min(0.5, 0.25 - (level - req) * 0.012));
+  return 1 - fail * (1 - Math.min(0.9, failLess));
+}
+// One attempt. Updates player.agilityLap. Returns { ok, xp, dmg, lap, msg } or { error }.
+export function runObstacle(obs, skills, player, rng = Math.random) {
+  if (skills.Agility.level < obs.level) return { error: `You need an Agility level of ${obs.level} to use this course.` };
+  const xpMult = 1 + perk(skills, 'Agility', 'agilityXp');
+  if (rng() >= agilitySuccess(skills.Agility.level, obs.level, perk(skills, 'Agility', 'failLess'))) {
+    player.agilityLap = null;
+    return { ok: false, xp: Math.round(obs.xp * 0.25 * xpMult * 10) / 10, dmg: Math.max(1, Math.floor(obs.failDmg * (0.5 + rng() * 0.5))), msg: `You slip and fall off the ${obs.name.toLowerCase()}.` };
+  }
+  const lap = player.agilityLap && player.agilityLap.course === obs.course ? player.agilityLap : { course: obs.course, next: 0 };
+  let lapXp = 0;
+  if (obs.index === lap.next) lap.next++; else { lap.next = obs.index === 0 ? 1 : -1; }
+  if (obs.last && lap.next === AGILITY_COURSES[obs.course].obstacles.length) { lapXp = AGILITY_COURSES[obs.course].lapXp; lap.next = 0; }
+  player.agilityLap = lap;
+  return { ok: true, xp: (obs.xp + lapXp) * xpMult, dmg: 0, lap: lapXp > 0, msg: `You ${obs.verb.toLowerCase().replace('-', ' ')} the ${obs.name.toLowerCase()}.` };
+}
+
+// ===========================================================================
+// Thieving: pickpocket townsfolk (and the guards). Failing stuns you briefly.
+// ===========================================================================
+// loot: [{ item, qty: [lo, hi], chance }] ('Coins' go to your gold)
+export const THIEVE_TARGETS = {
+  Man:      { level: 1,  xp: 8,     stun: 5, dmg: 10, loot: [{ item: 'Coins', qty: [3, 3] }] },
+  Woman:    { level: 1,  xp: 8,     stun: 5, dmg: 10, loot: [{ item: 'Coins', qty: [3, 3] }] },
+  Farmer:   { level: 10, xp: 14.5,  stun: 5, dmg: 10, loot: [{ item: 'Coins', qty: [9, 9] }, { item: 'Raw beef', qty: [1, 1], chance: 0.2 }, { item: 'Grimy guam leaf', qty: [1, 1], chance: 0.15 }] },
+  Sailor:   { level: 20, xp: 22,    stun: 5, dmg: 20, loot: [{ item: 'Coins', qty: [12, 18] }, { item: 'Raw shrimp', qty: [1, 2], chance: 0.25 }] },
+  Warrior:  { level: 25, xp: 26,    stun: 5, dmg: 20, loot: [{ item: 'Coins', qty: [18, 18] }] },
+  Guard:    { level: 40, xp: 46.8,  stun: 5, dmg: 20, loot: [{ item: 'Coins', qty: [30, 30] }, { item: 'Iron arrows', qty: [3, 8], chance: 0.2 }] },
+  Knight:   { level: 55, xp: 84.3,  stun: 6, dmg: 30, loot: [{ item: 'Coins', qty: [50, 50] }, { item: 'Chaos rune', qty: [1, 2], chance: 0.15 }] },
+  Paladin:  { level: 70, xp: 151.8, stun: 6, dmg: 30, loot: [{ item: 'Coins', qty: [80, 80] }, { item: 'Chaos rune', qty: [2, 2], chance: 0.4 }] },
+  Hero:     { level: 80, xp: 273.3, stun: 6, dmg: 40, loot: [{ item: 'Coins', qty: [200, 300] }, { item: 'Death rune', qty: [2, 2], chance: 0.25 }, { item: 'Blood rune', qty: [1, 1], chance: 0.15 }, { item: 'Amulet of glory', qty: [1, 1], chance: 0.01 }] }
+};
+export function thieveChance(level, req, bonus = 0) {
+  return Math.max(0.1, Math.min(0.95, 0.6 + (level - req) * 0.012 + bonus));
+}
+// One pickpocket attempt. Returns { fail, xp, dmg, stun, drops: [{ item, qty }] } or { error }.
+export function thieve(targetType, skills, player, rng = Math.random) {
+  const t = THIEVE_TARGETS[targetType];
+  if (!t) return { error: 'You can\'t pickpocket that.' };
+  if (skills.Thieving.level < t.level) return { error: `You need a Thieving level of ${t.level} to pickpocket a ${targetType.toLowerCase()}.` };
+  const lootBonus = perk(skills, 'Thieving', 'lootChance');
+  if (rng() >= thieveChance(skills.Thieving.level, t.level, lootBonus * 0.2)) {
+    return { fail: true, xp: 0, dmg: Math.max(1, Math.floor(t.dmg * (0.5 + rng() * 0.5))), stun: t.stun, drops: [] };
+  }
+  const drops = [];
+  for (const d of t.loot) {
+    if (d.chance !== undefined && rng() >= d.chance * (1 + lootBonus)) continue;
+    const [lo, hi] = d.qty;
+    let qty = lo + Math.floor(rng() * (hi - lo + 1));
+    if (d.item === 'Coins' && rng() < lootBonus) qty *= 2; // Better Loot perks
+    drops.push({ item: d.item, qty });
+  }
+  return { fail: false, xp: t.xp * (1 + perk(skills, 'Thieving', 'thieveXp')), dmg: 0, stun: 0, drops };
+}
+
+// ===========================================================================
+// Runecrafting: take essence to a rune altar and craft it all into runes at once.
+// Higher levels make several runes per essence. Chaos, Death and Blood need Pure essence.
+// ===========================================================================
+export const RUNE_ALTARS = {
+  Air:   { rune: 'Air rune',   level: 1,  xp: 5,    multi: 11, pure: false },
+  Mind:  { rune: 'Mind rune',  level: 2,  xp: 5.5,  multi: 14, pure: false },
+  Water: { rune: 'Water rune', level: 5,  xp: 6,    multi: 19, pure: false },
+  Earth: { rune: 'Earth rune', level: 9,  xp: 6.5,  multi: 26, pure: false },
+  Fire:  { rune: 'Fire rune',  level: 14, xp: 7,    multi: 35, pure: false },
+  Body:  { rune: 'Body rune',  level: 20, xp: 7.5,  multi: 46, pure: false },
+  Chaos: { rune: 'Chaos rune', level: 35, xp: 8.5,  multi: 74, pure: true },
+  Death: { rune: 'Death rune', level: 65, xp: 10,   multi: 0,  pure: true },
+  Blood: { rune: 'Blood rune', level: 77, xp: 10.5, multi: 0,  pure: true }
+};
+export function runesPerEssence(altar, level) {
+  return altar.multi ? 1 + Math.floor(level / altar.multi) : 1;
+}
+// Crafts every usable essence in your inventory. Returns { item, qty, xp, used, essence } or { error }.
+export function craftRunes(altarName, skills, player, rng = Math.random) {
+  const a = RUNE_ALTARS[altarName];
+  if (!a) return { error: 'Nothing happens.' };
+  const lvl = skills.Runecrafting.level;
+  if (lvl < a.level) return { error: `You need a Runecrafting level of ${a.level} to craft ${a.rune.toLowerCase()}s.` };
+  const kinds = a.pure ? ['Pure essence'] : ['Pure essence', 'Rune essence'];
+  let used = 0;
+  const parts = [];
+  for (const k of kinds) { const n = player.inventory[k] || 0; if (n) { removeItem(player, k, n); used += n; parts.push(k); } }
+  if (!used) return { error: a.pure ? `You need pure essence to craft ${a.rune.toLowerCase()}s. Mine it at Mining 30 in the Varrock essence mine.` : 'You don\'t have any rune essence. Buy some from a magic shop or mine it.' };
+  let qty = used * runesPerEssence(a, lvl);
+  const dbl = perk(skills, 'Runecrafting', 'runeDouble');
+  if (dbl > 0) { let extra = 0; for (let i = 0; i < used; i++) if (rng() < dbl) extra++; qty += extra; }
+  addItem(player, a.rune, qty);
+  return { item: a.rune, qty, used, essence: parts, xp: used * a.xp * (1 + perk(skills, 'Runecrafting', 'rcXp')) };
+}
+
+// ---- Magic shops ----
+const runeStock = (list) => list.map(r => ({ item: r, price: Math.max(2, Math.round(itemValue(r) * 1.4)) }));
+export const MAGIC_STOCK_BASIC = [
+  ...runeStock(['Air rune', 'Mind rune', 'Water rune', 'Earth rune', 'Fire rune']),
+  { item: 'Rune essence', price: 8 }, { item: 'Staff', price: 20 }, { item: 'Wizard hat', price: 30 }, { item: 'Wizard robe', price: 45 }
+];
+export const MAGIC_STOCK = [
+  ...runeStock(['Air rune', 'Mind rune', 'Water rune', 'Earth rune', 'Fire rune', 'Body rune', 'Chaos rune']),
+  { item: 'Rune essence', price: 8 }, { item: 'Staff', price: 20 },
+  { item: 'Staff of air', price: 1500 }, { item: 'Staff of water', price: 1500 }, { item: 'Staff of earth', price: 1500 }, { item: 'Staff of fire', price: 1500 },
+  { item: 'Wizard hat', price: 30 }, { item: 'Wizard robe', price: 45 }
+];
+export const RUNE_STOCK = [
+  ...runeStock(['Air rune', 'Mind rune', 'Water rune', 'Earth rune', 'Fire rune', 'Body rune', 'Chaos rune', 'Death rune']),
+  { item: 'Rune essence', price: 8 }, { item: 'Pure essence', price: 14 },
+  { item: 'Mystic staff', price: 9000 }, { item: 'Mystic hat', price: 3500 }, { item: 'Mystic robe top', price: 14000 }, { item: 'Mystic robe bottom', price: 10500 }
+];
+Object.assign(SHOPS, {
+  magic0: { title: "Mizgog's Magic Supplies", stock: MAGIC_STOCK_BASIC },
+  magic: { title: "Betty's Magic Emporium", stock: MAGIC_STOCK },
+  runes: { title: "Aubury's Rune Shop", stock: RUNE_STOCK }
+});
+// The towns that were planned as Saltmere and Highcrag are now Port Sarim and Varrock (plus Falador).
+SHOPS.general2.title = 'Port Sarim General Store';
+SHOPS.armour.title = 'Falador Armoury';
+SHOPS.weapons.title = 'Varrock Weaponsmith';
+SHOPS.general3.title = 'Varrock General Store';
+SHOPS.herb2.title = "Nessa's Herb Stall (Falador)";
+
+// Rune drops from monsters that cast or carry them.
+const addLoot = (mon, ...entries) => { if (LOOT_TABLES[mon]) LOOT_TABLES[mon].push(...entries); };
+addLoot('Goblin', { item: 'Air rune', chance: 0.12, qty: [3, 8] }, { item: 'Mind rune', chance: 0.08, qty: [2, 5] });
+addLoot('Dark Archer', { item: 'Chaos rune', chance: 0.1, qty: [1, 3] });
+addLoot('Skeleton', { item: 'Earth rune', chance: 0.15, qty: [3, 9] });
+addLoot('Bandit', { item: 'Chaos rune', chance: 0.15, qty: [2, 5] });
+addLoot('Moss Giant', { item: 'Water rune', chance: 0.2, qty: [8, 20] }, { item: 'Chaos rune', chance: 0.12, qty: [3, 6] });
+addLoot('Ice Giant', { item: 'Water rune', chance: 0.25, qty: [10, 25] }, { item: 'Death rune', chance: 0.08, qty: [2, 5] });
+addLoot('Lesser Demon', { item: 'Fire rune', chance: 0.3, qty: [20, 45] }, { item: 'Death rune', chance: 0.12, qty: [3, 6] }, { item: 'Blood rune', chance: 0.05, qty: [1, 3] });
+addLoot('Green Dragon', { item: 'Blood rune', chance: 0.08, qty: [2, 4] });

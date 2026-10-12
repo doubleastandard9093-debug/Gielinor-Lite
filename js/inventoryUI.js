@@ -2,7 +2,7 @@
 import { ITEMS, RECIPES, iconFor, CRAFT_TABS, METALS, TOOL_TYPES, statLine, setDesc, rarityColor } from './items.js';
 import { SKILLS, SKILL_ICONS, xpToNext, levelProgress, nextLevelXp, combatLevel, totalLevel, PERKS, maxPrayer, perkTotals, CAPS_TEXT } from './skills.js';
 import { INV_SIZE, slotsUsed } from './playerState.js';
-import { stylesFor, currentStyle, equipmentBonuses, playerMaxHit, playerAccuracy, monsterAccuracy, MONSTER_TYPES, SHOP_STOCK, TOOL_STOCK, sellPrice, buyPrice, stockVisible, bestTool, SHOPS } from './gameplay.js';
+import { stylesFor, currentStyle, equipmentBonuses, playerMaxHit, playerAccuracy, monsterAccuracy, MONSTER_TYPES, SHOP_STOCK, TOOL_STOCK, sellPrice, buyPrice, stockVisible, bestTool, SHOPS, SPELLS, canCast, castsLeft, runeCost, magicMaxHit, staffRune } from './gameplay.js';
 import { boostOf, POTIONS } from './potions.js';
 import { PRAYERS, isActive, drainPerTick, prayerBonus } from './prayer.js';
 import { ABILITIES, unlocked } from './abilities.js';
@@ -165,7 +165,22 @@ export function createInventoryUI(api) {
       }).join('')}</div>
       <button class="toggle ${player.settings.autoRetaliate ? 'on' : ''}" data-act="retaliate">Auto Retaliate: ${player.settings.autoRetaliate ? 'On' : 'Off'}</button>
       <button class="toggle ${player.settings.run ? 'on' : ''}" data-act="run">Run: ${player.settings.run ? 'On' : 'Off'} (${Math.floor(player.runEnergy)}%)</button>
-      <div class="hint">Max hit ${playerMaxHit(player, skills)} · attack speed ${(api.attackSpeed() * 0.6).toFixed(1)}s</div>`;
+      <div class="hint">Max hit ${playerMaxHit(player, skills)} · attack speed ${(api.attackSpeed() * 0.6).toFixed(1)}s</div>
+      ${renderSpellbook()}`;
+  }
+  // Spellbook: tap a spell to autocast it (Attack then casts it). Tap again to turn autocast off.
+  function renderSpellbook() {
+    const free = staffRune(player);
+    const auto = player.settings.autocast;
+    let html = `<div class="craftskill">Spellbook · Magic ${skills.Magic.level}${free ? ` · ${esc(free)}s from your staff` : ''}</div><div class="ablist">`;
+    for (const sp of SPELLS) {
+      const lvlOk = skills.Magic.level >= sp.level;
+      const n = castsLeft(sp, player);
+      const cost = Object.entries(sp.runes).map(([r, q]) => `${q} ${r.replace(' rune', '')}${r === free ? ' (staff)' : ''}`).join(', ');
+      html += `<div class="ab ${lvlOk ? 'ok' : ''} ${auto === sp.id ? 'on' : ''}" ${lvlOk ? `data-spell="${sp.id}"` : ''}><span class="abi">${sp.icon}</span><div><b>${esc(sp.name)}</b>${auto === sp.id ? ' <small class="lvl">AUTOCAST</small>' : ''} <small class="${lvlOk ? 'lvl' : 'need'}">Magic ${sp.level}</small><br>` +
+        `<small>${cost} · max hit ${magicMaxHit(sp, player, skills)} · ${n === Infinity ? 'unlimited' : n} casts</small></div></div>`;
+    }
+    return html + `</div><div class="hint">Tap a spell to autocast it, then tap a monster to attack with it. Runes: magic shops (Wizard Mizgog by the tower, Betty in Port Sarim, Aubury in Varrock) or craft them at rune altars.</div>`;
   }
 
   const EQUIP_LAYOUT = [
@@ -196,7 +211,7 @@ export function createInventoryUI(api) {
     // Chance to hit a Black Knight / get hit by one, so bonuses mean something.
     const bk = MONSTER_TYPES['Black Knight'];
     html += `</div><div class="bonushead">Attack bonus</div><div class="bonuses">
-      <div>Melee <b>${sgn(b.atk)}</b></div><div>Ranged <b>${sgn(b.ranged)}</b></div></div>
+      <div>Melee <b>${sgn(b.atk)}</b></div><div>Ranged <b>${sgn(b.ranged)}</b></div><div>Magic <b>${sgn(b.mag)}</b></div></div>
       <div class="bonushead">Defence bonus</div><div class="bonuses">
       <div>Melee <b>${sgn(b.def)}</b></div><div>Ranged <b>${sgn(b.rdef)}</b></div></div>
       <div class="bonushead">Other bonuses</div><div class="bonuses">
@@ -395,6 +410,8 @@ export function createInventoryUI(api) {
     if (sg) { smithGroup = sg.dataset.sgroup; render(); return; }
     const ab = e.target.closest('[data-ability]');
     if (ab) { api.useAbility(ab.dataset.ability); return; }
+    const spl = e.target.closest('[data-spell]');
+    if (spl) { api.setAutocast(spl.dataset.spell); return; }
     const cr = e.target.closest('[data-craft]');
     if (cr && !cr.disabled) { api.craft(cr.dataset.craft, cr.dataset.n === 'all' ? Infinity : 1); return; }
     const act = e.target.closest('[data-act]');

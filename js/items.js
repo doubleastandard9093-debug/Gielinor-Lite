@@ -93,10 +93,29 @@ def("Angler's ring", { type: 'ring', gather: { Fishing: 0.04 }, xp: { Fishing: 0
 def('Red cape', { type: 'cape', def: 1, rdef: 1, value: 15 });
 def('Blue cape', { type: 'cape', def: 1, rdef: 1, value: 15 });
 def('Quest point cape', { type: 'cape', atk: 3, str: 3, ranged: 3, def: 6, rdef: 6, prayer: 4, regen: 0.1, questCape: true, value: 99 });
-export const SKILL_CAPE_SKILLS = ['Attack', 'Strength', 'Defence', 'Hitpoints', 'Ranged', 'Prayer', 'Mining', 'Woodcutting', 'Fishing', 'Smithing', 'Crafting', 'Cooking', 'Fletching', 'Herblore'];
+export const SKILL_CAPE_SKILLS = ['Attack', 'Strength', 'Defence', 'Hitpoints', 'Ranged', 'Magic', 'Prayer', 'Agility', 'Thieving', 'Mining', 'Woodcutting', 'Fishing', 'Smithing', 'Crafting', 'Cooking', 'Fletching', 'Herblore', 'Runecrafting'];
 for (const sk of SKILL_CAPE_SKILLS) def(`${sk} cape`, { type: 'cape', def: 4, rdef: 4, prayer: 2, capeSkill: sk, req: { [sk]: 99 }, value: 9900 });
 
 // Full matched sets. pieces = how many you need; fx feeds the combat maths.
+// ---- Magic and Runecrafting ----
+// Essence is crafted into runes at the rune altars; spells use runes. An elemental staff
+// counts as an endless supply of its rune. `mag` is the magic attack bonus.
+def('Rune essence', { type: 'resource', value: 4 });
+def('Pure essence', { type: 'resource', value: 6 });
+export const RUNES = [['Air rune', 4, '#d8e8f0'], ['Mind rune', 3, '#e0a040'], ['Water rune', 4, '#3a7ad0'], ['Earth rune', 4, '#8a6a3a'], ['Fire rune', 4, '#e04a2a'],
+  ['Body rune', 3, '#6a8ad0'], ['Chaos rune', 90, '#e0c030'], ['Death rune', 180, '#e8e8e8'], ['Blood rune', 400, '#c01a1a']];
+for (const [n, v] of RUNES) def(n, { type: 'rune', value: v });
+def('Staff', { type: 'weapon', atk: 2, str: 1, mag: 4, speed: 5, value: 15 });
+for (const [el, rune] of [['air', 'Air rune'], ['water', 'Water rune'], ['earth', 'Earth rune'], ['fire', 'Fire rune']]) {
+  def(`Staff of ${el}`, { type: 'weapon', atk: 4, str: 2, mag: 10, speed: 5, runeSource: rune, value: 1500 });
+}
+def('Mystic staff', { type: 'weapon', atk: 8, str: 4, mag: 18, speed: 5, req: { Magic: 40 }, value: 8000 });
+def('Wizard hat', { type: 'head', mag: 2, value: 30 });
+def('Wizard robe', { type: 'body', mag: 3, value: 45 });
+def('Mystic hat', { type: 'head', mag: 4, def: 2, req: { Magic: 40 }, value: 3000 });
+def('Mystic robe top', { type: 'body', mag: 20, def: 10, req: { Magic: 40 }, value: 12000 });
+def('Mystic robe bottom', { type: 'legs', mag: 15, def: 7, req: { Magic: 40 }, value: 9000 });
+
 export const SETS = {
   Leather: { pieces: ['head', 'body', 'legs'], fx: { racc: 0.05, dr: 0.02 } },
   ...Object.fromEntries(METALS.map((m, t) => [m, { pieces: ['head', 'body', 'legs', 'shield'], fx: { dr: 0.02 + 0.01 * t, acc: 0.03 } }])),
@@ -251,6 +270,11 @@ export function iconFor(item) {
     if (item === 'Vial of water') return ['🧪', '#3a7ad040'];
     if (info0.type === 'potion') { const r = POTION_RECIPES.find(p => p[0] === item); return ['🧪', (r ? r[6] : '#888888') + '60']; }
   }
+  if (info0 && info0.type === 'rune') { const r = RUNES.find(x => x[0] === item); return ['🔶', (r ? r[2] : '#888888') + '70']; }
+  if (item === 'Rune essence' || item === 'Pure essence') return ['🪨', item === 'Pure essence' ? '#f0f0ff70' : '#c0c8d070'];
+  if (info0 && info0.runeSource) { const r = RUNES.find(x => x[0] === info0.runeSource); return ['🪄', r[2] + '70']; }
+  if (item === 'Staff' || item === 'Mystic staff') return ['🪄', item === 'Mystic staff' ? '#6a3ad070' : ''];
+  if (/^(Wizard|Mystic) /.test(item)) return [/hat$/.test(item) ? '🎩' : /bottom$/.test(item) ? '👖' : '🥻', /^Mystic/.test(item) ? '#3a5ad070' : '#2a3a9a60'];
   if (ITEMS[item] && ITEMS[item].capeSkill) return ['🧣', '#d4af3780'];
   const w = WOODS.indexOf(item);
   if (w >= 0) return ['🪵', WOOD_TINT[w]];
@@ -272,10 +296,12 @@ const EXAMINE = {
   Feather: 'Used for fly fishing and fletching.', Flax: 'A plant cultivated for fibres.', Cowhide: 'I should take this to the tanner.',
   Bowstring: 'I need a bow stave to attach this to.', 'Burnt food': 'Oops!', Hammer: 'Good for hitting things.', Knife: 'A dangerous looking knife.',
   Needle: 'Used with leather to make armour.', Tinderbox: 'Useful for lighting a fire.', 'Small fishing net': 'Useful for catching small fish.',
-  'Fly fishing rod': 'Useful for fly fishing.', 'Lobster pot': 'Useful for catching lobsters.', Harpoon: 'Useful for catching really big fish.'
+  'Fly fishing rod': 'Useful for fly fishing.', 'Lobster pot': 'Useful for catching lobsters.', Harpoon: 'Useful for catching really big fish.',
+  'Rune essence': 'An uncharged rune stone. Take it to a rune altar.', 'Pure essence': 'A pure uncharged rune stone. Chaos, Death and Blood altars need this.',
+  'Body rune': 'Used for Body-rune spells. Shops buy them too.', 'Staff': 'A plain wooden staff. A little magic attack.'
 };
 // Short bonus summary, e.g. "melee atk +9, str +6, def +3".
-export const STAT_NAMES = { atk: 'melee atk', str: 'str', ranged: 'ranged atk', rstr: 'ranged str', def: 'melee def', rdef: 'ranged def', prayer: 'prayer' };
+export const STAT_NAMES = { atk: 'melee atk', str: 'str', ranged: 'ranged atk', rstr: 'ranged str', def: 'melee def', rdef: 'ranged def', prayer: 'prayer', mag: 'magic atk' };
 export function statLine(item) {
   const info = ITEMS[item] || {};
   const bits = [];
@@ -296,6 +322,8 @@ export function examineItem(item) {
   if (info.type === 'herb') text = `A clean ${item.toLowerCase()}, ready for a potion.`;
   if (info.type === 'potion' && POTION_INFO[item]) text = `${item}: ${POTION_INFO[item]}.`;
   if (info.unique) text = `[${info.rarity[0].toUpperCase() + info.rarity.slice(1)}] ${item}. Special: ${info.special}.`;
+  if (info.runeSource) text = `A magical staff. While you wield it you have unlimited ${info.runeSource.toLowerCase()}s.`;
+  if (info.type === 'rune' && !EXAMINE[item]) text = `One of the ${item.split(' ')[0].toLowerCase()} runes used for casting spells.`;
   const bits = [];
   if (info.heal) bits.push(`heals ${info.heal * HEAL_SCALE}`);
   if (info.prayerXp) bits.push(`bury for ${info.prayerXp} Prayer xp`);

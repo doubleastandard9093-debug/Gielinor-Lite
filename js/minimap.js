@@ -1,4 +1,4 @@
-import { WORLD_HALF, LAKE, PATHS, BUILDINGS } from './world.js';
+import { WORLD_HALF, LAKE, PATHS, BUILDINGS, TOWNS } from './world.js';
 
 // Rotating minimap with compass, hitpoints orb and run orb. Tap the map to walk there.
 export function createMinimap({ onWalk, onCompass, onRunToggle, onPrayerOrb }) {
@@ -34,7 +34,7 @@ export function createMinimap({ onWalk, onCompass, onRunToggle, onPrayerOrb }) {
   for (const [x1, z1, x2, z2] of PATHS) {
     b.beginPath(); b.moveTo(W(x1), W(z1)); b.lineTo(W(x2), W(z2)); b.stroke();
   }
-  b.fillStyle = '#9a9a8a'; b.beginPath(); b.arc(W(0), W(0), 18, 0, Math.PI * 2); b.fill();
+  for (const t of Object.values(TOWNS)) { b.fillStyle = '#9a9a8a'; b.beginPath(); b.arc(W(t.x), W(t.z), 18, 0, Math.PI * 2); b.fill(); }
   b.fillStyle = '#c9b77a'; b.beginPath(); b.arc(W(LAKE.x), W(LAKE.z), (LAKE.r + 1.4) * 4, 0, Math.PI * 2); b.fill();
   b.fillStyle = '#2f6fb0'; b.beginPath(); b.arc(W(LAKE.x), W(LAKE.z), LAKE.r * 4, 0, Math.PI * 2); b.fill();
   b.strokeStyle = '#6a4a2a'; b.lineWidth = 2; b.strokeRect(W(-24), W(-21), 48, 40);
@@ -107,6 +107,8 @@ export function createMinimap({ onWalk, onCompass, onRunToggle, onPrayerOrb }) {
       else if (n.type === 'npc') dot(n.x, n.z, n.questMark ? DOT.quest : DOT.shop, r * 1.4);
       else if (n.type === 'station') dot(n.x, n.z, DOT.station, r * 1.3);
       else if (n.type === 'altar') dot(n.x, n.z, DOT.altar, r * 1.5);
+      else if (n.type === 'runealtar') dot(n.x, n.z, '#ff60ff', r * 1.7);
+      else if (n.type === 'agility') dot(n.x, n.z, '#40e0a0', r * 1.2);
     }
     for (const p of piles) dot(p.x, p.z, DOT.pile, r);
     for (const mo of monsters) if (mo.alive) dot(mo.mesh.position.x, mo.mesh.position.z, DOT.monster, r);

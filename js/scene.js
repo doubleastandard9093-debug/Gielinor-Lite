@@ -6,7 +6,7 @@ export function createScene() {
   const scene = new THREE.Scene();
   // Fog matches the sky's horizon colour so distant land fades into the sky dome.
   scene.background = new THREE.Color(0xbfdcf0);
-  scene.fog = new THREE.FogExp2(0xbfdcf0, 0.0058);
+  scene.fog = new THREE.FogExp2(0xbfdcf0, 0.0078);
   return scene;
 }
 

@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS = {
   autoLoot: false,   // send drops straight to the pack instead of the ground
   shadows: null,     // null = pick automatically (off on phones)
   gfx: null,         // graphics quality: null = auto, 'high' or 'low'
+  autocast: null,    // spell id cast by Attack (Magic)
   chatFilter: 'all',
   chatCollapsed: false
 };

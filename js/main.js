@@ -19,7 +19,8 @@ import { RECIPES, ITEMS, canCraft, hasInputs, recipeOutputQty, examineItem, isRa
 import {
   TICK_MS, gatherTick, gatherInfo, TREES, ROCKS, FISH_SPOTS, rollPlayerHit, rollMonsterHit, combatXp, rollLoot, RARE_DROPS,
   attackSpeedTicks, attackRange, equip, unequip, eat, sellPrice, bestTool, addTool, ownsToolType, toolName,
-  burnChance, saveChance, makeXp, buryXp, reduceIncoming, nextGatherWait, xpMultiplier, makeTicks, doubleMakeChance, buyPrice, capeBoosts, regenBonus, SHOPS, gearEffects, weaponProcs, isRareDrop
+  burnChance, saveChance, makeXp, buryXp, reduceIncoming, nextGatherWait, xpMultiplier, makeTicks, doubleMakeChance, buyPrice, capeBoosts, regenBonus, SHOPS, gearEffects, weaponProcs, isRareDrop,
+  SPELLS, spellById, canCast, castSpell, bestSpell, SPELL_TICKS, AGILITY_OBSTACLES, AGILITY_COURSES, runObstacle, THIEVE_TARGETS, thieve, RUNE_ALTARS, craftRunes
 } from './gameplay.js';
 import { POTIONS, isPotion, drinkPotion, effectsTick, applyPoison, poisonTick } from './potions.js';
 import { PRAYERS, prayerById, togglePrayer, drainTick, prayerFx, rechargePrayer, ppRegenPerTick } from './prayer.js';
@@ -183,6 +184,7 @@ const invUI = createInventoryUI({
   setting(act) { setting(act); },
   tick: () => tick,
   cooldowns: () => cooldowns,
+  setAutocast: id => setAutocast(id),
   cooldownOf: a => cooldownTicks(skills, a),
   queued: () => queuedAbility,
   useAbility(id) { useAbility(id); },
@@ -521,15 +523,137 @@ function pick(cx, cy, all = false) {
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
+function stunned() {
+  if (tick < (player.stunUntil || 0)) { log("You're stunned!", 'warn'); return true; }
+  return false;
+}
 function walkTo(x, z) {
+  if (crossing || stunned()) return;
   pm.target = { x, z };
   pm.stopDist = 0.1;
 }
+// ---- Magic ----
+const MAGIC_RANGE = 6;
+function autocastSpell() {
+  const sp = spellById(player.settings.autocast);
+  return sp && canCast(sp, skills, player).ok ? sp : null;
+}
+function setAutocast(id) {
+  const sp = spellById(id);
+  if (!sp || player.settings.autocast === id) { player.settings.autocast = null; log('Autocast is off. Use Cast on a monster, or pick a spell to autocast.', 'game'); }
+  else {
+    const c = canCast(sp, skills, player);
+    if (skills.Magic.level < sp.level) { log(c.reason, 'warn'); return; }
+    player.settings.autocast = id;
+    log(`Autocast: ${sp.name}. Attack a monster to cast it.${c.ok ? '' : ' (You need more runes first.)'}`, 'game');
+  }
+  markDirty();
+  invUI.render();
+}
+const SPELL_COLOR = { '💨': 0xe8f4ff, '💧': 0x3a8aff, '🪨': 0x9a7a40, '🔥': 0xff6a1a };
+const spellMesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+spellMesh.visible = false;
+scene.add(spellMesh);
+let spellFlight = null;
+function doMagicTick(a, now) {
+  const mon = a.mon;
+  const spell = spellById(a.spell);
+  const res = castSpell(spell, skills, player, mon);
+  if (res.error) { log(res.error, 'warn'); stopAction(); return; }
+  spellMesh.material.color.setHex(SPELL_COLOR[spell.icon] || 0xffffff);
+  spellFlight = { from: pm.mesh.position.clone().setY(1.3), mon, t: 0 };
+  pm.actionAnim = 1; pm.actionKind = 'bow';
+  mon.hp -= res.dmg;
+  overlays.splat(mon, res.dmg, now + 300);
+  if (res.saved) log('Your magic saves your runes.', 'combat');
+  for (const [sk, v] of Object.entries(res.xp)) giveXP(sk, v);
+  mon.lastHitAt = now;
+  lastCombatTick = tick;
+  if (mon.state !== 'fight') { mon.state = 'fight'; mon.nextAttackTick = tick + 1; }
+  if (mon.hp <= 0) killMonster(mon, now);
+  markDirty();
+}
+
+// ---- Agility ----
+let crossing = null; // { fx, fz, tx, tz, t, dur }
+function doAgility(a) {
+  const obs = AGILITY_OBSTACLES[a.obstacle];
+  const res = runObstacle(obs, skills, player);
+  stopAction();
+  if (res.error) { log(res.error, 'warn'); return; }
+  pm.actionAnim = 1; pm.actionKind = 'tool';
+  if (res.ok) {
+    const n = a.node;
+    crossing = { fx: pm.mesh.position.x, fz: pm.mesh.position.z, tx: n.toX, tz: n.toZ, t: 0, dur: Math.max(0.8, Math.hypot(n.toX - n.x, n.toZ - n.z) * 0.32) };
+    pm.target = null;
+    log(res.msg, 'skill');
+    giveXP('Agility', res.xp);
+    if (res.lap) log(`Lap complete! You finish the ${AGILITY_COURSES[obs.course].name} for bonus Agility XP.`, 'skill', '#7aff7a');
+  } else {
+    log(res.msg, 'warn');
+    if (res.xp) giveXP('Agility', res.xp);
+    hurtPlayer(res.dmg);
+  }
+  markDirty();
+}
+function updateCrossing(dt) {
+  if (!crossing) return;
+  crossing.t = Math.min(1, crossing.t + dt / crossing.dur);
+  const c = crossing, k = c.t;
+  pm.mesh.position.x = c.fx + (c.tx - c.fx) * k;
+  pm.mesh.position.z = c.fz + (c.tz - c.fz) * k;
+  faceToward(pm, c.tx, c.tz);
+  pm.actionAnim = 1;
+  if (k >= 1) { crossing = null; pm.actionAnim = 0; }
+}
+function hurtPlayer(dmg) {
+  if (dmg <= 0) return;
+  player.hp = Math.max(0, player.hp - dmg);
+  playerEnt.lastHitAt = performance.now();
+  overlays.splat(playerEnt, dmg, performance.now());
+  if (player.hp <= 0) playerDied();
+}
+
+// ---- Thieving ----
+function doThieve(a) {
+  const res = thieve(a.target, skills, player);
+  pm.actionAnim = 1; pm.actionKind = 'tool';
+  stopAction();
+  if (res.error) { log(res.error, 'warn'); return; }
+  if (res.fail) {
+    log(`You fail to pick the ${a.target.toLowerCase()}'s pocket. You've been stunned!`, 'warn');
+    player.stunUntil = tick + res.stun;
+    pm.target = null;
+    hurtPlayer(res.dmg);
+  } else {
+    const got = [];
+    for (const d of res.drops) {
+      if (d.item === 'Coins') { player.gold += d.qty; got.push(`${d.qty} coins`); }
+      else { giveItem(d.item, d.qty); got.push(d.qty > 1 ? `${d.qty} x ${d.item}` : d.item); }
+    }
+    log(`You pick the ${a.target.toLowerCase()}'s pocket${got.length ? `: ${got.join(', ')}` : ''}.`, 'skill');
+    giveXP('Thieving', res.xp);
+  }
+  markDirty();
+}
+
+// ---- Runecrafting ----
+function doRunecraft(a) {
+  const res = craftRunes(a.altar, skills, player);
+  stopAction();
+  if (res.error) { log(res.error, 'warn'); return; }
+  pm.actionAnim = 1; pm.actionKind = 'tool';
+  log(`You bind the temple's power into ${res.qty} ${res.item.toLowerCase()}${res.qty > 1 ? 's' : ''}.`, 'skill');
+  giveXP('Runecrafting', res.xp);
+  markDirty();
+}
+
 function stopAction() {
   action = null;
   pm.actionAnim = 0;
 }
 function startAction(a) {
+  if (crossing || stunned()) return;
   action = a;
   pm.target = null;
 }
@@ -560,6 +684,9 @@ function entExamine(ent) {
   if (ent.type === 'fish') return EXAMINE[ent.kind];
   if (ent.type === 'herb') return `A herb patch growing ${ent.herb.toLowerCase()}. It never runs out. (Herblore ${HERB_LEVEL(ent.herb)})`;
   if (ent.type === 'well') return ent.examine;
+  if (ent.type === 'agility') { const o = AGILITY_OBSTACLES[ent.obstacle]; return `${ent.name}: part of the ${AGILITY_COURSES[o.course].name} (Agility ${o.level}). Do every obstacle in order for a lap bonus.`; }
+  if (ent.type === 'runealtar') { const a = RUNE_ALTARS[ent.altar]; return `A mysterious ${ent.altar.toLowerCase()} altar. Bring ${a.pure ? 'pure' : 'rune'} essence here to craft ${a.rune.toLowerCase()}s. (Runecrafting ${a.level})`; }
+  if (ent.type === 'rock' && ent.ore === 'Essence') return 'Rune essence rock. Mine it for essence (pure essence from Mining 30).';
   return EXAMINE[ent.kind] || EXAMINE[ent.name] || `It's a ${ent.name}.`;
 }
 
@@ -571,17 +698,20 @@ function optionsFor(ent) {
     return opts;
   }
   if (ent.hp !== undefined) {
-    return [
-      { action: 'Attack', target: `${ent.name} (level-${ent.level})`, color: levelColor(ent.level), fn: () => startAction({ kind: 'attack', mon: ent }) },
-      { action: 'Examine', target: ent.name, color: '#ffff00', fn: () => log(entExamine(ent), 'examine') }
-    ];
+    const auto = autocastSpell();
+    const opts = [{ action: auto ? `Attack (${auto.name})` : 'Attack', target: `${ent.name} (level-${ent.level})`, color: levelColor(ent.level), fn: () => startAction({ kind: 'attack', mon: ent, spell: auto ? auto.id : null }) }];
+    const sp = auto || bestSpell(skills, player);
+    if (sp && !auto) opts.push({ action: `Cast ${sp.name}`, target: ent.name, color: '#a0c0ff', fn: () => startAction({ kind: 'attack', mon: ent, spell: sp.id }) });
+    if (THIEVE_TARGETS[ent.name]) opts.push({ action: 'Pickpocket', target: ent.name, color: '#ffff00', fn: () => startAction({ kind: 'thieve', node: ent, target: ent.name }) });
+    opts.push({ action: 'Examine', target: ent.name, color: '#ffff00', fn: () => log(entExamine(ent), 'examine') });
+    return opts;
   }
   const ex = { action: 'Examine', target: ent.name, color: cy, fn: () => log(entExamine(ent), 'examine') };
   switch (ent.type) {
     case 'tree': return [{ action: 'Chop down', target: ent.name, color: cy, fn: () => startAction({ kind: 'gather', node: ent }) }, ex];
     case 'rock': return [
-      { action: 'Mine', target: 'Rocks', color: cy, fn: () => startAction({ kind: 'gather', node: ent }) },
-      { action: 'Prospect', target: 'Rocks', color: cy, fn: () => log(ent.alive ? `This rock contains ${ent.ore.toLowerCase()}. (Mining ${ROCKS[ent.ore].level})` : 'There is currently no ore available in this rock.', 'examine') }, ex];
+      { action: 'Mine', target: ent.name, color: cy, fn: () => startAction({ kind: 'gather', node: ent }) },
+      { action: 'Prospect', target: ent.name, color: cy, fn: () => log(ent.ore === 'Essence' ? 'This rock contains rune essence (pure essence from Mining 30).' : ent.alive ? `This rock contains ${ent.ore.toLowerCase()}. (Mining ${ROCKS[ent.ore].level})` : 'There is currently no ore available in this rock.', 'examine') }, ex];
     case 'fish': return [{ action: FISH_SPOTS[ent.kind].verb, target: 'Fishing spot', color: cy, fn: () => startAction({ kind: 'gather', node: ent }) }, ex];
     case 'shop': return [
       { action: 'Trade', target: 'Merchant', color: '#ffff00', fn: () => startAction({ kind: 'shop', node: ent, shop: 'shop' }) },
@@ -596,6 +726,7 @@ function optionsFor(ent) {
       else if (ent.shop) o.push({ action: 'Trade', target: ent.name, color: '#ffff00', fn: () => startAction({ kind: 'shop', node: ent, shop: ent.shop }) });
       const qd = questForNpc(ent.npc);
       if (qd) o.push({ action: 'Quest', target: `${qd.name} (${questStatus(player, qd.id)})`, color: '#3ad0ff', fn: () => { invUI.showTab('quests'); } });
+      if (ent.thieve) o.push({ action: 'Pickpocket', target: ent.name, color: '#ffff00', fn: () => startAction({ kind: 'thieve', node: ent, target: ent.thieve }) });
       return [...o, { ...ex, color: '#ffff00' }];
     }
     case 'station': {
@@ -603,6 +734,8 @@ function optionsFor(ent) {
       return [{ action: verb, target: ent.name, color: cy, fn: () => startAction({ kind: 'station', node: ent }) }, ex];
     }
     case 'altar': return [{ action: 'Pray-at', target: 'Altar', color: cy, fn: () => startAction({ kind: 'altar', node: ent }) }, ex];
+    case 'agility': return [{ action: ent.verb, target: ent.name, color: cy, fn: () => startAction({ kind: 'agility', node: ent, obstacle: ent.obstacle }) }, ex];
+    case 'runealtar': return [{ action: 'Craft-rune', target: ent.name, color: cy, fn: () => startAction({ kind: 'runecraft', node: ent, altar: ent.altar }) }, ex];
     case 'building': return [ex];
   }
   return [ex];
@@ -866,8 +999,8 @@ function removeFire(f) {
 }
 
 // ---- Talking ----
-const NPC_FACE = { cook: '👨‍🍳', priest: '🧔', doric: '🧔‍♂️', captain: '💂‍♀️', farmer: '👨‍🌾', bob: '👷', merchant: '🧑‍💼', ranger: '🧝', knight: '🤺', apothecary: '🧑‍⚕️' };
-const SHOP_GREET = { apothecary: 'Herbs, vials and potions! Fill empty vials at the well. Pick grimy herbs from the patches out back, clean them, then mix herb + vial of water + a secondary.' };
+const NPC_FACE = { mizgog: '🧙', betty: '🧙‍♀️', aubury: '🧙', man: '👨', woman: '👩', sailor: '🧑‍✈️', vguard: '💂', warrior: '🤺', wknight: '🤺', paladin: '🛡️', hero: '🦸', cassie: '👩‍🔧', nessa: '🧑‍🌾', horvik: '🧔', gerrant: '🧑‍💼', vshop: '🧑‍💼', cook: '👨‍🍳', priest: '🧔', doric: '🧔‍♂️', captain: '💂‍♀️', farmer: '👨‍🌾', bob: '👷', merchant: '🧑‍💼', ranger: '🧝', knight: '🤺', apothecary: '🧑‍⚕️' };
+const SHOP_GREET = { magic0: 'Runes for beginners! Wind Strike needs an air rune and a mind rune. Open the Combat tab to pick a spell to autocast.', magic: 'Welcome to my emporium. A staff of an element gives you all the runes of that element you need.', runes: 'Runes and essence! Mine rune essence in the rocks just north-east of here, then take it to an altar.', apothecary: 'Herbs, vials and potions! Fill empty vials at the well. Pick grimy herbs from the patches out back, clean them, then mix herb + vial of water + a secondary.' };
 const questHelpers = {
   has: (item, n) => (player.inventory[item] || 0) >= n,
   take: (item, n) => { removeItem(player, item, n); markDirty(); },
@@ -898,6 +1031,8 @@ function talkTo(ent) {
     // Shopkeepers with quests still offer to trade afterwards.
     const sh = ent.npc === 'bob' ? 'tools' : ent.npc === 'merchant' ? 'shop' : ent.shop;
     if (sh) script = [...script, { choose: [["Let's trade.", [{ run: () => invUI.open(sh) }]], ['Goodbye.', []]] }];
+  } else if (ent.say) {
+    script = [['npc', ent.say]];
   } else if (ent.shop) {
     script = [['npc', SHOP_GREET[ent.shop] || 'Welcome! Have a look at my wares.'], { choose: [["Let's trade.", [{ run: () => invUI.open(ent.shop) }]], ['No thanks.', []]] }];
   } else if (ent.npc === 'bob') script = [
@@ -1083,7 +1218,8 @@ function monsterAttack(mon, now) {
   markDirty();
   if (player.hp <= 0) playerDied();
   else if (player.settings.autoRetaliate && (!action || action.kind === 'gather' || action.kind === 'craft') && !pm.target && !keys.w && !keys.a && !keys.s && !keys.d) {
-    startAction({ kind: 'attack', mon });
+    const auto = autocastSpell();
+    startAction({ kind: 'attack', mon, spell: auto ? auto.id : null });
   }
 }
 
@@ -1143,7 +1279,7 @@ function gameTick(now) {
   if (tick % 2 === 0) renderEffects();
   if (queuedAbility && tick - queuedAt > 12) queuedAbility = null;
   for (let i = fires.length - 1; i >= 0; i--) if (now > fires[i].expires) { removeFire(fires[i]); }
-  if (!(player.settings.run && pm.moving)) player.runEnergy = Math.min(100, player.runEnergy + 0.45 * (1 + questFx(player, 'runRegen')));
+  if (!(player.settings.run && pm.moving)) player.runEnergy = Math.min(100, player.runEnergy + 0.45 * (1 + questFx(player, 'runRegen') + skills.Agility.level / 100));
 
   // Respawns
   for (const n of nodes) if (!n.alive && n.respawnAt && now >= n.respawnAt) respawnNode(n);
@@ -1172,6 +1308,20 @@ function gameTick(now) {
   if (!a) return;
   if (a.kind === 'gather') {
     if (inRange(a.node, 0.9)) doGatherTick(a);
+  } else if (a.kind === 'agility') {
+    if (inRange(a.node, 1.0)) doAgility(a);
+  } else if (a.kind === 'thieve') {
+    if (a.node.hp !== undefined && !a.node.alive) { stopAction(); return; }
+    if (inRange(a.node, 1.0) && tick >= (player.stunUntil || 0)) doThieve(a);
+  } else if (a.kind === 'runecraft') {
+    if (inRange(a.node, 1.2)) doRunecraft(a);
+  } else if (a.kind === 'attack' && a.spell) {
+    const mon = a.mon;
+    if (!mon.alive) { stopAction(); return; }
+    if (inRange(mon, MAGIC_RANGE) && tick >= nextPlayerAttack) {
+      nextPlayerAttack = tick + SPELL_TICKS;
+      doMagicTick(a, now);
+    }
   } else if (a.kind === 'attack') {
     const mon = a.mon;
     if (!mon.alive) { stopAction(); return; }
@@ -1197,7 +1347,7 @@ function updateAction() {
   if (!ent) return;
   if (a.kind === 'pickup' && !piles.includes(a.pile)) { stopAction(); return; }
   if (a.kind === 'craft' && !a.station) return;
-  const range = a.kind === 'attack' ? attackRange(player) : a.kind === 'pickup' ? 0.15 : a.kind === 'gather' ? 0.9 : a.kind === 'craft' ? 1.2 : 1.0;
+  const range = a.kind === 'attack' ? (a.spell ? MAGIC_RANGE : attackRange(player)) : a.kind === 'runecraft' ? 1.2 : a.kind === 'pickup' ? 0.15 : a.kind === 'gather' ? 0.9 : a.kind === 'craft' ? 1.2 : 1.0;
   const ex = ent.mesh.position.x, ez = ent.mesh.position.z;
   if (!inRange(ent, range)) {
     pm.target = { x: ex, z: ez };
@@ -1306,10 +1456,12 @@ function flyArrow(f, mesh, target, dt) {
 function updateArrow(dt) {
   if (arrowFlight && !flyArrow(arrowFlight, arrowMesh, arrowFlight.mon.mesh, dt)) arrowFlight = null;
   if (enemyArrow && !flyArrow(enemyArrow, enemyArrowMesh, pm.mesh, dt)) enemyArrow = null;
+  if (spellFlight && !flyArrow(spellFlight, spellMesh, spellFlight.mon.mesh, dt)) spellFlight = null;
 }
 
 const ACTION_LABEL = {
-  gather: n => ({ tree: '🪓 Woodcutting', rock: '⛏️ Mining', fish: '🎣 Fishing' })[n.node.type], attack: a => `⚔️ Fighting ${a.mon.name}`,
+  gather: n => ({ tree: '🪓 Woodcutting', rock: '⛏️ Mining', fish: '🎣 Fishing' })[n.node.type], attack: a => a.spell ? `🔮 Casting ${spellById(a.spell).name} at ${a.mon.name}` : `⚔️ Fighting ${a.mon.name}`,
+  agility: a => `🏃 ${a.node.verb} ${a.node.name}`, thieve: a => `🦹 Pickpocketing ${a.node.name}`, runecraft: a => `💠 Going to the ${a.node.name}`,
   craft: a => `${SKILL_ICONS[a.recipe.skill]} ${a.recipe.name}${a.left !== Infinity && a.left > 1 ? ` (${a.left})` : ''}`, pickup: () => '✋ Picking up', bank: () => '🏦 Going to bank',
   shop: a => `🛒 Going to ${a.node.name}`, talk: a => `💬 Talking to ${a.node.name}`, altar: () => '🙏 Going to the altar', station: a => `Going to the ${a.node.name.toLowerCase()}`,
   bury: () => '🦴 Burying bones', light: () => '🔥 Lighting a fire'
@@ -1400,6 +1552,24 @@ if (window.innerHeight > window.innerWidth) { rig.dist = rig.targetDist = 19; }
 const barEnts = [...monsters, playerEnt];
 let last = performance.now();
 let frame = 0;
+// ---- Distance culling: the world is big, so only draw what is near (fog hides the edge) ----
+const cullList = [...nodes, ...buildings].filter(e => e && e.mesh);
+function cullWorld() {
+  const R = gfx.quality === 'low' ? 60 : 85, R2 = R * R;
+  const px = pm.mesh.position.x, pz = pm.mesh.position.z;
+  for (const e of cullList) {
+    const o = e.mesh, dx = o.position.x - px, dz = o.position.z - pz, far = dx * dx + dz * dz > R2;
+    if (far && o.visible) { o.visible = false; o.userData.culled = true; }
+    else if (!far && o.userData.culled) { o.visible = true; o.userData.culled = false; }
+  }
+  for (const m of monsters) {
+    const o = m.mesh, dx = o.position.x - px, dz = o.position.z - pz, far = dx * dx + dz * dz > R2;
+    m.far = far;
+    if (far && o.visible && m.alive && !m.dying) { o.visible = false; o.userData.culled = true; }
+    else if (!far && o.userData.culled) { o.visible = m.alive || m.dying; o.userData.culled = false; }
+  }
+}
+
 function animate(now) {
   requestAnimationFrame(animate);
   if (document.hidden) return;
@@ -1418,7 +1588,8 @@ function animate(now) {
 
   updateAction();
   const running = player.settings.run && player.runEnergy > 0;
-  const moved = updatePlayer(pm, keys, dt, running, rig.yaw);
+  const moved = crossing ? 0 : updatePlayer(pm, keys, dt, running, rig.yaw);
+  updateCrossing(dt);
   if (running && moved > 0) {
     player.runEnergy = Math.max(0, player.runEnergy - moved * 0.7);
     if (player.runEnergy <= 0) { player.settings.run = false; log('You have run out of energy.', 'warn'); markDirty(); }
@@ -1430,6 +1601,7 @@ function animate(now) {
     if (now - nextTickAt > TICK_MS * 5) nextTickAt = now + TICK_MS;
   }
 
+  if (frame % 15 === 0) cullWorld();
   updateMonsters(dt, now);
   updateFish(dt);
   updateFires(now);
@@ -1461,7 +1633,7 @@ window.addEventListener('keydown', e => {
 
 window.gielinor = {
   gfx, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
-  renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, giveXP, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor,
+  renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, giveXP, setAutocast, get crossing() { return crossing; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor,
   get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
