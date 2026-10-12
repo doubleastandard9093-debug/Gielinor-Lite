@@ -45,6 +45,17 @@ const RAW = [
   ['mabel', 'Old Mabel', -71, 63, 'granny', 'She claims to remember the Water altar being built.', '👵'],
   ['kenn', 'Kennith', -85, 63, 'kid', 'A cabin boy who missed his ship.', '👦'],
   ['velma', 'Velma the Witch', -93, 59, 'wizard', 'She smells of herbs and something stranger.', '🧙‍♀️'],
-  ['sorrel', 'Ranger Sorrel', -98, 52, 'ranger', 'She guards the western woods.', '🏹']
+  ['sorrel', 'Ranger Sorrel', -98, 52, 'ranger', 'She guards the western woods.', '🏹'],
+  // Varrock
+  ['reldo', 'Reldo the Librarian', 116, -36, 'scholar', 'Varrock\u2019s librarian. He knows a little about everything.', '📖'],
+  ['romeo', 'Romeo', 122, -47, 'noble', 'A lovesick young man.', '🌹'],
+  ['baraek', 'Baraek', 129, -38, 'worker', 'A fur trader with a keen eye for a bargain.', '🧥'],
+  ['zaff', 'Zaff', 111, -41, 'wizard', 'He makes and sells staves.', '🪄'],
+  ['charlie', 'Charlie the Tramp', 125, -29, 'hermit', 'He knows the streets of Varrock better than anyone.', '🧔'],
+  ['rovin', 'Captain Rovin', 118, -53, 'knight', 'Captain of the Varrock palace guard.', '🛡️'],
+  ['gertrude', 'Gertrude', 109, -34, 'granny', 'She is looking for her cat.', '👵'],
+  ['ellis', 'Ellis the Tanner', 131, -45, 'worker', 'His hands are stained brown from tanning.', '🧑‍🏭'],
+  ['vorn', 'Apothecary Vorn', 114, -28, 'herbal', 'Varrock\u2019s potion maker.', '⚗️'],
+  ['vannaka', 'Slayer Master Vannaka', 110, -80, 'soldier', 'A grizzled monster hunter.', '⚔️']
 ];
 export const QUEST_NPCS = RAW.map(([id, name, x, z, look, examine, face]) => ({ id, name, x, z, look: L[look], examine, face }));
