@@ -67,6 +67,17 @@ const RAW = [
   ['pete', 'Party Pete', -58, -70, 'noble', 'He loves a party.', '🎉'],
   ['kaylee', 'Kaylee the Barmaid', -52, -78, 'cook', 'She runs the Rising Sun inn.', '🍻'],
   ['elwyn', 'Elwyn the Bowyer', -71, -86, 'ranger', 'He makes the finest bows in Falador.', '🏹'],
-  ['oswin', 'Oswin the Exile', -88, -100, 'hermit', 'A knight who was cast out of Falador.', '🧔']
+  ['oswin', 'Oswin the Exile', -88, -100, 'hermit', 'A knight who was cast out of Falador.', '🧔'],
+  // Ashford
+  ['hazel', 'Innkeeper Hazel', 46, -29, 'cook', 'She runs the Ashford inn.', '🍲'],
+  ['tomas', 'Tomas the Toymaker', 54, -20, 'worker', 'He makes toys for the village children.', '🪀'],
+  ['iris', 'Iris the Seer', 47, -15, 'wizard', 'Her eyes seem to look straight through you.', '🔮'],
+  ['bertram', 'Bertram', 58, -27, 'noble', 'A moneylender. Everyone owes him something.', '💰'],
+  ['fen', 'Fen the Fletcher', 43, -22, 'ranger', 'He makes arrows for the Ashford guard.', '🎯'],
+  ['magda', 'Magda the Midwife', 52, -31, 'granny', 'She has delivered half the babies in Ashford.', '👵'],
+  ['gruff', 'Sergeant Gruff', 61, -31, 'soldier', 'He trains the Ashford militia.', '💂'],
+  ['nim', 'Nim', 41, -29, 'thief', 'A shadowy figure. Your pockets feel lighter already.', '🥷'],
+  ['otto', 'Otto the Courier', 56, -14, 'kid', 'He delivers letters all over the realm.', '📮'],
+  ['ada', 'Ada the Cartographer', 76, -40, 'scholar', 'She is mapping the whole realm.', '🗺️']
 ];
 export const QUEST_NPCS = RAW.map(([id, name, x, z, look, examine, face]) => ({ id, name, x, z, look: L[look], examine, face }));

@@ -25,6 +25,10 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>100 new quests</b></p>
+<p>There are now <b>122 quests</b> and <b>161 quest points</b>. The new quests are spread over Brightwater, Port Sarim, Varrock, Falador, Ashford and the wilds, from Novice to Master. Each one has several steps: fetching or making items, fighting monsters, gaining XP in a skill (including Magic, Agility, Thieving and Runecrafting), burying bones, visiting places and talking to other people. Many people now give two or three quests in a row, and later ones need earlier quests or skill levels.</p>
+<p><b>Finding quests.</b> Quest givers have a <b>blue dot</b> on the minimap and a Quest option when you long-press them. The Quest tab can be filtered by town and by status, and each journal shows the town, difficulty, requirements and your progress.</p>
+<p><b>New milestones.</b> 25 QP: +3% XP in every skill. 50 QP: +20 max hitpoints. 80 QP: 3% off in shops. 110 QP: +3% damage against every monster. 140 QP: faster run energy and +20 max hitpoints. 161 QP (every quest): Quest point cape and +3% XP. If you had already finished all 22 older quests, you keep your cape.</p>
 <p><b>New skills and towns</b></p>
 <p><b>Magic.</b> 16 combat spells from Wind Strike (Magic 1) to Fire Wave (Magic 75). Each cast uses runes; an elemental staff gives unlimited runes of its element. Long-press a monster and choose <b>Cast</b>, or open the Combat tab and tap a spell to <b>autocast</b> it, then tap a monster. Runes come from Wizard Mizgog (by the south tower), Betty in Port Sarim, Aubury in Varrock, monster drops and Runecrafting.</p>
 <p><b>Agility.</b> Four courses: Brightwater (level 1, south-east past the mine), Varrock (30), Port Sarim docks (45) and Falador (60). Do the obstacles in order for a lap bonus. Higher Agility also refills run energy faster.</p>
