@@ -1,0 +1,10 @@
+{
+  "name": "gielinor-lite-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "engines": { "node": ">=18" },
+  "scripts": { "start": "node index.js", "test": "node test/smoke.js" },
+  "dependencies": { "three": "0.180.0", "ws": "^8.18.0" }
+}
