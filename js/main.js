@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, IS_TOUCH } from './scene.js';
 import { createWorld, createPileMesh, SPAWN } from './world.js';
 import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt } from './player.js';
@@ -28,6 +32,11 @@ import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, apply
 const scene = createScene();
 const camera = createCamera();
 const renderer = createRenderer();
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.35, 0.4, 0.85);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
 document.body.prepend(renderer.domElement);
 const { dirLight } = createLights(scene);
 const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);
@@ -1336,6 +1345,7 @@ function updateViewOffset() {
 }
 window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
   updateViewOffset();
 });
 if (window.innerHeight > window.innerWidth) { rig.dist = rig.targetDist = 19; }
@@ -1381,7 +1391,7 @@ function animate(now) {
   updateArrow(dt);
   updateRig(rig, camera, pm.mesh.position.x, pm.mesh.position.z, dt);
   followLight(dirLight, rig.fx, rig.fz);
-  renderer.render(scene, camera);
+  composer.render();
 
   overlays.update(camera, barEnts, now);
   if (frame % 3 === 0) {
