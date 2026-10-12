@@ -42,7 +42,7 @@ const G = {
 const matCache = new Map();
 function mat(color, opts) {
   const key = color + (opts ? JSON.stringify(opts) : '');
-  if (!matCache.has(key)) matCache.set(key, new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.05, ...(opts || {}) }));
+  if (!matCache.has(key)) matCache.set(key, new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.08, ...(opts || {}) }));
   return matCache.get(key);
 }
 
@@ -114,7 +114,7 @@ export function createWorld(scene) {
     colors.push(tmp.r, tmp.g, tmp.b);
   }
   groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  const ground = new THREE.Mesh(groundGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.0 }));
+  const ground = new THREE.Mesh(groundGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.0 }));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
@@ -140,11 +140,11 @@ export function createWorld(scene) {
   shore.rotation.x = -Math.PI / 2; shore.position.set(LAKE.x, 0.025, LAKE.z);
   scene.add(shore);
   const waterMat = new THREE.MeshStandardMaterial({
-    color: 0x1a6aa0,
-    roughness: 0.15,
-    metalness: 0.35,
+    color: 0x1a5a90,
+    roughness: 0.08,
+    metalness: 0.45,
     transparent: true,
-    opacity: 0.85
+    opacity: 0.88
   });
   const water = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r, 48), waterMat);
   water.rotation.x = -Math.PI / 2; water.position.set(LAKE.x, 0.05, LAKE.z);
