@@ -1216,12 +1216,10 @@ function updateMonsters(dt, now) {
         m.mesh.rotation.y = Math.atan2(dx, dz);
       }
     }
-    m.walkT = (m.walkT || 0) + (moving ? dt * 10 : 0);
-    const sw = moving ? Math.sin(m.walkT) * 0.55 : 0;
-    const bob = moving ? Math.abs(Math.sin(m.walkT * 2)) * 0.06 : 0;
+    m.walkT = (m.walkT || 0) + (moving ? dt * 9 : 0);
+    const sw = moving ? Math.sin(m.walkT) * 0.6 : 0;
     m.legs.forEach((l, i) => { l.rotation.x = (i % 2 ? sw : -sw); });
-    if (m.body) m.body.position.y = bob;
-    if (m.lungeT > 0) { m.lungeT = Math.max(0, m.lungeT - dt * 2.5); m.body.position.z = Math.sin(m.lungeT * Math.PI) * 0.4; }
+    if (m.lungeT > 0) { m.lungeT = Math.max(0, m.lungeT - dt * 3); m.body.position.z = Math.sin(m.lungeT * Math.PI) * 0.35; }
   }
 }
 
@@ -1346,6 +1344,10 @@ const barEnts = [...monsters, playerEnt];
 let last = performance.now();
 let frame = 0;
 function animate(now) {
+  // Simple water wave
+  if (window._water && window._water.userData.wave) {
+    window._water.position.y = 0.05 + Math.sin((now || performance.now()) * 0.0012) * 0.025;
+  }
   requestAnimationFrame(animate);
   if (document.hidden) return;
   now = now || performance.now();
