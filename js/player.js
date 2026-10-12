@@ -8,81 +8,107 @@ const METAL = { Bronze: 0xb87333, Iron: 0x9a9a9a, Steel: 0xd0d8e0, Mithril: 0x5a
 
 export function createPlayer(scene) {
   const playerGroup = new THREE.Group();
-  const lam = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, metalness: 0.05 });
-  const box = (w, h, d, m) => { const x = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); x.castShadow = true; return x; };
+  const std = (c, rough = 0.6, metal = 0.05) => new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: metal });
+  const mesh = (geo, m, x = 0, y = 0, z = 0, parent = playerGroup) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
+  const capsule = (r, len) => new THREE.CapsuleGeometry(r, len, 4, 12);
+  const sphere = (r, w = 16, h = 12) => new THREE.SphereGeometry(r, w, h);
 
-  const bodyMat = lam(0x6b4423);
-  const body = box(0.8, 0.9, 0.45, bodyMat);
-  body.position.y = 1.0;
+  // Torso (tinted by body armour), hips and belt
+  const bodyMat = std(0x6b4423, 0.65);
+  const body = new THREE.Group();
   playerGroup.add(body);
+  const chest = mesh(capsule(0.27, 0.34), bodyMat, 0, 1.12, 0, body); chest.scale.set(1, 1, 0.72);
+  mesh(sphere(0.13, 12, 8), bodyMat, -0.33, 1.37, 0, body);
+  mesh(sphere(0.13, 12, 8), bodyMat, 0.33, 1.37, 0, body);
+  const legMat = std(0x3a2a1a, 0.7);
+  const hips = mesh(sphere(0.25, 14, 8), legMat, 0, 0.8, 0, body); hips.scale.set(1, 0.6, 0.75);
+  mesh(new THREE.CylinderGeometry(0.262, 0.262, 0.08, 16), std(0x3a2414, 0.5), 0, 0.88, 0, body);
+  mesh(new THREE.BoxGeometry(0.1, 0.08, 0.04), std(0xc9a227, 0.35, 0.6), 0, 0.88, 0.25, body);
 
-  const skin = lam(0xd4a574);
-  const head = box(0.55, 0.55, 0.55, skin);
-  head.position.y = 1.75;
-  playerGroup.add(head);
-  const hair = box(0.6, 0.15, 0.6, lam(0x3a2a1a));
-  hair.position.y = 2.05;
-  playerGroup.add(hair);
-  // Eyes so you can tell which way you're facing
-  const eyeMat = lam(0x111111);
-  for (const ex of [-0.12, 0.12]) { const e = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.02), eyeMat); e.position.set(ex, 1.8, 0.28); playerGroup.add(e); }
+  // Head: rounded with nose, eyes, ears and hair
+  const skin = std(0xe0ae84, 0.75);
+  const headG = new THREE.Group(); headG.position.y = 1.5; body.add(headG);
+  mesh(new THREE.CylinderGeometry(0.085, 0.095, 0.16, 10), skin, 0, 0, 0, headG);
+  const head = mesh(sphere(0.255, 20, 16), skin, 0, 0.24, 0, headG); head.scale.set(1, 1.08, 0.98);
+  mesh(sphere(0.045, 8, 6), skin, 0, 0.21, 0.25, headG);
+  const eyeMat = std(0x1a1410, 0.3);
+  for (const ex of [-0.088, 0.088]) { mesh(sphere(0.034, 8, 6), eyeMat, ex, 0.28, 0.215, headG); mesh(new THREE.BoxGeometry(0.1, 0.022, 0.03), std(0x3a2a1a), ex, 0.345, 0.22, headG); }
+  for (const ex of [-0.255, 0.255]) { const e = mesh(sphere(0.055, 8, 6), skin, ex, 0.24, 0, headG); e.scale.set(0.5, 1, 0.8); }
+  const hairMat = std(0x3a2a1a, 0.8);
+  const hair = new THREE.Group(); headG.add(hair);
+  const cap = mesh(new THREE.SphereGeometry(0.275, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.56), hairMat, 0, 0.27, -0.02, hair); cap.rotation.x = -0.3;
+  const fringe = mesh(capsule(0.06, 0.26), hairMat, 0, 0.42, 0.18, hair); fringe.rotation.z = Math.PI / 2;
 
-  // Arms and legs hang from pivots at the shoulder/hip so they can swing.
-  function limb(w, h, m, x, y) {
-    const pivot = new THREE.Group();
-    pivot.position.set(x, y, 0);
-    const mesh = box(w, h, w, m);
-    mesh.position.y = -h / 2;
-    pivot.add(mesh);
-    playerGroup.add(pivot);
+  // Arms and legs hang from pivots at the shoulder/hip so they can swing; elbows and knees bend.
+  function arm(x) {
+    const pivot = new THREE.Group(); pivot.position.set(x, 1.36, 0); body.add(pivot);
+    mesh(capsule(0.088, 0.24), bodyMat, 0, -0.18, 0, pivot);
+    const elbow = new THREE.Group(); elbow.position.y = -0.38; pivot.add(elbow);
+    mesh(capsule(0.075, 0.22), skin, 0, -0.14, 0, elbow);
+    mesh(sphere(0.085, 10, 8), skin, 0, -0.33, 0.01, elbow);
+    elbow.rotation.x = -0.25;
+    pivot.userData.elbow = elbow;
     return pivot;
   }
-  const leftArm = limb(0.22, 0.75, skin, -0.55, 1.4);
-  const rightArm = limb(0.22, 0.75, skin, 0.55, 1.4);
-  const legMat = lam(0x3a2a1a);
-  const leftLeg = limb(0.28, 0.65, legMat, -0.18, 0.65);
-  const rightLeg = limb(0.28, 0.65, legMat, 0.18, 0.65);
+  function leg(x) {
+    const pivot = new THREE.Group(); pivot.position.set(x, 0.76, 0); playerGroup.add(pivot);
+    mesh(capsule(0.115, 0.28), legMat, 0, -0.2, 0, pivot);
+    const knee = new THREE.Group(); knee.position.y = -0.38; pivot.add(knee);
+    mesh(capsule(0.1, 0.24), legMat, 0, -0.15, 0, knee);
+    const boot = mesh(sphere(0.125, 12, 8), std(0x2e2016, 0.6), 0, -0.33, 0.05, knee); boot.scale.set(1, 0.65, 1.5);
+    pivot.userData.knee = knee;
+    return pivot;
+  }
+  const leftArm = arm(-0.39), rightArm = arm(0.39);
+  const leftLeg = leg(-0.13), rightLeg = leg(0.13);
+  const handOf = a => a.userData.elbow;
 
-  // Held items (hidden until equipped)
-  const swordMat = lam(0xb87333);
+  // Held items (hidden until equipped). Attached at the hand so they follow the elbow.
+  const swordMat = std(0xb87333, 0.3, 0.7);
   const sword = new THREE.Group();
-  const blade = box(0.08, 0.9, 0.16, swordMat); blade.position.y = -0.55;
-  const hilt = box(0.3, 0.06, 0.1, lam(0x3a2a1a)); hilt.position.y = -0.1;
-  sword.add(blade, hilt);
-  sword.position.set(0, -0.7, 0.1);
+  const blade = mesh(new THREE.BoxGeometry(0.035, 0.85, 0.11), swordMat, 0, -0.55, 0, sword);
+  const tip = mesh(new THREE.ConeGeometry(0.06, 0.16, 4), swordMat, 0, -1.05, 0, sword); tip.rotation.x = Math.PI; tip.scale.set(0.5, 1, 1);
+  mesh(new THREE.BoxGeometry(0.06, 0.05, 0.3), std(0x5a4a2a, 0.4, 0.5), 0, -0.1, 0, sword);
+  mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.18, 8), std(0x3a2a1a), 0, 0.0, 0, sword);
+  mesh(sphere(0.04, 8, 6), std(0xc9a227, 0.35, 0.6), 0, 0.1, 0, sword);
+  sword.position.set(0, -0.34, 0.06);
   sword.rotation.x = -Math.PI / 2;
   sword.visible = false;
-  rightArm.add(sword);
+  handOf(rightArm).add(sword);
 
-  const bowMat = lam(0x8a5a2a);
-  const bow = box(0.06, 1.1, 0.12, bowMat);
-  bow.position.set(0, -0.7, 0.12);
+  const bowMat = std(0x8a5a2a, 0.6);
+  const bow = new THREE.Group();
+  const limb = mesh(new THREE.TorusGeometry(0.55, 0.03, 6, 20, Math.PI * 0.8), bowMat, 0, 0, 0, bow); limb.rotation.z = Math.PI / 2 - Math.PI * 0.4; limb.rotation.y = Math.PI / 2;
+  const str = mesh(new THREE.CylinderGeometry(0.006, 0.006, 1.05, 4), std(0xe8e0d0), 0, 0, -0.17, bow);
+  bow.position.set(0, -0.34, 0.12);
   bow.visible = false;
-  leftArm.add(bow);
+  handOf(leftArm).add(bow);
 
-  const shieldMat = lam(0x8a5a2a);
-  const shield = box(0.08, 0.6, 0.5, shieldMat);
-  shield.position.set(-0.15, -0.45, 0);
+  const shieldMat = std(0x8a5a2a, 0.5, 0.3);
+  const shield = new THREE.Group();
+  const disc = mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.06, 20), shieldMat, 0, 0, 0, shield); disc.rotation.z = Math.PI / 2;
+  const rim = mesh(new THREE.TorusGeometry(0.34, 0.025, 6, 20), std(0x6a6a70, 0.35, 0.7), 0, 0, 0, shield); rim.rotation.y = Math.PI / 2;
+  mesh(sphere(0.08, 10, 8), std(0x8a8a90, 0.35, 0.7), -0.04, 0, 0, shield);
+  shield.position.set(-0.12, -0.2, 0.05);
   shield.visible = false;
-  leftArm.add(shield);
+  handOf(leftArm).add(shield);
 
-  const helmMat = lam(0xb87333);
-  const helm = box(0.62, 0.4, 0.62, helmMat);
-  helm.position.y = 1.92;
+  const helmMat = std(0xb87333, 0.35, 0.6);
+  const helm = new THREE.Group();
+  mesh(new THREE.SphereGeometry(0.295, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.58), helmMat, 0, 0.26, 0, helm);
+  mesh(new THREE.BoxGeometry(0.05, 0.2, 0.05), helmMat, 0, 0.22, 0.28, helm);
+  mesh(new THREE.TorusGeometry(0.29, 0.025, 6, 22), helmMat, 0, 0.18, 0, helm).rotation.x = Math.PI / 2;
   helm.visible = false;
-  playerGroup.add(helm);
+  headG.add(helm);
 
-  // Cape hangs off the back; amulet is a small gem at the neck.
-  const capeMat = lam(0xc03030);
-  const cape = box(0.7, 1.0, 0.05, capeMat);
-  cape.position.set(0, 1.0, -0.26);
+  // Cape hangs off the back (slightly curved); amulet is a small gem at the neck.
+  const capeMat = new THREE.MeshStandardMaterial({ color: 0xc03030, roughness: 0.8, side: THREE.DoubleSide });
+  const capeGeo = new THREE.CylinderGeometry(0.42, 0.55, 1.05, 12, 1, true, Math.PI * 0.7, Math.PI * 0.6);
+  const cape = mesh(capeGeo, capeMat, 0, 0.9, 0.12, body);
   cape.visible = false;
-  playerGroup.add(cape);
   const neckMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
-  const neck = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.04), neckMat);
-  neck.position.set(0, 1.35, 0.24);
+  const neck = mesh(new THREE.OctahedronGeometry(0.06, 0), neckMat, 0, 1.33, 0.2, body);
   neck.visible = false;
-  playerGroup.add(neck);
 
   playerGroup.position.set(0, 0, 0);
   scene.add(playerGroup);
@@ -98,7 +124,7 @@ export function createPlayer(scene) {
     animT: 0,
     actionAnim: 0,      // 0..1 swing timer for chopping/attacking
     actionKind: null,
-    parts: { body, bodyMat, leftArm, rightArm, leftLeg, rightLeg, legMat, helm, helmMat, hair, sword, swordMat, bow, bowMat, shield, shieldMat, cape, capeMat, neck, neckMat }
+    parts: { body, bodyMat, leftArm, rightArm, leftLeg, rightLeg, legMat, helm, helmMat, hair, sword, swordMat, bow, bowMat, shield, shieldMat, cape, capeMat, neck, neckMat, headG }
   };
 }
 
@@ -227,26 +253,46 @@ export function updatePlayer(pm, keys, dt, running, camYaw) {
   diff = Math.atan2(Math.sin(diff), Math.cos(diff));
   pm.mesh.rotation.y += diff * Math.min(1, dt * 14);
 
-  // Animation: smoother walk cycle
+  // Animation: walk cycle with knee/elbow bend, body bob and sway
   const p = pm.parts;
+  const knee = l => l.userData.knee, elbow = a => a.userData.elbow;
   if (pm.moving) {
-    pm.animT += dt * (running ? 12 : 8.5);
-    const sw = Math.sin(pm.animT) * 0.65;
-    const bob = Math.abs(Math.sin(pm.animT * 2)) * 0.04;
+    pm.animT += dt * (running ? 11 : 8);
+    const ph = pm.animT;
+    const amp = running ? 0.8 : 0.55;
+    const sw = Math.sin(ph) * amp;
     p.leftLeg.rotation.x = sw; p.rightLeg.rotation.x = -sw;
-    p.leftArm.rotation.x = -sw * 0.7; p.rightArm.rotation.x = sw * 0.7;
-    pm.mesh.position.y = bob;
+    knee(p.leftLeg).rotation.x = Math.max(0, -Math.cos(ph)) * (running ? 1.1 : 0.7);
+    knee(p.rightLeg).rotation.x = Math.max(0, Math.cos(ph)) * (running ? 1.1 : 0.7);
+    p.leftArm.rotation.x = -sw * 0.75; p.rightArm.rotation.x = sw * 0.75;
+    elbow(p.leftArm).rotation.x = -0.3 - (running ? 0.7 : 0.2);
+    elbow(p.rightArm).rotation.x = -0.3 - (running ? 0.7 : 0.2);
+    pm.mesh.position.y = Math.abs(Math.cos(ph)) * (running ? 0.07 : 0.04);
+    p.body.rotation.y = Math.sin(ph) * 0.08;
+    p.body.rotation.x = running ? 0.12 : 0.04;
+    p.body.rotation.z = Math.sin(ph) * 0.025;
   } else {
-    pm.mesh.position.y *= 0.85;
-    p.leftLeg.rotation.x *= 0.75; p.rightLeg.rotation.x *= 0.75;
-    p.leftArm.rotation.x *= 0.75;
+    const k = Math.min(1, dt * 10);
+    pm.mesh.position.y += (0 - pm.mesh.position.y) * k;
+    for (const l of [p.leftLeg, p.rightLeg]) { l.rotation.x += (0 - l.rotation.x) * k; knee(l).rotation.x += (0 - knee(l).rotation.x) * k; }
+    p.body.rotation.y += (0 - p.body.rotation.y) * k; p.body.rotation.x += (0 - p.body.rotation.x) * k; p.body.rotation.z += (0 - p.body.rotation.z) * k;
+    // idle breathing
+    pm.idleT = (pm.idleT || 0) + dt;
+    p.body.position.y = Math.sin(pm.idleT * 2.2) * 0.008;
+    elbow(p.leftArm).rotation.x += (-0.25 - elbow(p.leftArm).rotation.x) * k;
     if (pm.actionAnim > 0) {
       pm.actionAnim = Math.max(0, pm.actionAnim - dt * 2.0);
       const t = 1 - pm.actionAnim;
+      // wind up then strike, with the body twisting into the swing
       p.rightArm.rotation.x = t < 0.3 ? -(t / 0.3) * 2.4 : -2.4 + ((t - 0.3) / 0.7) * 2.8;
-      if (pm.actionKind === 'bow') { p.leftArm.rotation.x = -1.6; p.rightArm.rotation.x = -1.5 + Math.sin(t * Math.PI) * 0.25; }
+      elbow(p.rightArm).rotation.x = t < 0.3 ? -0.9 * (t / 0.3) : -0.9 + ((t - 0.3) / 0.7) * 0.7;
+      p.body.rotation.y = t < 0.3 ? -0.25 * (t / 0.3) : -0.25 + ((t - 0.3) / 0.7) * 0.45;
+      p.leftArm.rotation.x += (0 - p.leftArm.rotation.x) * k;
+      if (pm.actionKind === 'bow') { p.leftArm.rotation.x = -1.6; elbow(p.leftArm).rotation.x = 0; p.rightArm.rotation.x = -1.5 + Math.sin(t * Math.PI) * 0.25; elbow(p.rightArm).rotation.x = -1.2; p.body.rotation.y = 0; }
     } else {
-      p.rightArm.rotation.x *= 0.75;
+      p.leftArm.rotation.x += (0 - p.leftArm.rotation.x) * k;
+      p.rightArm.rotation.x += (0 - p.rightArm.rotation.x) * k;
+      elbow(p.rightArm).rotation.x += (-0.25 - elbow(p.rightArm).rotation.x) * k;
     }
   }
   return moved;

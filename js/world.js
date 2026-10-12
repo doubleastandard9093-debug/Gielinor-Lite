@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { makeRng } from './rng.js';
 import { MONSTER_TYPES } from './gameplay.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
-import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry } from './models.js';
+import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap } from './models.js';
 
 export const WORLD_HALF = 70;
 export const SPAWN = { x: 0, z: 0 };
@@ -252,6 +252,7 @@ export function createWorld(scene) {
     return bakedMesh(list.map(([geo, hex, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, amt = 0.22]) => put(col(geo, hex, amt), x, y, z, rx, ry, rz)));
   }
   const glowMat = c => new THREE.MeshBasicMaterial({ color: c });
+  const hairCapG = r => hairCap(r);
   function personParts(o, look) {
     // Rounded townsperson shape for stalls and booths (static).
     const skin = look.skin || 0xe0ae84;
@@ -431,31 +432,16 @@ export function createWorld(scene) {
     return tag(g, { mesh: g, type: 'building', name, examine, alive: true, x, z, radius: Math.max(w, d) / 2 });
   }
 
-  // Generic humanoid NPC. look: { body, legs, hat, skin, beard, apron }
+  // Generic rounded townsperson NPC (one baked mesh). look: { body, legs, hat, skin, beard, apron }
   function createNpc(x, z, npc, name, look, faceX = 0, faceZ = 0) {
     const g = new THREE.Group();
-    const skin = look.skin || 0xd4a574;
-    // Torso with slight taper
-    g.add(part(G.box, look.body, 0.68, 0.85, 0.38, 0, 1.05, 0));
-    // Shoulders
-    g.add(part(G.box, look.body, 0.82, 0.22, 0.42, 0, 1.38, 0));
-    // Head (sphere for rounder look)
-    g.add(part(G.sphere, skin, 0.42, 0.46, 0.42, 0, 1.78, 0));
-    // Legs
-    g.add(part(G.box, look.legs || 0x3a2a1a, 0.28, 0.62, 0.28, -0.18, 0.31, 0));
-    g.add(part(G.box, look.legs || 0x3a2a1a, 0.28, 0.62, 0.28, 0.18, 0.31, 0));
-    // Arms
-    g.add(part(G.cyl, skin, 0.12, 0.58, 0.12, -0.42, 1.05, 0));
-    g.add(part(G.cyl, skin, 0.12, 0.58, 0.12, 0.42, 1.05, 0));
-    // Hands
-    g.add(part(G.sphere, skin, 0.1, 0.1, 0.1, -0.42, 0.72, 0));
-    g.add(part(G.sphere, skin, 0.1, 0.1, 0.1, 0.42, 0.72, 0));
-    if (look.hat) g.add(part(G.box, look.hat, look.hatW || 0.5, look.hatH || 0.16, look.hatW || 0.5, 0, 2.05, 0));
-    if (look.beard) g.add(part(G.box, look.beard, 0.36, 0.22, 0.08, 0, 1.55, 0.22, false));
-    if (look.apron) g.add(part(G.box, look.apron, 0.55, 0.7, 0.04, 0, 0.95, 0.2, false));
+    const L = { ...look, skin: look.skin || 0xe0ae84, legs: look.legs || 0x3a2a1a, hair: look.hat ? null : (look.beard ? new THREE.Color(look.beard).multiplyScalar(0.8).getHex() : 0x4a3220) };
+    const h = humanoidParts(L);
+    const parts = [...h.top, ...npcExtras(look)];
+    for (const lx of [-0.13, 0.13]) for (const [geo, hex, px = 0, py = 0, pz = 0, rx, ry, rz, amt] of h.leg) parts.push([geo.clone(), hex, px + lx, py + h.hipY, pz, rx, ry, rz, amt]);
+    g.add(kit(parts));
     g.position.set(x, 0, z);
     g.rotation.y = Math.atan2(faceX - x, faceZ - z);
-    mergeStatic(g);
     scene.add(g);
     pickables.push(g);
     return tag(g, { mesh: g, type: 'npc', npc, name, alive: true, x, z, radius: 0.6 });
@@ -548,107 +534,45 @@ export function createWorld(scene) {
   }
 
   // ---- Monsters ----
+  // Monster extras for humanoids (weapons, helmets, horns...). Parts in kit format.
+  function monsterExtras(typeName, skin, c) {
+    switch (typeName) {
+      case 'Goblin': return [[prim.cone(0.07, 0.3, 5), skin, 0.3, 1.8, 0, 0, 0, -1.2], [prim.cone(0.07, 0.3, 5), skin, -0.3, 1.8, 0, 0, 0, 1.2],
+        [prim.sphere(0.07, 6, 4), skin, 0, 1.7, 0.27], [prim.box(0.06, 0.55, 0.08), 0x6a6a70, 0.44, 0.75, 0.25, 1.2, 0, 0]];
+      case 'Hill Giant': case 'Moss Giant': case 'Ogre': case 'Ice Giant': case 'Grumsh': {
+        const out = [[prim.cyl(0.08, 0.16, 1.0, 8), 0x5a3a1a, 0.48, 0.75, 0.3, 0.5], [blob(0.18, 0.24, 0.18, { detail: 1, lump: 0.3, seed: 1 }), 0x4a2e14, 0.48, 0.32, 0.55]];
+        if (typeName === 'Grumsh') out.push([prim.cyl(0.26, 0.22, 0.14, 10), 0xd4af37, 0, 1.97, 0, 0, 0, 0, 0], ...[0, 1, 2, 3, 4].map(i => [prim.cone(0.04, 0.12, 4), 0xd4af37, Math.cos(i * 1.257) * 0.22, 2.08, Math.sin(i * 1.257) * 0.22, 0, 0, 0, 0]));
+        if (typeName === 'Moss Giant') out.push([blob(0.28, 0.12, 0.28, { detail: 1, lump: 0.4, seed: 3 }), 0x3a6a1a, 0, 1.94, 0]);
+        if (typeName === 'Ice Giant') out.push([prim.cone(0.06, 0.25, 5), 0xd8f0ff, 0.12, 2.0, 0], [prim.cone(0.06, 0.3, 5), 0xd8f0ff, -0.1, 2.02, 0.05]);
+        return out;
+      }
+      case 'Dark Archer': return [[hairCapG(0.29), 0x1e2a1e, 0, 1.76, -0.02, -0.15], [prim.torusArc(0.55), 0x5a3a1a, -0.48, 1.0, 0.25], [prim.cyl(0.08, 0.08, 0.55, 8), 0x3a2a1a, 0.15, 1.15, -0.25, 0.3]];
+      case 'Black Knight': return [[hairCapG(0.3), 0x2a2a34, 0, 1.74, 0, 0, 0, 0, 0.1], [prim.box(0.32, 0.05, 0.05), 0x111111, 0, 1.76, 0.27], [prim.cone(0.06, 0.25, 5), 0x2a2a34, 0, 2.08, 0],
+        [prim.box(0.06, 1.0, 0.13), 0x8a8a94, 0.46, 0.85, 0.35, 0.4, 0, 0, 0.05], [prim.box(0.26, 0.05, 0.08), 0x3a3a44, 0.46, 0.4, 0.2, 0.4], [prim.cyl(0.3, 0.3, 0.06, 12), 0x24242c, -0.46, 1.0, 0.1, 0, 0, Math.PI / 2]];
+      case 'Lesser Demon': return [[prim.cone(0.07, 0.35, 6), 0x2a1a1a, 0.15, 2.02, 0, -0.3, 0, -0.3], [prim.cone(0.07, 0.35, 6), 0x2a1a1a, -0.15, 2.02, 0, -0.3, 0, 0.3],
+        [prim.wing(1), 0x5a0a0a, 0.2, 1.3, -0.25], [prim.wing(-1), 0x5a0a0a, -0.2, 1.3, -0.25], [prim.cone(0.06, 0.8, 6), c, 0, 0.7, -0.35, -2.2]];
+      case 'Bandit': return [[prim.box(0.42, 0.1, 0.05), 0x2a2a2a, 0, 1.76, 0.22], [prim.box(0.05, 0.7, 0.1), 0xa0a0a8, 0.46, 0.8, 0.3, 0.4, 0, 0, 0.05]];
+      case 'Skeleton': return [[prim.sphere(0.06, 6, 4), 0x111111, 0.09, 1.76, 0.2, 0, 0, 0, 0], [prim.sphere(0.06, 6, 4), 0x111111, -0.09, 1.76, 0.2, 0, 0, 0, 0], [prim.box(0.05, 0.8, 0.1), 0x8a8a8a, 0.46, 0.85, 0.3, 0.4]];
+      case 'Zombie': return [[prim.sphere(0.05, 6, 4), 0xd0e060, 0.09, 1.76, 0.21, 0, 0, 0, 0], [prim.sphere(0.05, 6, 4), 0xd0e060, -0.09, 1.76, 0.21, 0, 0, 0, 0]];
+      default: return [[hairCapG(0.29), 0x9a9aa8, 0, 1.76, 0, 0, 0, 0, 0.1], [prim.cyl(0.03, 0.03, 2.2, 6), 0x6a5a3a, 0.45, 1.15, 0.15], [prim.cone(0.07, 0.3, 4), 0xb0b0b8, 0.45, 2.38, 0.15]];
+    }
+  }
   function createMonster(typeName, x, z, roam, bounds = null) {
     const t = MONSTER_TYPES[typeName];
     const root = new THREE.Group();
     const body = new THREE.Group();
     const legs = [];
-    if (typeName === 'Cow') {
-      body.add(part(G.box, 0xf0eee8, 1.5, 0.75, 0.75, 0, 0.95, 0));
-      body.add(part(G.box, 0x2a2a2a, 0.5, 0.5, 0.78, 0.2, 1.0, 0, false));
-      body.add(part(G.box, 0xf0eee8, 0.5, 0.5, 0.45, 0.95, 1.2, 0));
-      body.add(part(G.box, 0xe8b0a0, 0.25, 0.25, 0.4, 1.25, 1.05, 0, false));
-      body.add(part(G.box, 0xd8d0b0, 0.08, 0.2, 0.08, 0.9, 1.5, 0.18, false));
-      body.add(part(G.box, 0xd8d0b0, 0.08, 0.2, 0.08, 0.9, 1.5, -0.18, false));
-      for (const [lx, lz] of [[0.55, 0.25], [0.55, -0.25], [-0.55, 0.25], [-0.55, -0.25]]) {
-        const l = part(G.box, 0xf0eee8, 0.18, 0.6, 0.18, lx, 0.3, lz);
-        body.add(l); legs.push(l);
-      }
-      body.rotation.y = -Math.PI / 2; // face +z
-    } else if (t.shape === 'quad') { // wolf
-      const c = t.color;
-      body.add(part(G.sphere, c, 0.48, 0.42, 1.1, 0, 0.72, 0));
-      body.add(part(G.sphere, c, 0.38, 0.36, 0.45, 0, 0.88, 0.7));
-      body.add(part(G.box, 0x4a4a50, 0.2, 0.18, 0.28, 0, 0.78, 1.05, false));
-      body.add(part(G.cone4, c, 0.1, 0.18, 0.08, 0.12, 1.15, 0.65, false));
-      body.add(part(G.cone4, c, 0.1, 0.18, 0.08, -0.12, 1.15, 0.65, false));
-      body.add(part(G.cyl, c, 0.08, 0.08, 0.45, 0, 0.85, -0.7, false));
-      for (const [lx, lz] of [[0.18, 0.45], [-0.18, 0.45], [0.18, -0.45], [-0.18, -0.45]]) {
-        const l = part(G.box, c, 0.14, 0.5, 0.14, lx, 0.25, lz); body.add(l); legs.push(l);
-      }
-    } else if (t.shape === 'spider') {
-      const c = t.color;
-      body.add(part(G.box, c, 0.8, 0.5, 0.9, 0, 0.6, -0.2));
-      body.add(part(G.box, c, 0.5, 0.4, 0.45, 0, 0.55, 0.45));
-      body.add(part(G.box, 0xc02020, 0.3, 0.08, 0.05, 0, 0.62, 0.68, false));
-      for (const side of [-1, 1]) for (const lz of [-0.4, -0.1, 0.2, 0.45]) {
-        const l = part(G.box, 0x1a1a1a, 0.7, 0.08, 0.08, side * 0.6, 0.45, lz); l.rotation.z = side * 0.5; body.add(l); legs.push(l);
-      }
-    } else if (t.shape === 'dragon') {
-      const c = t.color;
-      body.add(part(G.box, c, 0.9, 0.8, 1.8, 0, 1.0, 0));
-      body.add(part(G.box, c, 0.4, 0.4, 0.8, 0, 1.5, 1.1));
-      body.add(part(G.box, c, 0.5, 0.45, 0.7, 0, 1.75, 1.6));
-      body.add(part(G.box, 0xd0c080, 0.1, 0.3, 0.1, 0.16, 2.1, 1.45, false));
-      body.add(part(G.box, 0xd0c080, 0.1, 0.3, 0.1, -0.16, 2.1, 1.45, false));
-      body.add(part(G.box, c, 0.25, 0.25, 1.2, 0, 0.9, -1.4));
-      for (const side of [-1, 1]) { const w = part(G.box, 0x1a4a1a, 1.4, 0.06, 1.0, side * 1.1, 1.6, -0.1, false); w.rotation.z = side * 0.35; body.add(w); }
-      for (const [lx, lz] of [[0.35, 0.6], [-0.35, 0.6], [0.35, -0.6], [-0.35, -0.6]]) {
-        const l = part(G.box, c, 0.25, 0.7, 0.25, lx, 0.35, lz); body.add(l); legs.push(l);
-      }
+    const c = t.color;
+    const cr = creatureParts(t.shape, c, typeName);
+    if (cr) {
+      body.add(kit(cr.top));
+      for (const L of cr.legs) { const p = legPivot(L.parts, L.x, L.y, L.z); body.add(p); legs.push(p); }
     } else {
-      const c = t.color;
       const skin = t.skin || (typeName === 'Goblin' ? 0x6aa040 : typeName === 'Hill Giant' ? 0xb08a5a : typeName === 'Black Knight' ? 0x1a1a22 : 0xd4a574);
-      // More detailed humanoid
-      body.add(part(G.box, c, 0.65, 0.75, 0.36, 0, 1.05, 0));
-      body.add(part(G.box, c, 0.78, 0.2, 0.4, 0, 1.35, 0)); // shoulders
-      body.add(part(G.sphere, skin, 0.4, 0.44, 0.4, 0, 1.72, 0)); // round head
-      // Arms
-      body.add(part(G.cyl, skin, 0.11, 0.55, 0.11, -0.4, 1.05, 0));
-      body.add(part(G.cyl, skin, 0.11, 0.55, 0.11, 0.4, 1.05, 0));
-      // Legs
-      body.add(part(G.box, c, 0.26, 0.58, 0.26, -0.16, 0.32, 0));
-      body.add(part(G.box, c, 0.26, 0.58, 0.26, 0.16, 0.32, 0));
-      if (typeName === 'Goblin') {
-        body.add(part(G.box, skin, 0.12, 0.25, 0.08, 0.3, 1.75, 0, false));
-        body.add(part(G.box, skin, 0.12, 0.25, 0.08, -0.3, 1.75, 0, false));
-      } else if (typeName === 'Hill Giant') {
-        body.add(part(G.box, 0x5a3a1a, 0.18, 1.1, 0.18, 0.55, 0.9, 0.3)); // club
-        body.add(part(G.box, 0x5a3a1a, 0.32, 0.4, 0.32, 0.55, 0.4, 0.3));
-      } else if (typeName === 'Dark Archer') {
-        body.add(part(G.box, 0x1e2a1e, 0.56, 0.3, 0.56, 0, 1.86, -0.03)); // hood
-        body.add(part(G.box, 0x5a3a1a, 0.06, 1.2, 0.06, 0.5, 1.1, 0.3)); // bow
-        body.add(part(G.box, 0x3a2a1a, 0.2, 0.6, 0.15, 0, 1.1, -0.3, false)); // quiver
-      } else if (typeName === 'Black Knight') {
-        body.add(part(G.box, 0x2a2a34, 0.56, 0.5, 0.56, 0, 1.68, 0));
-        body.add(part(G.box, 0x111111, 0.4, 0.06, 0.02, 0, 1.7, 0.29, false));
-        body.add(part(G.box, 0x777780, 0.08, 1.0, 0.14, 0.5, 0.9, 0.35)); // sword
-      } else if (['Moss Giant', 'Ogre', 'Ice Giant', 'Grumsh'].includes(typeName)) {
-        body.add(part(G.box, 0x4a3a2a, 0.2, 1.1, 0.2, 0.55, 0.9, 0.3)); // club
-        body.add(part(G.box, 0x4a3a2a, 0.34, 0.42, 0.34, 0.55, 0.4, 0.3));
-        if (typeName === 'Grumsh') body.add(part(G.box, 0xd4af37, 0.52, 0.16, 0.52, 0, 1.95, 0, false)); // crown
-        if (typeName === 'Moss Giant') body.add(part(G.box, 0x2a5a1a, 0.5, 0.15, 0.5, 0, 1.92, 0, false));
-      } else if (typeName === 'Lesser Demon') {
-        body.add(part(G.cone4, 0x2a1a1a, 0.1, 0.35, 0.1, 0.18, 2.0, 0, false));
-        body.add(part(G.cone4, 0x2a1a1a, 0.1, 0.35, 0.1, -0.18, 2.0, 0, false));
-        for (const side of [-1, 1]) { const w = part(G.box, 0x5a0a0a, 0.9, 0.6, 0.05, side * 0.6, 1.3, -0.3, false); w.rotation.y = side * 0.4; body.add(w); }
-      } else if (typeName === 'Bandit') {
-        body.add(part(G.box, 0x2a2a2a, 0.5, 0.12, 0.05, 0, 1.6, 0.24, false)); // mask
-        body.add(part(G.box, 0xa0a0a8, 0.07, 0.7, 0.1, 0.5, 0.95, 0.3)); // blade
-      } else if (typeName === 'Skeleton' || typeName === 'Zombie') {
-        body.add(part(G.box, 0x111111, 0.3, 0.08, 0.02, 0, 1.7, 0.24, false)); // eyes
-        if (typeName === 'Skeleton') body.add(part(G.box, 0x8a8a8a, 0.07, 0.8, 0.1, 0.5, 0.95, 0.3));
-      } else {
-        body.add(part(G.box, 0x9a9aa8, 0.54, 0.25, 0.54, 0, 1.92, 0));
-        body.add(part(G.box, 0x6a5a3a, 0.06, 2.2, 0.06, 0.5, 1.2, 0.15)); // spear
-        body.add(part(G.box, 0xb0b0b8, 0.12, 0.3, 0.06, 0.5, 2.4, 0.15, false));
-      }
-      body.add(part(G.box, skin, 0.18, 0.7, 0.18, -0.45, 1.0, 0));
-      body.add(part(G.box, skin, 0.18, 0.7, 0.18, 0.45, 1.0, 0));
-      for (const lx of [-0.17, 0.17]) {
-        const l = part(G.box, 0x3a2a1a, 0.24, 0.6, 0.24, lx, 0.3, 0);
-        body.add(l); legs.push(l);
-      }
+      const bald = /Giant|Ogre|Grumsh|Skeleton|Zombie|Demon|Goblin/.test(typeName);
+      const h = humanoidParts({ body: c, skin, legs: new THREE.Color(c).multiplyScalar(0.55).getHex(), hair: bald ? null : 0x3a2a1a, sleeve: c });
+      body.add(kit([...h.top, ...monsterExtras(typeName, skin, c)]));
+      for (const lx of [-0.13, 0.13]) { const p = legPivot(h.leg.map(q => [q[0].clone(), ...q.slice(1)]), lx, h.hipY, 0); body.add(p); legs.push(p); }
     }
     root.add(body);
     root.scale.setScalar(t.scale);
