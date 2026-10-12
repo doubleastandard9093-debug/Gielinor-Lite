@@ -8,7 +8,7 @@ const METAL = { Bronze: 0xb87333, Iron: 0x9a9a9a, Steel: 0xd0d8e0, Mithril: 0x5a
 
 export function createPlayer(scene) {
   const playerGroup = new THREE.Group();
-  const lam = c => new THREE.MeshLambertMaterial({ color: c });
+  const lam = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, metalness: 0.05 });
   const box = (w, h, d, m) => { const x = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); x.castShadow = true; return x; };
 
   const bodyMat = lam(0x6b4423);
