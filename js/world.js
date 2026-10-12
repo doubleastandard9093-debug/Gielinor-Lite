@@ -1,17 +1,12 @@
 import * as THREE from 'three';
 import { makeRng } from './rng.js';
 import { MONSTER_TYPES } from './gameplay.js';
+import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
+import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap } from './models.js';
 
-export const WORLD_HALF = 250;
+export const WORLD_HALF = 70;
 export const SPAWN = { x: 0, z: 0 };
 export const LAKE = { x: -20, z: 16, r: 7 };
-export const TOWNS = {
-  Brightwater: { x: 0, z: 0 },
-  Ashford: { x: 40, z: -10 },
-  Port Sarim: { x: -80, z: 60 },
-  Varrock: { x: 120, z: -40 },
-  Falador: { x: -60, z: -80 }
-};
 export const TOWN_NAME = 'Brightwater';
 export const PATHS = [[0, 0, 13, -12], [0, 0, -15, -13], [0, 0, -15, 12], [0, 0, 20, 17], [0, 0, 0, 24], [0, 0, 0, -27], [0, 0, 5, -7.4], [0, 0, 50, -20], [50, -20, 55, -35]];
 // Buildings: [x, z, width(x), depth(z), wall colour, roof colour, name, examine]
@@ -55,8 +50,7 @@ function mat(color, opts) {
 
 // Bake all the plain-coloured parts of a static model into one mesh (one draw call)
 // using vertex colours. Glowing (unlit) parts stay separate.
-const vcMat = new THREE.MeshLambertMaterial({ vertexColors: true });
-function mergeStatic(group) {
+function mergeStatic(group, material = vcMat) {
   group.updateMatrixWorld(true);
   const inv = group.matrixWorld.clone().invert();
   const pos = [], nor = [], col = [], drop = [];
@@ -69,7 +63,10 @@ function mergeStatic(group) {
     pos.push(...g.attributes.position.array);
     nor.push(...g.attributes.normal.array);
     c.copy(o.material.color);
-    for (let i = 0; i < g.attributes.position.count; i++) col.push(c.r, c.g, c.b);
+    const vc = g.attributes.color;
+    for (let i = 0; i < g.attributes.position.count; i++) {
+      if (vc) col.push(c.r * vc.getX(i), c.g * vc.getY(i), c.b * vc.getZ(i)); else col.push(c.r, c.g, c.b);
+    }
     g.dispose();
     drop.push(o);
   });
@@ -80,7 +77,7 @@ function mergeStatic(group) {
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   geo.computeBoundingSphere();
-  const mesh = new THREE.Mesh(geo, vcMat);
+  const mesh = new THREE.Mesh(geo, material);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   group.add(mesh);
@@ -99,6 +96,49 @@ function tag(root, entity) {
   return entity;
 }
 
+
+// Height of the ground. Flat inside the walkable area; hills rise past the edge.
+export function terrainHeight(x, z) {
+  const d = Math.max(Math.abs(x), Math.abs(z)) - (WORLD_HALF + 3);
+  if (d <= 0) return 0;
+  const roll = 0.65 + 0.35 * Math.sin(x * 0.045 + Math.cos(z * 0.031) * 2.1) * Math.cos(z * 0.052 - x * 0.013);
+  return Math.min(34, d * d * 0.018 * roll + d * 0.15);
+}
+
+// Paint the ground mask in code: R = dirt (paths, mines), G = sand (shore), B = cobbles (squares).
+function paintGroundMask(size) {
+  const N = 512, k = N / size;
+  const cv = document.createElement('canvas'); cv.width = cv.height = N;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, N, N);
+  const X = x => (x + size / 2) * k, Z = z => (z + size / 2) * k;
+  g.globalCompositeOperation = 'lighter';
+  g.lineCap = 'round';
+  const blob = (x, z, r, rgb, a = 1) => {
+    const gr = g.createRadialGradient(X(x), Z(z), 0, X(x), Z(z), r * k);
+    gr.addColorStop(0, `rgba(${rgb},${a})`); gr.addColorStop(0.6, `rgba(${rgb},${a * 0.8})`); gr.addColorStop(1, `rgba(${rgb},0)`);
+    g.fillStyle = gr; g.beginPath(); g.arc(X(x), Z(z), r * k, 0, Math.PI * 2); g.fill();
+  };
+  // soft-edged paths: several passes, wide + faint to narrow + strong
+  for (const [w, a] of [[2.6, 0.25], [2.0, 0.35], [1.5, 0.5]]) {
+    g.strokeStyle = `rgba(255,0,0,${a})`; g.lineWidth = w * k;
+    for (const [x1, z1, x2, z2] of PATHS) { g.beginPath(); g.moveTo(X(x1), Z(z1)); g.lineTo(X(x2), Z(z2)); g.stroke(); }
+  }
+  blob(22, 20, 8, '255,0,0', 0.9);      // mine
+  blob(-9, -28, 5.5, '255,0,0', 0.9);   // high-level mine
+  blob(13, -13, 5, '255,0,0', 0.45);    // goblin camp
+  blob(-18, -16, 7, '255,0,0', 0.3);    // trampled cow field
+  blob(50, -25, 9, '255,0,0', 0.4);     // Ashford yard
+  blob(LAKE.x, LAKE.z, LAKE.r + 2.6, '0,255,0', 1);
+  blob(0, 0, 5.4, '0,0,255', 1);        // Brightwater square
+  blob(50, -24, 3.5, '0,0,255', 0.9);   // Ashford square
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.flipY = false;
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}
+
 export function insideLake(x, z, pad = 0) {
   return Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r + pad;
 }
@@ -109,56 +149,28 @@ export function createWorld(scene) {
   const monsters = [];
   const pickables = []; // root objects the tap raycast checks
 
-  // Ground with gentle colour variation (one draw call).
-  const groundGeo = new THREE.PlaneGeometry(WORLD_HALF * 2 + 10, WORLD_HALF * 2 + 10, 45, 45);
-  const colors = [];
-  const base = new THREE.Color(0x4a8a3a);
-  const tmp = new THREE.Color();
+  // ---- Terrain: one textured mesh (grass / dirt paths / sand / cobbles) ----
+  // The play area is flat (feet stay on the ground); rolling hills rise beyond it.
+  const MASK = 170;
+  const mask = paintGroundMask(MASK);
+  const GSIZE = 420, GSEG = 100;
+  const groundGeo = new THREE.PlaneGeometry(GSIZE, GSIZE, GSEG, GSEG);
   const pos = groundGeo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const v = 0.88 + rng() * 0.2;
-    tmp.copy(base).multiplyScalar(v);
-    colors.push(tmp.r, tmp.g, tmp.b);
-  }
-  groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  const ground = new THREE.Mesh(groundGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.0 }));
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, terrainHeight(pos.getX(i), -pos.getY(i)));
+  groundGeo.computeVertexNormals();
+  const ground = new THREE.Mesh(groundGeo, terrainMaterial(mask, MASK));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
 
-  // Dirt paths from spawn to each area.
-  const pathMat = new THREE.MeshLambertMaterial({ color: 0x8a7650 });
-  function path(x1, z1, x2, z2, w = 1.6) {
-    const len = Math.hypot(x2 - x1, z2 - z1);
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, len), pathMat);
-    m.rotation.x = -Math.PI / 2;
-    m.rotation.z = -Math.atan2(x2 - x1, z2 - z1);
-    m.position.set((x1 + x2) / 2, 0.02, (z1 + z2) / 2);
-    m.receiveShadow = true;
-    scene.add(m);
-  }
-  for (const pth of PATHS) path(...pth);
-  const plaza = new THREE.Mesh(new THREE.CircleGeometry(4.5, 20), new THREE.MeshLambertMaterial({ color: 0x9a9a8a }));
-  plaza.rotation.x = -Math.PI / 2; plaza.position.y = 0.03; plaza.receiveShadow = true;
-  scene.add(plaza);
-
-  // Lake with a sandy shore.
-  const shore = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r + 1.6, 36), new THREE.MeshStandardMaterial({ color: 0xc4b080, roughness: 0.9 }));
-  shore.rotation.x = -Math.PI / 2; shore.position.set(LAKE.x, 0.025, LAKE.z);
-  scene.add(shore);
-  const waterMat = new THREE.MeshStandardMaterial({
-    color: 0x1a5a90,
-    roughness: 0.08,
-    metalness: 0.45,
-    transparent: true,
-    opacity: 0.88
-  });
-  const water = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r, 48), waterMat);
+  // Lake: animated water with shore foam (sand is painted into the ground).
+  const water = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r + 0.25, 64), hookWaterNoise(waterMaterial(LAKE.x, LAKE.z, LAKE.r + 0.25)));
   water.rotation.x = -Math.PI / 2; water.position.set(LAKE.x, 0.05, LAKE.z);
-  water.receiveShadow = true;
   scene.add(water);
-  // Store for simple animation
-  water.userData.wave = true;
+  // Darker lake bed so the edge reads as depth
+  const bed = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r + 0.3, 40), new THREE.MeshBasicMaterial({ color: 0x0c2a3a }));
+  bed.rotation.x = -Math.PI / 2; bed.position.set(LAKE.x, 0.015, LAKE.z);
+  scene.add(bed);
 
   const occupied = [];
   function free(x, z, r = 1.6, townR = 6) {
@@ -181,70 +193,35 @@ export function createWorld(scene) {
     { x: -2, z: -31, r: 6 }, { x: -16, z: -33, r: 5 });
   for (const pth of PATHS) for (let t = 0.1; t <= 1; t += 0.1) occupied.push({ x: pth[0] + (pth[2] - pth[0]) * t, z: pth[1] + (pth[3] - pth[1]) * t, r: 0.6 });
 
-  // ---- Trees ----
-  const TREE_STYLE = {
-    Tree:   { trunk: 0x5a3a14, leaf: 0x2d6a25, h: 2.2, r: 1.05, seg: G.cone5 },
-    Oak:    { trunk: 0x4a3010, leaf: 0x3d7a1f, h: 2.0, r: 1.45, seg: G.sphere },
-    Willow: { trunk: 0x5a4a2a, leaf: 0x6f9a3a, h: 2.8, r: 1.3,  seg: G.cone7 },
-    Maple:  { trunk: 0x5a3a1a, leaf: 0xc0602a, h: 2.0, r: 1.4,  seg: G.sphere },
-    Yew:    { trunk: 0x3a2a14, leaf: 0x1f4a2a, h: 3.2, r: 1.5,  seg: G.cone7 },
-    Magic:  { trunk: 0x6a6a7a, leaf: 0x5a8ae0, h: 3.0, r: 1.2,  seg: G.cone5 }
-  };
+  // ---- Trees (one swaying mesh each) ----
+  const treeGeoCache = {};
   function createTree(x, z, kind) {
-    const st = TREE_STYLE[kind];
+    // A few shape variants per kind are shared between trees to save memory.
+    const key = kind + ((rng() * 3) | 0);
+    if (!treeGeoCache[key]) treeGeoCache[key] = treeGeometry(kind, makeRng(key.length * 97 + key.charCodeAt(key.length - 1) * 13));
     const root = new THREE.Group();
-    const full = new THREE.Group();
-    // Thicker, tapered trunk
-    const trunk = part(G.cyl, st.trunk, 0.35, 1.9, 0.35, 0, 0.95, 0);
-    full.add(trunk);
-    // Main canopy
-    const round = st.seg === G.sphere;
-    const leaves = part(st.seg, st.leaf, st.r, round ? 1.4 : st.h * 1.1, st.r, 0, 2.6, 0);
-    full.add(leaves);
-    // Extra foliage clusters for more organic shape
-    for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * Math.PI * 2 + rng() * 0.5;
-      const dist = 0.4 + rng() * 0.4;
-      const y = 2.2 + rng() * 0.8;
-      full.add(part(G.sphere, st.leaf, 0.6 + rng() * 0.3, 0.5 + rng() * 0.3, 0.6 + rng() * 0.3,
-        Math.cos(a) * dist, y, Math.sin(a) * dist));
-    }
-    root.add(full);
+    const mesh = new THREE.Mesh(treeGeoCache[key], foliageMat);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    root.add(mesh);
     root.position.set(x, 0, z);
-    root.rotation.y = rng() * Math.PI;
+    root.rotation.y = rng() * Math.PI * 2;
     const s = 0.85 + rng() * 0.3;
     root.scale.set(s, s, s);
-    mergeStatic(root);
     scene.add(root);
     pickables.push(root);
     const name = kind === 'Tree' ? 'Tree' : kind;
     return tag(root, { mesh: root, full: root, type: 'tree', kind, name, alive: true, x, z, radius: 0.9 });
   }
 
-  // ---- Rocks ----
-  const ORE_COLOR = { Copper: 0xc07a3a, Tin: 0xc8c8c8, Iron: 0x7a3a2a, Coal: 0x151515, Mithril: 0x5a6ad0, Adamantite: 0x3a9a5a, Runite: 0x3ab8d0 };
+  // ---- Rocks (boulders with ore veins and crystals) ----
+  const ORE_COLOR = { Copper: 0xd0803a, Tin: 0xd8d8d0, Iron: 0x8a4a32, Coal: 0x1a1a1a, Mithril: 0x5a6ad8, Adamantite: 0x3aa860, Runite: 0x40c8e0, Dragon: 0xd03030 };
   function createRock(x, z, ore) {
     const root = new THREE.Group();
-    // Base rock using sphere for more organic shape
-    const rockMesh = part(G.sphere, 0x6a6560, 0.85, 0.55, 0.75, 0, 0.3, 0);
-    rockMesh.rotation.y = rng();
-    rockMesh.rotation.x = (rng() - 0.5) * 0.3;
-    root.add(rockMesh);
-    // Secondary lumps
-    const lump = part(G.sphere, 0x7a7570, 0.5, 0.35, 0.45, 0.25, 0.45, 0.15);
-    lump.rotation.y = rng();
-    root.add(lump);
-    const full = new THREE.Group();
-    // Ore crystals
-    for (let i = 0; i < 4; i++) {
-      const a = (i / 4) * Math.PI * 2 + rng();
-      const dist = 0.3 + rng() * 0.25;
-      full.add(part(G.box, ORE_COLOR[ore] || 0x888888, 0.18, 0.22, 0.18,
-        Math.cos(a) * dist, 0.35 + rng() * 0.4, Math.sin(a) * dist, false));
-    }
-    root.add(full);
+    const mesh = new THREE.Mesh(rockGeometry(ORE_COLOR[ore] ?? 0x888888, rng), vcMat);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    root.add(mesh);
     root.position.set(x, 0, z);
-    mergeStatic(root);
+    root.rotation.y = rng() * Math.PI * 2;
     scene.add(root);
     pickables.push(root);
     return tag(root, { mesh: root, full: root, type: 'rock', ore, name: 'Rocks', alive: true, x, z, radius: 0.8 });
@@ -270,95 +247,184 @@ export function createWorld(scene) {
   }
 
   // ---- NPCs and buildings ----
+  // Little helper: bake a list of [geometry, colour, x, y, z, rx, ry, rz, shadeAmt] into one mesh.
+  function kit(list) {
+    return bakedMesh(list.map(([geo, hex, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, amt = 0.22]) => put(col(geo, hex, amt), x, y, z, rx, ry, rz)));
+  }
+  const glowMat = c => new THREE.MeshBasicMaterial({ color: c });
+  const hairCapG = r => hairCap(r);
+  function personParts(o, look) {
+    // Rounded townsperson shape for stalls and booths (static).
+    const skin = look.skin || 0xe0ae84;
+    return [
+      [prim.capsule(0.27, 0.45, 3, 10), look.body, o.x, o.y + 1.05, o.z],
+      [prim.sphere(0.24, 14, 10), skin, o.x, o.y + 1.68, o.z],
+      [prim.sphere(0.25, 12, 8), look.hair || 0x3a2a1a, o.x, o.y + 1.76, o.z - 0.04]
+    ];
+  }
   function createMerchant(x, z) {
     const g = new THREE.Group();
-    g.add(part(G.box, 0x5a3a1a, 0.7, 1.0, 0.4, 0, 0.9, 0));
-    g.add(part(G.box, 0xd4a574, 0.5, 0.45, 0.5, 0, 1.65, 0));
-    g.add(part(G.box, 0x2a1a0a, 0.6, 0.2, 0.6, 0, 1.95, 0));
-    g.add(part(G.box, 0x3a2a1a, 0.6, 0.5, 0.35, 0, 0.25, 0));
-    // Market stall
-    g.add(part(G.box, 0x7a5a2a, 2.2, 0.8, 0.8, 0, 0.4, 1.0));
-    g.add(part(G.box, 0xb03030, 2.6, 0.1, 1.4, 0, 2.4, 0.8));
-    g.add(part(G.box, 0x5a3a1a, 0.1, 2.4, 0.1, -1.2, 1.2, 1.4));
-    g.add(part(G.box, 0x5a3a1a, 0.1, 2.4, 0.1, 1.2, 1.2, 1.4));
+    const parts = [
+      ...personParts({ x: 0, y: 0, z: 0 }, { body: 0x6a3a1a, hair: 0x2a1a0a }),
+      [prim.capsule(0.12, 0.45, 3, 8), 0x3a2a1a, -0.13, 0.35, 0], [prim.capsule(0.12, 0.45, 3, 8), 0x3a2a1a, 0.13, 0.35, 0],
+      // stall: counter, posts, striped canvas awning, crates and goods
+      [prim.box(2.3, 0.85, 0.85), 0x7a5430, 0, 0.43, 1.0], [prim.box(2.45, 0.08, 1.0), 0x5a3a1e, 0, 0.88, 1.0],
+      [prim.cyl(0.06, 0.07, 2.5, 8), 0x5a3a1e, -1.15, 1.25, 1.4], [prim.cyl(0.06, 0.07, 2.5, 8), 0x5a3a1e, 1.15, 1.25, 1.4],
+      [prim.cyl(0.06, 0.07, 2.5, 8), 0x5a3a1e, -1.15, 1.25, 0.2], [prim.cyl(0.06, 0.07, 2.5, 8), 0x5a3a1e, 1.15, 1.25, 0.2],
+      [prim.sphere(0.13, 10, 8), 0xd04030, -0.6, 1.0, 1.0], [prim.sphere(0.13, 10, 8), 0xe0c040, -0.35, 1.0, 1.1], [prim.sphere(0.13, 10, 8), 0x60a040, -0.5, 1.0, 0.82],
+      [prim.cyl(0.18, 0.15, 0.3, 10), 0x9a7a4a, 0.5, 1.05, 1.0], [prim.box(0.5, 0.4, 0.4), 0x8a6a3a, 1.5, 0.2, 0.6]
+    ];
+    for (let i = 0; i < 6; i++) parts.push([prim.box(0.44, 0.06, 1.5), i % 2 ? 0xf0e8d8 : 0xc03030, -1.1 + i * 0.44, 2.45 - 0.0, 0.8, -0.22, 0, 0, 0.1]);
+    g.add(kit(parts));
     g.position.set(x, 0, z);
     g.rotation.y = -Math.PI / 2;
-    mergeStatic(g);
     scene.add(g);
     pickables.push(g);
     return tag(g, { mesh: g, type: 'shop', npc: 'merchant', alive: true, x, z, name: 'Merchant', radius: 1.2 });
   }
   function createBank(x, z) {
     const g = new THREE.Group();
-    g.add(part(G.box, 0x9a9488, 3.0, 2.6, 0.25, 0, 1.3, -0.9));        // back wall
-    g.add(part(G.box, 0x2a3a7a, 0.6, 0.7, 0.35, 0, 1.35, -0.45));       // banker
-    g.add(part(G.box, 0xd4a574, 0.4, 0.4, 0.4, 0, 1.92, -0.45));
-    g.add(part(G.box, 0x8a8a90, 2.6, 1.0, 0.9, 0, 0.5, 0.1));           // counter
-    g.add(part(G.box, 0x6a4a2a, 2.8, 0.1, 1.1, 0, 1.05, 0.1));
-    g.add(part(G.box, 0xd4af37, 0.9, 0.45, 0.05, 0, 2.2, -0.76, false)); // gold sign
-    g.add(part(G.box, 0x8a2a2a, 3.2, 0.15, 1.7, 0, 2.75, -0.2));        // awning
+    const parts = [
+      [prim.box(3.2, 2.7, 0.3), 0xa49e90, 0, 1.35, -0.95],
+      ...personParts({ x: 0, y: 0, z: -0.45 }, { body: 0x2a3a7a, hair: 0x5a4a3a }),
+      [prim.box(2.7, 1.0, 0.9), 0x8a8478, 0, 0.5, 0.1], [prim.box(2.9, 0.1, 1.1), 0x5a3a20, 0, 1.05, 0.1],
+      [prim.cyl(0.14, 0.17, 2.7, 12), 0xc8c0b0, -1.45, 1.35, 0.5], [prim.cyl(0.14, 0.17, 2.7, 12), 0xc8c0b0, 1.45, 1.35, 0.5],
+      [prim.box(0.95, 0.45, 0.06), 0xd4af37, 0, 2.25, -0.78, 0, 0, 0, 0], [prim.box(0.7, 0.25, 0.07), 0x2a2a6a, 0, 2.25, -0.76, 0, 0, 0, 0],
+      [prim.box(3.4, 0.16, 1.8), 0x7a2424, 0, 2.78, -0.15, 0.08], [prim.box(3.5, 0.08, 0.08), 0xd4af37, 0, 2.7, 0.75, 0, 0, 0, 0],
+      [prim.cyl(0.12, 0.14, 0.12, 10), 0xd4af37, 0.7, 1.16, 0.2, 0, 0, 0, 0], [prim.cyl(0.12, 0.14, 0.18, 10), 0xd4af37, 0.95, 1.19, 0.05, 0, 0, 0, 0]
+    ];
+    g.add(kit(parts));
     g.position.set(x, 0, z);
     g.rotation.y = Math.PI / 2;
-    mergeStatic(g);
     scene.add(g);
     pickables.push(g);
     return tag(g, { mesh: g, type: 'bank', alive: true, x, z, name: 'Bank booth', radius: 1.3 });
   }
   function createTower(x, z) {
     const g = new THREE.Group();
-    g.add(part(G.cyl, 0x8a8478, 2.2, 5, 2.2, 0, 2.5, 0));
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      g.add(part(G.box, 0x8a8478, 0.6, 0.6, 0.6, Math.cos(a) * 2, 5.3, Math.sin(a) * 2));
-    }
-    g.add(part(G.box, 0x3a2a1a, 1.0, 1.8, 0.1, 0, 0.9, 2.2, false));
+    const parts = [[prim.cyl(2.1, 2.35, 5, 18), 0x8a8478, 0, 2.5, 0], [prim.cyl(2.45, 2.45, 0.4, 18), 0x7a746a, 0, 5.0, 0]];
+    for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; parts.push([prim.box(0.6, 0.6, 0.5), 0x8e887c, Math.cos(a) * 2.25, 5.5, Math.sin(a) * 2.25, 0, -a, 0]); }
+    for (let yy = 0.6; yy < 4.8; yy += 0.7) parts.push([prim.cyl(2.37, 2.37, 0.06, 18), 0x6e685e, 0, yy, 0, 0, 0, 0, 0]);
+    parts.push([prim.box(1.0, 1.8, 0.2), 0x4a2e18, 0, 0.9, 2.25], [prim.box(0.25, 0.5, 0.1), 0x1a2030, 0, 3.3, 2.32, 0, 0, 0, 0]);
+    g.add(kit(parts));
     g.position.set(x, 0, z);
-    mergeStatic(g);
     scene.add(g);
   }
 
-  // Fence around the cow field (instanced posts: one draw call).
-  function fence(cx, cz, w, d) {
-    const posts = [];
-    for (let x = -w / 2; x <= w / 2 + 0.01; x += 1.5) { posts.push([cx + x, cz - d / 2], [cx + x, cz + d / 2]); }
-    for (let z = -d / 2 + 1.5; z < d / 2; z += 1.5) {
-      posts.push([cx - w / 2, cz + z]);
-      if (Math.abs(z) > 1.6) posts.push([cx + w / 2, cz + z]); // gate on the east side
-    }
-    const inst = new THREE.InstancedMesh(G.box, mat(0x6a4a2a), posts.length);
-    const m4 = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const sc = new THREE.Vector3(0.15, 1.0, 0.15);
-    const p = new THREE.Vector3();
-    posts.forEach(([x, z], i) => { p.set(x, 0.5, z); m4.compose(p, q, sc); inst.setMatrixAt(i, m4); });
+  // Fences: round posts (one instanced draw call per fence) and two rails.
+  const postGeo = col(prim.cyl(0.07, 0.09, 1.0, 7), 0x6a4a2a, 0.3);
+  function posts(list) {
+    const inst = new THREE.InstancedMesh(postGeo, vcMat, list.length);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
+    list.forEach(([x, z], i) => { p.set(x, 0.5, z); m4.compose(p, q, sc); inst.setMatrixAt(i, m4); });
     inst.castShadow = true;
     scene.add(inst);
-    const railMat = mat(0x7a5a3a);
-    const rail = (x, z, sx, sz) => { const r = new THREE.Mesh(G.box, railMat); r.scale.set(sx, 0.1, sz); r.position.set(x, 0.75, z); scene.add(r); };
-    rail(cx, cz - d / 2, w, 0.08); rail(cx, cz + d / 2, w, 0.08); rail(cx - w / 2, cz, 0.08, d);
-    rail(cx + w / 2, cz - d / 4 - 0.8, 0.08, d / 2 - 1.6); rail(cx + w / 2, cz + d / 4 + 0.8, 0.08, d / 2 - 1.6);
+  }
+  function rails(segs) {
+    const parts = [];
+    for (const [x1, z1, x2, z2] of segs) {
+      const len = Math.hypot(x2 - x1, z2 - z1), a = Math.atan2(x2 - x1, z2 - z1);
+      for (const y of [0.45, 0.8]) parts.push([prim.box(0.06, 0.09, len), 0x7a5a3a, (x1 + x2) / 2, y, (z1 + z2) / 2, 0, a, 0, 0.1]);
+    }
+    const m = kit(parts); m.castShadow = true; scene.add(m);
+  }
+  function fence(cx, cz, w, d) {
+    const ps = [];
+    for (let x = -w / 2; x <= w / 2 + 0.01; x += 1.5) { ps.push([cx + x, cz - d / 2], [cx + x, cz + d / 2]); }
+    for (let z = -d / 2 + 1.5; z < d / 2; z += 1.5) {
+      ps.push([cx - w / 2, cz + z]);
+      if (Math.abs(z) > 1.6) ps.push([cx + w / 2, cz + z]); // gate on the east side
+    }
+    posts(ps);
+    rails([[cx - w / 2, cz - d / 2, cx + w / 2, cz - d / 2], [cx - w / 2, cz + d / 2, cx + w / 2, cz + d / 2], [cx - w / 2, cz - d / 2, cx - w / 2, cz + d / 2],
+      [cx + w / 2, cz - d / 2, cx + w / 2, cz - 1.6], [cx + w / 2, cz + 1.6, cx + w / 2, cz + d / 2]]);
   }
 
 
   // ---- Town of Brightwater ----
   function createBuilding([x, z, w, d, wall, roof, name, examine]) {
     const g = new THREE.Group();
-    const h = 2.6;
-    g.add(part(G.box, wall, w, h, d, 0, h / 2, 0));
-    const r = new THREE.Mesh(G.cone4, mat(roof));
-    r.scale.set(w * 0.78, 1.6, d * 0.78);
-    r.rotation.y = Math.PI / 4;
-    r.position.y = h + 0.8;
-    r.castShadow = true;
-    g.add(r);
-    // door and windows on the side facing the town square
+    const parts = [];
+    const h = 2.7, base = 0.55;
+    const TIMBER = 0x4a3020, STONE = 0x7d776c;
+    const add = (geo, hex, amt, px, py, pz, rx = 0, ry = 0, rz = 0) => parts.push(put(col(geo, hex, amt), px, py, pz, rx, ry, rz));
+    const big = w * d > 22 || /Bank|Church|Smithy/.test(name);
+    // stone footing with block texture painted on
+    const footC = new THREE.Color(STONE), fc = new THREE.Color();
+    const foot = paint(prim.box(w + 0.16, base, d + 0.16), (px, py, pz) => fc.copy(footC).multiplyScalar(0.8 + 0.25 * (0.5 + 0.5 * snoise(Math.floor(px * 2.2 + pz * 2.2), Math.floor(py * 4), 0, 3))));
+    parts.push(put(foot, 0, base / 2, 0));
+    // walls: stone for big buildings, plaster for houses
+    const wallC = new THREE.Color(wall), wc = new THREE.Color();
+    const walls = paint(prim.box(w, h - base, d), (px, py, pz) => wc.copy(wallC).multiplyScalar(0.88 + 0.12 * snoise(px * 3, py * 3, pz * 3, 7)));
+    parts.push(put(walls, 0, base + (h - base) / 2, 0));
+    if (!big) {
+      // timber frame: corner posts, a mid rail and a top plate
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(prim.box(0.2, h - base, 0.2), TIMBER, 0.2, sx * (w / 2), base + (h - base) / 2, sz * (d / 2));
+      for (const yy of [base + 0.05, 1.65, h - 0.06]) {
+        add(prim.box(w + 0.12, 0.12, 0.1), TIMBER, 0.1, 0, yy, d / 2 + 0.02); add(prim.box(w + 0.12, 0.12, 0.1), TIMBER, 0.1, 0, yy, -d / 2 - 0.02);
+        add(prim.box(0.1, 0.12, d + 0.12), TIMBER, 0.1, w / 2 + 0.02, yy, 0); add(prim.box(0.1, 0.12, d + 0.12), TIMBER, 0.1, -w / 2 - 0.02, yy, 0);
+      }
+    } else {
+      // stone quoins on the corners
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) for (let yy = base + 0.2; yy < h; yy += 0.42) add(prim.box(0.32, 0.34, 0.32), 0x8e877a, 0.15, sx * (w / 2), yy, sz * (d / 2));
+    }
+    // windows on every side (glass, frame, sill)
+    const win = (px, pz, alongX) => {
+      const ww = 0.6, wh = 0.62, wy = 1.75;
+      add(alongX ? prim.box(ww, wh, 0.06) : prim.box(0.06, wh, ww), 0x23384a, 0.0, px, wy, pz);
+      add(alongX ? prim.box(ww + 0.14, 0.08, 0.12) : prim.box(0.12, 0.08, ww + 0.14), 0xd8cfb8, 0.0, px, wy - wh / 2 - 0.02, pz);
+      add(alongX ? prim.box(0.05, wh, 0.08) : prim.box(0.08, wh, 0.05), 0xd8cfb8, 0.0, px, wy, pz);
+      add(alongX ? prim.box(ww, 0.05, 0.08) : prim.box(0.08, 0.05, ww), 0xd8cfb8, 0.0, px, wy, pz);
+    };
+    for (const sz of [-1, 1]) for (let i = 0; i < Math.max(1, Math.floor(w / 2)); i++) { const px = (i + 0.5) * w / Math.max(1, Math.floor(w / 2)) - w / 2; win(px, sz * (d / 2 + 0.03), true); }
+    for (const sx of [-1, 1]) for (let i = 0; i < Math.max(1, Math.floor(d / 2)); i++) { const pz = (i + 0.5) * d / Math.max(1, Math.floor(d / 2)) - d / 2; win(sx * (w / 2 + 0.03), pz, false); }
+    // gable roof along the longer side, built from overlapping tile rows
+    const alongZ = d >= w;
+    const span = (alongZ ? w : d) + 0.5, len = (alongZ ? d : w) + 0.5;
+    const rise = Math.min(1.9, span * 0.42);
+    const slope = Math.atan2(rise, span / 2), slant = Math.hypot(rise, span / 2);
+    const rows = Math.max(4, Math.round(slant / 0.32));
+    const rc = new THREE.Color(roof);
+    for (const side of [-1, 1]) for (let i = 0; i < rows; i++) {
+      const t = (i + 0.5) / rows;
+      const tile = prim.box(alongZ ? slant / rows + 0.06 : len, 0.07, alongZ ? len : slant / rows + 0.06);
+      const shadeK = (i % 2 ? 0.86 : 1) * (0.9 + 0.1 * t);
+      const c2 = rc.clone().multiplyScalar(shadeK);
+      paint(tile, (px, py, pz) => { const k = 0.92 + 0.12 * Math.sin((alongZ ? pz : px) * 9 + i * 1.7); return c2.clone().multiplyScalar(k); });
+      const off = (span / 2) * (1 - t), yy = h + rise * t + 0.05;
+      if (alongZ) put(tile, side * off, yy, 0, 0, 0, -side * slope);
+      else put(tile, 0, yy, side * off, side * slope, 0, 0);
+      parts.push(tile);
+    }
+    // ridge cap and gable ends
+    add(alongZ ? prim.box(0.22, 0.14, len + 0.04) : prim.box(len + 0.04, 0.14, 0.22), rc.clone().multiplyScalar(0.7).getHex(), 0, 0, h + rise + 0.07, 0);
+    for (const e of [-1, 1]) {
+      const gable = paint(prim.prism(span - 0.5, rise - 0.05, 0.1), () => wallC.clone().multiplyScalar(0.92));
+      if (alongZ) put(gable, 0, h, e * (d / 2)); else put(gable, e * (w / 2), h, 0, 0, Math.PI / 2, 0);
+      parts.push(gable);
+      if (!big) add(prim.box(0.1, rise * 0.8, 0.1), TIMBER, 0.1, alongZ ? 0 : e * (w / 2 + 0.06), h + rise * 0.4, alongZ ? e * (d / 2 + 0.06) : 0);
+    }
+    // chimney on cottages and kitchens
+    if (!big || /Smithy|Cookhouse/.test(name)) {
+      const cx = alongZ ? span * 0.22 : len * 0.3, cz = alongZ ? len * 0.3 : span * 0.22;
+      add(prim.box(0.45, rise + 0.9, 0.45), 0x6e665c, 0.25, cx, h + (rise + 0.9) / 2, cz);
+      add(prim.box(0.55, 0.12, 0.55), 0x56504a, 0, cx, h + rise + 0.95, cz);
+    }
+    // door with frame and a stone step on the side facing the town square
     const toCentre = Math.abs(x) > Math.abs(z) ? [Math.sign(-x), 0] : [0, Math.sign(-z)];
-    const fx = toCentre[0] * (w / 2 + 0.01), fz = toCentre[1] * (d / 2 + 0.01);
-    const door = part(G.box, 0x3a2414, toCentre[0] ? 0.05 : 0.8, 1.5, toCentre[0] ? 0.8 : 0.05, fx, 0.75, fz, false);
-    g.add(door);
-    if (name === 'Church of Saradomin') g.add(part(G.cone4, 0x4a4a5a, 0.7, 2.6, 0.7, 0, h + 2.4, d / 2 - 0.8));
+    const fx = toCentre[0] * (w / 2 + 0.04), fz = toCentre[1] * (d / 2 + 0.04);
+    const alongXdoor = !toCentre[0];
+    add(alongXdoor ? prim.box(0.85, 1.55, 0.06) : prim.box(0.06, 1.55, 0.85), 0x5a3a1e, 0.25, fx, base + 0.75, fz);
+    add(alongXdoor ? prim.box(1.05, 0.12, 0.1) : prim.box(0.1, 0.12, 1.05), TIMBER, 0, fx, base + 1.58, fz);
+    add(alongXdoor ? prim.box(0.06, 0.06, 0.08) : prim.box(0.08, 0.06, 0.06), 0xd4af37, 0, fx + (alongXdoor ? 0.28 : toCentre[0] * 0.02), base + 0.75, fz + (alongXdoor ? toCentre[1] * 0.02 : 0.28));
+    add(alongXdoor ? prim.box(1.1, 0.18, 0.5) : prim.box(0.5, 0.18, 1.1), 0x8a8478, 0.2, fx + toCentre[0] * 0.25, 0.09, fz + toCentre[1] * 0.25);
+    if (name === 'Church of Saradomin') {
+      add(prim.box(1.3, 2.4, 1.3), wall, 0.15, 0, h + 1.2, d / 2 - 0.9);
+      add(prim.cone(1.05, 2.6, 4), roof, 0.3, 0, h + 3.7, d / 2 - 0.9, 0, Math.PI / 4, 0);
+      add(prim.box(0.08, 0.6, 0.08), 0xd4af37, 0, 0, h + 5.3, d / 2 - 0.9); add(prim.box(0.36, 0.08, 0.08), 0xd4af37, 0, 0, h + 5.4, d / 2 - 0.9);
+    }
+    g.add(bakedMesh(parts));
     g.position.set(x, 0, z);
-    mergeStatic(g);
     scene.add(g);
     pickables.push(g);
     colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
@@ -366,31 +432,16 @@ export function createWorld(scene) {
     return tag(g, { mesh: g, type: 'building', name, examine, alive: true, x, z, radius: Math.max(w, d) / 2 });
   }
 
-  // Generic humanoid NPC. look: { body, legs, hat, skin, beard, apron }
+  // Generic rounded townsperson NPC (one baked mesh). look: { body, legs, hat, skin, beard, apron }
   function createNpc(x, z, npc, name, look, faceX = 0, faceZ = 0) {
     const g = new THREE.Group();
-    const skin = look.skin || 0xd4a574;
-    // Torso with slight taper
-    g.add(part(G.box, look.body, 0.68, 0.85, 0.38, 0, 1.05, 0));
-    // Shoulders
-    g.add(part(G.box, look.body, 0.82, 0.22, 0.42, 0, 1.38, 0));
-    // Head (sphere for rounder look)
-    g.add(part(G.sphere, skin, 0.42, 0.46, 0.42, 0, 1.78, 0));
-    // Legs
-    g.add(part(G.box, look.legs || 0x3a2a1a, 0.28, 0.62, 0.28, -0.18, 0.31, 0));
-    g.add(part(G.box, look.legs || 0x3a2a1a, 0.28, 0.62, 0.28, 0.18, 0.31, 0));
-    // Arms
-    g.add(part(G.cyl, skin, 0.12, 0.58, 0.12, -0.42, 1.05, 0));
-    g.add(part(G.cyl, skin, 0.12, 0.58, 0.12, 0.42, 1.05, 0));
-    // Hands
-    g.add(part(G.sphere, skin, 0.1, 0.1, 0.1, -0.42, 0.72, 0));
-    g.add(part(G.sphere, skin, 0.1, 0.1, 0.1, 0.42, 0.72, 0));
-    if (look.hat) g.add(part(G.box, look.hat, look.hatW || 0.5, look.hatH || 0.16, look.hatW || 0.5, 0, 2.05, 0));
-    if (look.beard) g.add(part(G.box, look.beard, 0.36, 0.22, 0.08, 0, 1.55, 0.22, false));
-    if (look.apron) g.add(part(G.box, look.apron, 0.55, 0.7, 0.04, 0, 0.95, 0.2, false));
+    const L = { ...look, skin: look.skin || 0xe0ae84, legs: look.legs || 0x3a2a1a, hair: look.hat ? null : (look.beard ? new THREE.Color(look.beard).multiplyScalar(0.8).getHex() : 0x4a3220) };
+    const h = humanoidParts(L);
+    const parts = [...h.top, ...npcExtras(look)];
+    for (const lx of [-0.13, 0.13]) for (const [geo, hex, px = 0, py = 0, pz = 0, rx, ry, rz, amt] of h.leg) parts.push([geo.clone(), hex, px + lx, py + h.hipY, pz, rx, ry, rz, amt]);
+    g.add(kit(parts));
     g.position.set(x, 0, z);
     g.rotation.y = Math.atan2(faceX - x, faceZ - z);
-    mergeStatic(g);
     scene.add(g);
     pickables.push(g);
     return tag(g, { mesh: g, type: 'npc', npc, name, alive: true, x, z, radius: 0.6 });
@@ -401,27 +452,23 @@ export function createWorld(scene) {
     let name;
     if (kind === 'furnace') {
       name = 'Furnace';
-      g.add(part(G.box, 0x5a5048, 1.4, 1.6, 1.2, 0, 0.8, 0));
-      g.add(part(G.box, 0x4a4038, 0.6, 1.2, 0.6, 0, 2.0, -0.2));
-      const glow = new THREE.Mesh(G.box, new THREE.MeshBasicMaterial({ color: 0xff7a1a }));
-      glow.scale.set(0.6, 0.4, 0.05); glow.position.set(0, 0.6, 0.61);
-      g.add(glow);
+      g.add(kit([[blob(0.85, 0.95, 0.75, { detail: 2, lump: 0.08, seed: 3, flat: 0.9 }), 0x6a6056, 0, 0.55, 0], [prim.box(1.6, 0.3, 1.3), 0x56504a, 0, 0.15, 0],
+        [prim.cyl(0.25, 0.32, 1.4, 10), 0x5a524a, 0, 1.7, -0.2], [prim.cyl(0.3, 0.3, 0.12, 10), 0x48423c, 0, 2.42, -0.2],
+        [prim.box(0.75, 0.55, 0.1), 0x2a2420, 0, 0.6, 0.7, 0, 0, 0, 0]]));
+      const glow = new THREE.Mesh(prim.box(0.55, 0.4, 0.05), glowMat(0xff8a2a)); glow.position.set(0, 0.6, 0.76); g.add(glow);
     } else if (kind === 'anvil') {
       name = 'Anvil';
-      g.add(part(G.box, 0x5a3a1a, 0.5, 0.5, 0.5, 0, 0.25, 0));
-      g.add(part(G.box, 0x2a2a30, 0.9, 0.25, 0.4, 0, 0.62, 0));
-      g.add(part(G.box, 0x2a2a30, 0.3, 0.12, 0.25, 0.55, 0.68, 0));
+      g.add(kit([[prim.cyl(0.32, 0.38, 0.5, 10), 0x6a4a2a, 0, 0.25, 0], [prim.box(0.32, 0.2, 0.26), 0x34343c, 0, 0.6, 0, 0, 0, 0, 0.1],
+        [prim.box(0.95, 0.2, 0.4), 0x3a3a44, 0, 0.78, 0, 0, 0, 0, 0.1], [prim.cone(0.14, 0.4, 8), 0x3a3a44, 0.65, 0.8, 0, 0, 0, -Math.PI / 2, 0.1],
+        [prim.box(0.06, 0.35, 0.06), 0x5a3a1e, 0.3, 0.98, 0.12, 0, 0, 0.5], [prim.box(0.16, 0.1, 0.1), 0x555560, 0.38, 1.13, 0.12, 0, 0, 0.5]]));
     } else {
       name = 'Range';
-      g.add(part(G.box, 0x4a4a50, 1.4, 0.9, 0.9, 0, 0.45, 0));
-      g.add(part(G.box, 0x2a2a2a, 1.3, 0.06, 0.8, 0, 0.93, 0));
-      g.add(part(G.box, 0x4a4a50, 0.3, 1.4, 0.3, -0.5, 1.6, -0.3));
-      const glow = new THREE.Mesh(G.box, new THREE.MeshBasicMaterial({ color: 0xff5a1a }));
-      glow.scale.set(0.8, 0.25, 0.05); glow.position.set(0, 0.35, 0.46);
-      g.add(glow);
+      g.add(kit([[prim.box(1.45, 0.9, 0.95), 0x6e665c, 0, 0.45, 0], [prim.box(1.5, 0.08, 1.0), 0x2a2a2a, 0, 0.94, 0, 0, 0, 0, 0.05],
+        [prim.cyl(0.18, 0.18, 0.12, 12), 0x3a3a3a, -0.35, 1.02, 0.1], [prim.cyl(0.22, 0.2, 0.18, 12), 0x8a5a2a, 0.35, 1.07, 0.05],
+        [prim.cyl(0.18, 0.24, 1.4, 10), 0x5e574e, -0.5, 1.6, -0.3], [prim.box(0.95, 0.35, 0.08), 0x221c18, 0, 0.35, 0.48, 0, 0, 0, 0]]));
+      const glow = new THREE.Mesh(prim.box(0.8, 0.22, 0.05), glowMat(0xff6a1a)); glow.position.set(0, 0.35, 0.52); g.add(glow);
     }
     g.position.set(x, 0, z);
-    mergeStatic(g);
     scene.add(g);
     pickables.push(g);
     return tag(g, { mesh: g, type: 'station', kind, name, alive: true, x, z, radius: 0.8 });
@@ -429,12 +476,12 @@ export function createWorld(scene) {
 
   function createAltar(x, z) {
     const g = new THREE.Group();
-    g.add(part(G.box, 0xe8e0d0, 1.6, 0.9, 0.8, 0, 0.45, 0));
-    g.add(part(G.box, 0x6a2a8a, 1.7, 0.08, 0.9, 0, 0.92, 0));
-    g.add(part(G.box, 0xd4af37, 0.1, 0.5, 0.1, 0, 1.2, 0, false));
-    g.add(part(G.box, 0xd4af37, 0.34, 0.1, 0.1, 0, 1.3, 0, false));
+    g.add(kit([[prim.box(1.7, 0.25, 0.95), 0xcfc7b8, 0, 0.12, 0], [prim.box(1.5, 0.7, 0.75), 0xe8e0d0, 0, 0.6, 0], [prim.box(1.7, 0.1, 0.9), 0xdcd4c4, 0, 0.98, 0],
+      [prim.box(1.72, 0.04, 0.6), 0x6a2a8a, 0, 1.04, 0, 0, 0, 0, 0], [prim.box(0.3, 0.75, 0.77), 0x6a2a8a, 0, 0.63, 0, 0, 0, 0, 0.1],
+      [prim.box(0.08, 0.55, 0.08), 0xe0b84a, 0, 1.33, 0, 0, 0, 0, 0], [prim.box(0.36, 0.08, 0.08), 0xe0b84a, 0, 1.43, 0, 0, 0, 0, 0],
+      [prim.cyl(0.05, 0.06, 0.25, 8), 0xf0ead8, -0.6, 1.16, 0.1], [prim.cyl(0.05, 0.06, 0.25, 8), 0xf0ead8, 0.6, 1.16, 0.1]]));
+    for (const cx of [-0.6, 0.6]) { const f = new THREE.Mesh(prim.sphere(0.05, 6, 4), glowMat(0xffd070)); f.position.set(cx, 1.33, 0.1); g.add(f); }
     g.position.set(x, 0, z);
-    mergeStatic(g);
     scene.add(g);
     pickables.push(g);
     return tag(g, { mesh: g, type: 'altar', name: 'Altar', alive: true, x, z, radius: 0.9 });
@@ -442,13 +489,13 @@ export function createWorld(scene) {
 
   function createWell(x, z) {
     const g = new THREE.Group();
-    g.add(part(G.cyl, 0x8a8478, 0.8, 0.7, 0.8, 0, 0.35, 0));
-    g.add(part(G.cyl, 0x2a4a7a, 0.62, 0.05, 0.62, 0, 0.66, 0, false));
-    g.add(part(G.box, 0x5a3a1a, 0.1, 1.6, 0.1, -0.7, 0.8, 0));
-    g.add(part(G.box, 0x5a3a1a, 0.1, 1.6, 0.1, 0.7, 0.8, 0));
-    g.add(part(G.cone4, 0x7a3a2a, 1.1, 0.6, 0.8, 0, 1.85, 0));
+    const parts = [[prim.cyl(0.62, 0.62, 0.08, 18), 0x1e4a6a, 0, 0.62, 0, 0, 0, 0, 0]];
+    for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; for (const [yy, off] of [[0.17, 0], [0.5, 0.26]]) parts.push([prim.box(0.42, 0.32, 0.22), 0x8a8478 + (i % 3) * 0x050505, Math.cos(a + off) * 0.75, yy, Math.sin(a + off) * 0.75, 0, -(a + off) + Math.PI / 2, 0, 0.25]); }
+    parts.push([prim.box(0.12, 1.7, 0.12), 0x5a3a1e, -0.75, 0.85, 0], [prim.box(0.12, 1.7, 0.12), 0x5a3a1e, 0.75, 0.85, 0],
+      [prim.cyl(0.06, 0.06, 1.5, 8), 0x6a4a2a, 0, 1.4, 0, 0, 0, Math.PI / 2], [prim.cyl(0.12, 0.1, 0.2, 10), 0x6a4a2a, 0, 1.0, 0],
+      [prim.box(1.15, 0.06, 0.75), 0x7a3a2a, 0, 1.9, 0.27, 0.6], [prim.box(1.15, 0.06, 0.75), 0x7a3a2a, 0, 1.9, -0.27, -0.6]);
+    g.add(kit(parts));
     g.position.set(x, 0, z);
-    mergeStatic(g);
     scene.add(g);
     pickables.push(g);
     colliders.push({ minX: x - 0.8, maxX: x + 0.8, minZ: z - 0.8, maxZ: z + 0.8 });
@@ -459,139 +506,73 @@ export function createWorld(scene) {
   const HERB_TINT = [0x4a8a2a, 0x5a9a3a, 0x3a7a3a, 0x6a8a2a, 0x2a6a2a, 0x7a9a3a, 0x4a7a4a, 0x3a8a5a, 0x5a7a2a, 0x8aaa3a, 0x2a5a2a, 0x6a6a2a, 0x3a5a4a];
   function createHerbPatch(x, z, herb, tintIdx = 0) {
     const g = new THREE.Group();
-    g.add(part(G.box, 0x5a3a20, 1.5, 0.22, 1.1, 0, 0.11, 0, false));
-    g.add(part(G.box, 0x7a5a3a, 1.6, 0.1, 0.12, 0, 0.18, 0.55, false));
-    g.add(part(G.box, 0x7a5a3a, 1.6, 0.1, 0.12, 0, 0.18, -0.55, false));
     const c = HERB_TINT[tintIdx % HERB_TINT.length];
-    for (const [hx, hz] of [[-0.45, -0.2], [0, 0.2], [0.45, -0.2], [-0.2, 0.25], [0.25, -0.25]]) {
-      g.add(part(G.cone4, c, 0.32, 0.45, 0.32, hx, 0.42, hz, false));
+    const parts = [[prim.box(1.5, 0.22, 1.1), 0x4a3018, 0, 0.11, 0, 0, 0, 0, 0.3],
+      [prim.box(1.62, 0.16, 0.12), 0x7a5a3a, 0, 0.16, 0.56], [prim.box(1.62, 0.16, 0.12), 0x7a5a3a, 0, 0.16, -0.56],
+      [prim.box(0.12, 0.16, 1.2), 0x7a5a3a, 0.78, 0.16, 0], [prim.box(0.12, 0.16, 1.2), 0x7a5a3a, -0.78, 0.16, 0]];
+    let k = 0;
+    for (const [hx, hz] of [[-0.45, -0.22], [0, 0.22], [0.45, -0.22], [-0.25, 0.25], [0.28, 0.22], [0.0, -0.25]]) {
+      parts.push([blob(0.2, 0.17, 0.2, { detail: 1, lump: 0.3, seed: k++ }), c, hx, 0.36, hz, 0, 0, 0, 0.4]);
+      parts.push([prim.cone(0.06, 0.25, 5), new THREE.Color(c).offsetHSL(0, 0, 0.1).getHex(), hx + 0.05, 0.5, hz, 0.3, 0, 0.2, 0.2]);
     }
+    g.add(kit(parts));
     g.position.set(x, 0, z);
-    mergeStatic(g);
     scene.add(g);
     pickables.push(g);
     occupied.push({ x, z, r: 1.0 });
     return tag(g, { mesh: g, type: 'herb', herb, name: `${herb} patch`, alive: true, x, z, radius: 0.8 });
   }
 
-  // Straight fence (instanced posts: one draw call per fence line).
+  // Straight fence line (instanced posts + rails).
   function fenceLine(x1, z1, x2, z2) {
     const len = Math.hypot(x2 - x1, z2 - z1);
     const n = Math.max(2, Math.round(len / 1.5) + 1);
-    const inst = new THREE.InstancedMesh(G.box, mat(0x6a4a2a), n);
-    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(0.15, 1.0, 0.15), p = new THREE.Vector3();
-    for (let i = 0; i < n; i++) { const t = i / (n - 1); p.set(x1 + (x2 - x1) * t, 0.5, z1 + (z2 - z1) * t); m4.compose(p, q, sc); inst.setMatrixAt(i, m4); }
-    inst.castShadow = true;
-    scene.add(inst);
-    const rail = new THREE.Mesh(G.box, mat(0x7a5a3a));
-    rail.scale.set(0.08, 0.1, len);
-    rail.position.set((x1 + x2) / 2, 0.75, (z1 + z2) / 2);
-    rail.rotation.y = Math.atan2(x2 - x1, z2 - z1);
-    scene.add(rail);
+    const ps = [];
+    for (let i = 0; i < n; i++) { const t = i / (n - 1); ps.push([x1 + (x2 - x1) * t, z1 + (z2 - z1) * t]); }
+    posts(ps);
+    rails([[x1, z1, x2, z2]]);
   }
 
   // ---- Monsters ----
+  // Monster extras for humanoids (weapons, helmets, horns...). Parts in kit format.
+  function monsterExtras(typeName, skin, c) {
+    switch (typeName) {
+      case 'Goblin': return [[prim.cone(0.07, 0.3, 5), skin, 0.3, 1.8, 0, 0, 0, -1.2], [prim.cone(0.07, 0.3, 5), skin, -0.3, 1.8, 0, 0, 0, 1.2],
+        [prim.sphere(0.07, 6, 4), skin, 0, 1.7, 0.27], [prim.box(0.06, 0.55, 0.08), 0x6a6a70, 0.44, 0.75, 0.25, 1.2, 0, 0]];
+      case 'Hill Giant': case 'Moss Giant': case 'Ogre': case 'Ice Giant': case 'Grumsh': {
+        const out = [[prim.cyl(0.08, 0.16, 1.0, 8), 0x5a3a1a, 0.48, 0.75, 0.3, 0.5], [blob(0.18, 0.24, 0.18, { detail: 1, lump: 0.3, seed: 1 }), 0x4a2e14, 0.48, 0.32, 0.55]];
+        if (typeName === 'Grumsh') out.push([prim.cyl(0.26, 0.22, 0.14, 10), 0xd4af37, 0, 1.97, 0, 0, 0, 0, 0], ...[0, 1, 2, 3, 4].map(i => [prim.cone(0.04, 0.12, 4), 0xd4af37, Math.cos(i * 1.257) * 0.22, 2.08, Math.sin(i * 1.257) * 0.22, 0, 0, 0, 0]));
+        if (typeName === 'Moss Giant') out.push([blob(0.28, 0.12, 0.28, { detail: 1, lump: 0.4, seed: 3 }), 0x3a6a1a, 0, 1.94, 0]);
+        if (typeName === 'Ice Giant') out.push([prim.cone(0.06, 0.25, 5), 0xd8f0ff, 0.12, 2.0, 0], [prim.cone(0.06, 0.3, 5), 0xd8f0ff, -0.1, 2.02, 0.05]);
+        return out;
+      }
+      case 'Dark Archer': return [[hairCapG(0.29), 0x1e2a1e, 0, 1.76, -0.02, -0.15], [prim.torusArc(0.55), 0x5a3a1a, -0.48, 1.0, 0.25], [prim.cyl(0.08, 0.08, 0.55, 8), 0x3a2a1a, 0.15, 1.15, -0.25, 0.3]];
+      case 'Black Knight': return [[hairCapG(0.3), 0x2a2a34, 0, 1.74, 0, 0, 0, 0, 0.1], [prim.box(0.32, 0.05, 0.05), 0x111111, 0, 1.76, 0.27], [prim.cone(0.06, 0.25, 5), 0x2a2a34, 0, 2.08, 0],
+        [prim.box(0.06, 1.0, 0.13), 0x8a8a94, 0.46, 0.85, 0.35, 0.4, 0, 0, 0.05], [prim.box(0.26, 0.05, 0.08), 0x3a3a44, 0.46, 0.4, 0.2, 0.4], [prim.cyl(0.3, 0.3, 0.06, 12), 0x24242c, -0.46, 1.0, 0.1, 0, 0, Math.PI / 2]];
+      case 'Lesser Demon': return [[prim.cone(0.07, 0.35, 6), 0x2a1a1a, 0.15, 2.02, 0, -0.3, 0, -0.3], [prim.cone(0.07, 0.35, 6), 0x2a1a1a, -0.15, 2.02, 0, -0.3, 0, 0.3],
+        [prim.wing(1), 0x5a0a0a, 0.2, 1.3, -0.25], [prim.wing(-1), 0x5a0a0a, -0.2, 1.3, -0.25], [prim.cone(0.06, 0.8, 6), c, 0, 0.7, -0.35, -2.2]];
+      case 'Bandit': return [[prim.box(0.42, 0.1, 0.05), 0x2a2a2a, 0, 1.76, 0.22], [prim.box(0.05, 0.7, 0.1), 0xa0a0a8, 0.46, 0.8, 0.3, 0.4, 0, 0, 0.05]];
+      case 'Skeleton': return [[prim.sphere(0.06, 6, 4), 0x111111, 0.09, 1.76, 0.2, 0, 0, 0, 0], [prim.sphere(0.06, 6, 4), 0x111111, -0.09, 1.76, 0.2, 0, 0, 0, 0], [prim.box(0.05, 0.8, 0.1), 0x8a8a8a, 0.46, 0.85, 0.3, 0.4]];
+      case 'Zombie': return [[prim.sphere(0.05, 6, 4), 0xd0e060, 0.09, 1.76, 0.21, 0, 0, 0, 0], [prim.sphere(0.05, 6, 4), 0xd0e060, -0.09, 1.76, 0.21, 0, 0, 0, 0]];
+      default: return [[hairCapG(0.29), 0x9a9aa8, 0, 1.76, 0, 0, 0, 0, 0.1], [prim.cyl(0.03, 0.03, 2.2, 6), 0x6a5a3a, 0.45, 1.15, 0.15], [prim.cone(0.07, 0.3, 4), 0xb0b0b8, 0.45, 2.38, 0.15]];
+    }
+  }
   function createMonster(typeName, x, z, roam, bounds = null) {
     const t = MONSTER_TYPES[typeName];
     const root = new THREE.Group();
     const body = new THREE.Group();
     const legs = [];
-    if (typeName === 'Cow') {
-      body.add(part(G.box, 0xf0eee8, 1.5, 0.75, 0.75, 0, 0.95, 0));
-      body.add(part(G.box, 0x2a2a2a, 0.5, 0.5, 0.78, 0.2, 1.0, 0, false));
-      body.add(part(G.box, 0xf0eee8, 0.5, 0.5, 0.45, 0.95, 1.2, 0));
-      body.add(part(G.box, 0xe8b0a0, 0.25, 0.25, 0.4, 1.25, 1.05, 0, false));
-      body.add(part(G.box, 0xd8d0b0, 0.08, 0.2, 0.08, 0.9, 1.5, 0.18, false));
-      body.add(part(G.box, 0xd8d0b0, 0.08, 0.2, 0.08, 0.9, 1.5, -0.18, false));
-      for (const [lx, lz] of [[0.55, 0.25], [0.55, -0.25], [-0.55, 0.25], [-0.55, -0.25]]) {
-        const l = part(G.box, 0xf0eee8, 0.18, 0.6, 0.18, lx, 0.3, lz);
-        body.add(l); legs.push(l);
-      }
-      body.rotation.y = -Math.PI / 2; // face +z
-    } else if (t.shape === 'quad') { // wolf
-      const c = t.color;
-      body.add(part(G.sphere, c, 0.48, 0.42, 1.1, 0, 0.72, 0));
-      body.add(part(G.sphere, c, 0.38, 0.36, 0.45, 0, 0.88, 0.7));
-      body.add(part(G.box, 0x4a4a50, 0.2, 0.18, 0.28, 0, 0.78, 1.05, false));
-      body.add(part(G.cone4, c, 0.1, 0.18, 0.08, 0.12, 1.15, 0.65, false));
-      body.add(part(G.cone4, c, 0.1, 0.18, 0.08, -0.12, 1.15, 0.65, false));
-      body.add(part(G.cyl, c, 0.08, 0.08, 0.45, 0, 0.85, -0.7, false));
-      for (const [lx, lz] of [[0.18, 0.45], [-0.18, 0.45], [0.18, -0.45], [-0.18, -0.45]]) {
-        const l = part(G.box, c, 0.14, 0.5, 0.14, lx, 0.25, lz); body.add(l); legs.push(l);
-      }
-    } else if (t.shape === 'spider') {
-      const c = t.color;
-      body.add(part(G.box, c, 0.8, 0.5, 0.9, 0, 0.6, -0.2));
-      body.add(part(G.box, c, 0.5, 0.4, 0.45, 0, 0.55, 0.45));
-      body.add(part(G.box, 0xc02020, 0.3, 0.08, 0.05, 0, 0.62, 0.68, false));
-      for (const side of [-1, 1]) for (const lz of [-0.4, -0.1, 0.2, 0.45]) {
-        const l = part(G.box, 0x1a1a1a, 0.7, 0.08, 0.08, side * 0.6, 0.45, lz); l.rotation.z = side * 0.5; body.add(l); legs.push(l);
-      }
-    } else if (t.shape === 'dragon') {
-      const c = t.color;
-      body.add(part(G.box, c, 0.9, 0.8, 1.8, 0, 1.0, 0));
-      body.add(part(G.box, c, 0.4, 0.4, 0.8, 0, 1.5, 1.1));
-      body.add(part(G.box, c, 0.5, 0.45, 0.7, 0, 1.75, 1.6));
-      body.add(part(G.box, 0xd0c080, 0.1, 0.3, 0.1, 0.16, 2.1, 1.45, false));
-      body.add(part(G.box, 0xd0c080, 0.1, 0.3, 0.1, -0.16, 2.1, 1.45, false));
-      body.add(part(G.box, c, 0.25, 0.25, 1.2, 0, 0.9, -1.4));
-      for (const side of [-1, 1]) { const w = part(G.box, 0x1a4a1a, 1.4, 0.06, 1.0, side * 1.1, 1.6, -0.1, false); w.rotation.z = side * 0.35; body.add(w); }
-      for (const [lx, lz] of [[0.35, 0.6], [-0.35, 0.6], [0.35, -0.6], [-0.35, -0.6]]) {
-        const l = part(G.box, c, 0.25, 0.7, 0.25, lx, 0.35, lz); body.add(l); legs.push(l);
-      }
+    const c = t.color;
+    const cr = creatureParts(t.shape, c, typeName);
+    if (cr) {
+      body.add(kit(cr.top));
+      for (const L of cr.legs) { const p = legPivot(L.parts, L.x, L.y, L.z); body.add(p); legs.push(p); }
     } else {
-      const c = t.color;
       const skin = t.skin || (typeName === 'Goblin' ? 0x6aa040 : typeName === 'Hill Giant' ? 0xb08a5a : typeName === 'Black Knight' ? 0x1a1a22 : 0xd4a574);
-      // More detailed humanoid
-      body.add(part(G.box, c, 0.65, 0.75, 0.36, 0, 1.05, 0));
-      body.add(part(G.box, c, 0.78, 0.2, 0.4, 0, 1.35, 0)); // shoulders
-      body.add(part(G.sphere, skin, 0.4, 0.44, 0.4, 0, 1.72, 0)); // round head
-      // Arms
-      body.add(part(G.cyl, skin, 0.11, 0.55, 0.11, -0.4, 1.05, 0));
-      body.add(part(G.cyl, skin, 0.11, 0.55, 0.11, 0.4, 1.05, 0));
-      // Legs
-      body.add(part(G.box, c, 0.26, 0.58, 0.26, -0.16, 0.32, 0));
-      body.add(part(G.box, c, 0.26, 0.58, 0.26, 0.16, 0.32, 0));
-      if (typeName === 'Goblin') {
-        body.add(part(G.box, skin, 0.12, 0.25, 0.08, 0.3, 1.75, 0, false));
-        body.add(part(G.box, skin, 0.12, 0.25, 0.08, -0.3, 1.75, 0, false));
-      } else if (typeName === 'Hill Giant') {
-        body.add(part(G.box, 0x5a3a1a, 0.18, 1.1, 0.18, 0.55, 0.9, 0.3)); // club
-        body.add(part(G.box, 0x5a3a1a, 0.32, 0.4, 0.32, 0.55, 0.4, 0.3));
-      } else if (typeName === 'Dark Archer') {
-        body.add(part(G.box, 0x1e2a1e, 0.56, 0.3, 0.56, 0, 1.86, -0.03)); // hood
-        body.add(part(G.box, 0x5a3a1a, 0.06, 1.2, 0.06, 0.5, 1.1, 0.3)); // bow
-        body.add(part(G.box, 0x3a2a1a, 0.2, 0.6, 0.15, 0, 1.1, -0.3, false)); // quiver
-      } else if (typeName === 'Black Knight') {
-        body.add(part(G.box, 0x2a2a34, 0.56, 0.5, 0.56, 0, 1.68, 0));
-        body.add(part(G.box, 0x111111, 0.4, 0.06, 0.02, 0, 1.7, 0.29, false));
-        body.add(part(G.box, 0x777780, 0.08, 1.0, 0.14, 0.5, 0.9, 0.35)); // sword
-      } else if (['Moss Giant', 'Ogre', 'Ice Giant', 'Grumsh'].includes(typeName)) {
-        body.add(part(G.box, 0x4a3a2a, 0.2, 1.1, 0.2, 0.55, 0.9, 0.3)); // club
-        body.add(part(G.box, 0x4a3a2a, 0.34, 0.42, 0.34, 0.55, 0.4, 0.3));
-        if (typeName === 'Grumsh') body.add(part(G.box, 0xd4af37, 0.52, 0.16, 0.52, 0, 1.95, 0, false)); // crown
-        if (typeName === 'Moss Giant') body.add(part(G.box, 0x2a5a1a, 0.5, 0.15, 0.5, 0, 1.92, 0, false));
-      } else if (typeName === 'Lesser Demon') {
-        body.add(part(G.cone4, 0x2a1a1a, 0.1, 0.35, 0.1, 0.18, 2.0, 0, false));
-        body.add(part(G.cone4, 0x2a1a1a, 0.1, 0.35, 0.1, -0.18, 2.0, 0, false));
-        for (const side of [-1, 1]) { const w = part(G.box, 0x5a0a0a, 0.9, 0.6, 0.05, side * 0.6, 1.3, -0.3, false); w.rotation.y = side * 0.4; body.add(w); }
-      } else if (typeName === 'Bandit') {
-        body.add(part(G.box, 0x2a2a2a, 0.5, 0.12, 0.05, 0, 1.6, 0.24, false)); // mask
-        body.add(part(G.box, 0xa0a0a8, 0.07, 0.7, 0.1, 0.5, 0.95, 0.3)); // blade
-      } else if (typeName === 'Skeleton' || typeName === 'Zombie') {
-        body.add(part(G.box, 0x111111, 0.3, 0.08, 0.02, 0, 1.7, 0.24, false)); // eyes
-        if (typeName === 'Skeleton') body.add(part(G.box, 0x8a8a8a, 0.07, 0.8, 0.1, 0.5, 0.95, 0.3));
-      } else {
-        body.add(part(G.box, 0x9a9aa8, 0.54, 0.25, 0.54, 0, 1.92, 0));
-        body.add(part(G.box, 0x6a5a3a, 0.06, 2.2, 0.06, 0.5, 1.2, 0.15)); // spear
-        body.add(part(G.box, 0xb0b0b8, 0.12, 0.3, 0.06, 0.5, 2.4, 0.15, false));
-      }
-      body.add(part(G.box, skin, 0.18, 0.7, 0.18, -0.45, 1.0, 0));
-      body.add(part(G.box, skin, 0.18, 0.7, 0.18, 0.45, 1.0, 0));
-      for (const lx of [-0.17, 0.17]) {
-        const l = part(G.box, 0x3a2a1a, 0.24, 0.6, 0.24, lx, 0.3, 0);
-        body.add(l); legs.push(l);
-      }
+      const bald = /Giant|Ogre|Grumsh|Skeleton|Zombie|Demon|Goblin/.test(typeName);
+      const h = humanoidParts({ body: c, skin, legs: new THREE.Color(c).multiplyScalar(0.55).getHex(), hair: bald ? null : 0x3a2a1a, sleeve: c });
+      body.add(kit([...h.top, ...monsterExtras(typeName, skin, c)]));
+      for (const lx of [-0.13, 0.13]) { const p = legPivot(h.leg.map(q => [q[0].clone(), ...q.slice(1)]), lx, h.hipY, 0); body.add(p); legs.push(p); }
     }
     root.add(body);
     root.scale.setScalar(t.scale);
@@ -658,7 +639,7 @@ export function createWorld(scene) {
   for (let i = 0; i < 2; i++) { const p = place(10, -33, 3, 2); if (p) nodes.push(createTree(p.x, p.z, 'Magic')); }
   const mine = [['Copper', 4], ['Tin', 4], ['Iron', 3], ['Coal', 3], ['Mithril', 2], ['Adamantite', 1]];
   for (const [ore, n] of mine) for (let i = 0; i < n; i++) { const p = place(22, 20, 5.5, 1.0); if (p) nodes.push(createRock(p.x, p.z, ore)); }
-  for (const [ore, n] of [['Runite', 1], ['Adamantite', 1], ['Mithril', 1], ['Coal', 2]]) for (let i = 0; i < n; i++) { const p = place(-9, -28, 3, 1.0); if (p) nodes.push(createRock(p.x, p.z, ore)); }
+  for (const [ore, n] of [['Dragon', 1], ['Runite', 1], ['Adamantite', 1], ['Mithril', 1], ['Coal', 2]]) for (let i = 0; i < n; i++) { const p = place(-9, -28, 3, 1.0); if (p) nodes.push(createRock(p.x, p.z, ore)); }
   const spots = [['Net', 3.6], ['Net', 4.3], ['Net', 5.0], ['Lure', -0.6], ['Lure', 0.2], ['Cage', 1.2], ['Harpoon', 2.0]];
   for (const [kind, a] of spots) {
     nodes.push(createFish(LAKE.x + Math.cos(a) * (LAKE.r - 0.6), LAKE.z + Math.sin(a) * (LAKE.r - 0.6), kind));
@@ -684,7 +665,57 @@ export function createWorld(scene) {
   for (const [x, z] of [[24, -38], [28, -36]]) monsters.push(createMonster('Skeleton', x, z, 2.5));
   for (const [x, z] of [[-38, -18], [-36, -22]]) monsters.push(createMonster('Giant Spider', x, z, 2.5));
 
+  scatterDecor(scene, rng, occupied);
   return { ground, nodes, monsters, pickables, buildings };
+}
+
+// ---- Ground clutter (grass, flowers, bushes) ----
+let decorFine = null;
+export function setDecorQuality(q) { if (decorFine) for (const m of decorFine) m.visible = q !== 'low'; }
+function distToSeg(px, pz, x1, z1, x2, z2) {
+  const dx = x2 - x1, dz = z2 - z1, l2 = dx * dx + dz * dz || 1;
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (pz - z1) * dz) / l2));
+  return Math.hypot(px - (x1 + dx * t), pz - (z1 + dz * t));
+}
+function scatterDecor(scene, rng, occupied) {
+  const ok = (x, z, pad) => {
+    if (Math.hypot(x, z) < 6.5 || Math.hypot(x - 50, z + 24) < 4) return false;
+    if (insideLake(x, z, 2.6)) return false;
+    for (const p of PATHS) if (distToSeg(x, z, ...p) < 1.4) return false;
+    for (const b of colliders) if (x > b.minX - pad && x < b.maxX + pad && z > b.minZ - pad && z < b.maxZ + pad) return false;
+    for (const o of occupied) if (o.r < 3 && Math.hypot(o.x - x, o.z - z) < o.r * 0.6 + pad) return false;
+    if (Math.hypot(x - 22, z - 20) < 6 || Math.hypot(x + 9, z + 28) < 4) return false;
+    return true;
+  };
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), sc = new THREE.Vector3(), c = new THREE.Color();
+  function scatter(geo, mat, count, range, pad, scaleMin, scaleMax, colorFn, shadow) {
+    const inst = new THREE.InstancedMesh(geo, mat, count);
+    let n = 0;
+    for (let tries = 0; n < count && tries < count * 6; tries++) {
+      const x = (rng() - 0.5) * range * 2, z = (rng() - 0.5) * range * 2;
+      if (!ok(x, z, pad)) continue;
+      const s = scaleMin + rng() * (scaleMax - scaleMin);
+      m4.compose(p.set(x, 0, z), q.setFromEuler(e.set(0, rng() * Math.PI * 2, 0)), sc.set(s, s, s));
+      inst.setMatrixAt(n, m4);
+      if (colorFn) inst.setColorAt(n, colorFn(c));
+      n++;
+    }
+    inst.count = n;
+    inst.castShadow = !!shadow; inst.receiveShadow = true;
+    inst.computeBoundingSphere();
+    scene.add(inst);
+    return inst;
+  }
+  const grassMat = makeFoliageMat({}, 2.5);
+  const grass = scatter(tuftGeometry(), grassMat, 3800, WORLD_HALF - 2, 0.3, 0.7, 1.4, cc => cc.setHSL(0.22 + rng() * 0.06, 0.35, 0.75 + rng() * 0.2));
+  const FLOWER = [0xf0e040, 0xffffff, 0xe05a8a, 0x9a6ae0, 0xff8a3a];
+  const flowers = scatter(flowerGeometry(), makeFoliageMat({}, 2.5), 420, WORLD_HALF - 2, 0.3, 0.8, 1.3, cc => cc.setHex(FLOWER[(rng() * FLOWER.length) | 0]));
+  const bushGeo = bake([paint(blob(0.6, 0.45, 0.6, { detail: 1, lump: 0.28, seed: 4, flat: 0.6 }), (x, y, z, nx, ny) => new THREE.Color(0x2e6a22).multiplyScalar(0.7 + 0.45 * (0.5 + ny * 0.5)))]);
+  bushGeo.translate(0, 0.25, 0);
+  scatter(bushGeo, foliageMat, 140, WORLD_HALF - 3, 1.0, 0.7, 1.4, cc => cc.setHSL(0.27 + rng() * 0.07, 0.4 + rng() * 0.2, 0.55 + rng() * 0.15), true);
+  const pebGeo = bake([col(blob(0.12, 0.07, 0.1, { detail: 0, lump: 0.3, seed: 9 }), 0x8a857c, 0.3)]);
+  scatter(pebGeo, vcMat, 300, WORLD_HALF - 2, 0.2, 0.6, 2.0, cc => cc.setScalar(0.75 + rng() * 0.35));
+  decorFine = [grass, flowers];
 }
 
 // Pile of items on the ground. Shared look, one small mesh each.
