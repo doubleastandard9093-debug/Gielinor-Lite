@@ -20,7 +20,7 @@ export const ITEMS = {};
 const def = (name, o) => { ITEMS[name] = { value: 1, ...o }; };
 
 // ---- Resources ----
-const ORES = [['Copper ore', 3], ['Tin ore', 3], ['Iron ore', 10], ['Coal', 12], ['Mithril ore', 40], ['Adamantite ore', 90], ['Runite ore', 300], ['Dragon ore', 800]];
+const ORES = [['Copper ore', 3], ['Tin ore', 3], ['Iron ore', 10], ['Coal', 12], ['Mithril ore', 40], ['Adamantite ore', 90], ['Runite ore', 300]];
 for (const [o, v] of ORES) def(o, { type: 'resource', value: v });
 WOODS.forEach((w, i) => def(w, { type: 'resource', value: [2, 6, 12, 20, 40, 90][i] }));
 for (const [n, v] of [['Flax', 2], ['Cowhide', 6], ['Feather', 1], ['Raw beef', 3], ['Bowstring', 5], ['Soft leather', 10], ['Hard leather', 20]]) def(n, { type: n === 'Bowstring' || /leather/.test(n) ? 'processed' : 'resource', value: v });
@@ -50,19 +50,19 @@ function armour(def, t, rangedPenalty) {
 }
 const GEAR = {
   sword:  { suffix: 'sword', slot: 'weapon', bars: 1, off: 2,  stat: t => ({ atk: [5, 9, 14, 20, 28, 38, 52][t], str: [3, 6, 10, 15, 22, 32, 48][t], speed: 4, req: { Attack: TIER_REQ[t] } }), val: 15 },
-  helm:   { suffix: 'full helm', slot: 'head', bars: 2, off: 4, stat: t => armour([3, 5, 8, 11, 15, 21, 30][t], t, 0), val: 12 },
-  shield: { suffix: 'shield', slot: 'shield', bars: 2, off: 6, stat: t => armour([7, 11, 16, 22, 30, 42, 58][t], t, 0), val: 20 },
-  legs:   { suffix: 'platelegs', slot: 'legs', bars: 3, off: 12, stat: t => armour([6, 10, 15, 21, 29, 40, 55][t], t, -0.5), val: 30 },
-  body:   { suffix: 'platebody', slot: 'body', bars: 5, off: 16, stat: t => armour([8, 14, 20, 28, 38, 52, 72][t], t, -1), val: 60 },
+  helm:   { suffix: 'full helm', slot: 'head', bars: 2, off: 4, stat: t => armour([3, 5, 8, 11, 15, 21][t], t, 0), val: 12 },
+  shield: { suffix: 'shield', slot: 'shield', bars: 2, off: 6, stat: t => armour([7, 11, 16, 22, 30, 42][t], t, 0), val: 20 },
+  legs:   { suffix: 'platelegs', slot: 'legs', bars: 3, off: 12, stat: t => armour([6, 10, 15, 21, 29, 40][t], t, -0.5), val: 30 },
+  body:   { suffix: 'platebody', slot: 'body', bars: 5, off: 16, stat: t => armour([8, 14, 20, 28, 38, 52][t], t, -1), val: 60 },
   axe:    { suffix: 'axe', tool: 'axe', bars: 1, off: 0, stat: t => ({ toolTier: t, req: { Woodcutting: TOOL_REQ[t] } }), val: 10 },
   pickaxe:{ suffix: 'pickaxe', tool: 'pickaxe', bars: 2, off: 1, stat: t => ({ toolTier: t, req: { Mining: TOOL_REQ[t] } }), val: 14 }
 };
 METALS.forEach((m, t) => {
-  def(`${m} bar`, { type: 'processed', value: [8, 25, 50, 120, 300, 900, 2500][t] });
+  def(`${m} bar`, { type: 'processed', value: [8, 25, 50, 120, 300, 900][t] });
   for (const g of Object.values(GEAR)) {
     def(`${m} ${g.suffix}`, { type: g.tool ? 'tool' : g.slot, tool: g.tool, tier: t, metal: m, ...g.stat(t), value: Math.round(g.val * VALUE_MULT[t]) });
   }
-  def(`${m} arrows`, { type: 'ammo', count: 15, rstr: [3, 6, 10, 15, 22, 32, 45][t], tier: t, metal: m, value: [1, 2, 4, 8, 16, 40, 100][t] });
+  def(`${m} arrows`, { type: 'ammo', count: 15, rstr: [3, 6, 10, 15, 22, 32][t], tier: t, metal: m, value: [1, 2, 4, 8, 16, 40][t] });
 });
 
 // ---- Bows ----
@@ -352,8 +352,8 @@ R({ name: 'Craft Oak shield', cat: 'Crafting', group: 'Woodwork', skill: 'Crafti
 // Fletching
 const BOW_LVL = [5, 20, 35, 50, 65, 80], BOW_XP = [5, 16.5, 33.3, 50, 67.5, 83.3];
 BOWS.forEach(([n], t) => R({ name: `Fletch ${n}`, cat: 'Fletching', group: 'Bows', skill: 'Fletching', level: BOW_LVL[t], inputs: { [WOODS[t]]: 1, Bowstring: 1 }, output: n, xp: BOW_XP[t], tool: 'knife' }));
-const ARROW_LVL = [1, 15, 30, 45, 60, 75, 90], ARROW_XP = [10, 15, 25, 37.5, 50, 62.5, 75];
-METALS.forEach((m, t) => R({ name: `Fletch ${m} arrows`, cat: 'Fletching', group: 'Arrows', skill: 'Fletching', level: ARROW_LVL[t], inputs: { [`${m} bar`]: 1, [WOODS[Math.min(t, WOODS.length - 1)]]: 1 }, output: `${m} arrows`, xp: ARROW_XP[t], tool: 'knife' }));
+const ARROW_LVL = [1, 15, 30, 45, 60, 75], ARROW_XP = [10, 15, 25, 37.5, 50, 62.5];
+METALS.forEach((m, t) => R({ name: `Fletch ${m} arrows`, cat: 'Fletching', group: 'Arrows', skill: 'Fletching', level: ARROW_LVL[t], inputs: { [`${m} bar`]: 1, [WOODS[t]]: 1 }, output: `${m} arrows`, xp: ARROW_XP[t], tool: 'knife' }));
 // Cooking
 for (const [raw, cooked, lvl, stop, , xp] of FOODS) {
   R({ name: `Cook ${cooked.replace('Cooked ', '')}`, cat: 'Cooking', group: 'Range or fire', skill: 'Cooking', level: lvl, inputs: { [raw]: 1 }, output: cooked, xp, station: 'range', burnStop: stop });
@@ -382,3 +382,17 @@ export function canCraft(skills, inventory, recipe) {
   return hasInputs(inventory, recipe);
 }
 
+
+// Runes and essence
+ITEMS['Rune essence'] = { value: 4, type: 'resource' };
+ITEMS['Pure essence'] = { value: 6, type: 'resource' };
+ITEMS['Air rune'] = { value: 4, type: 'rune' };
+ITEMS['Mind rune'] = { value: 3, type: 'rune' };
+ITEMS['Water rune'] = { value: 4, type: 'rune' };
+ITEMS['Earth rune'] = { value: 4, type: 'rune' };
+ITEMS['Fire rune'] = { value: 4, type: 'rune' };
+ITEMS['Body rune'] = { value: 3, type: 'rune' };
+ITEMS['Chaos rune'] = { value: 90, type: 'rune' };
+ITEMS['Death rune'] = { value: 180, type: 'rune' };
+ITEMS['Blood rune'] = { value: 400, type: 'rune' };
+ITEMS['Coins'] = { value: 1, type: 'currency' };
