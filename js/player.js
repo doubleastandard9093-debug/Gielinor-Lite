@@ -227,24 +227,26 @@ export function updatePlayer(pm, keys, dt, running, camYaw) {
   diff = Math.atan2(Math.sin(diff), Math.cos(diff));
   pm.mesh.rotation.y += diff * Math.min(1, dt * 14);
 
-  // Animation: walk cycle, or arm swing while acting
+  // Animation: smoother walk cycle
   const p = pm.parts;
   if (pm.moving) {
-    pm.animT += dt * (running ? 13 : 9);
-    const sw = Math.sin(pm.animT) * 0.7;
+    pm.animT += dt * (running ? 12 : 8.5);
+    const sw = Math.sin(pm.animT) * 0.65;
+    const bob = Math.abs(Math.sin(pm.animT * 2)) * 0.04;
     p.leftLeg.rotation.x = sw; p.rightLeg.rotation.x = -sw;
-    p.leftArm.rotation.x = -sw * 0.8; p.rightArm.rotation.x = sw * 0.8;
+    p.leftArm.rotation.x = -sw * 0.7; p.rightArm.rotation.x = sw * 0.7;
+    pm.mesh.position.y = bob;
   } else {
-    p.leftLeg.rotation.x *= 0.8; p.rightLeg.rotation.x *= 0.8;
-    p.leftArm.rotation.x *= 0.8;
+    pm.mesh.position.y *= 0.85;
+    p.leftLeg.rotation.x *= 0.75; p.rightLeg.rotation.x *= 0.75;
+    p.leftArm.rotation.x *= 0.75;
     if (pm.actionAnim > 0) {
-      pm.actionAnim = Math.max(0, pm.actionAnim - dt * 2.2);
+      pm.actionAnim = Math.max(0, pm.actionAnim - dt * 2.0);
       const t = 1 - pm.actionAnim;
-      // raise then strike
-      p.rightArm.rotation.x = t < 0.35 ? -(t / 0.35) * 2.2 : -2.2 + ((t - 0.35) / 0.65) * 2.6;
-      if (pm.actionKind === 'bow') { p.leftArm.rotation.x = -1.5; p.rightArm.rotation.x = -1.4 + Math.sin(t * Math.PI) * 0.3; }
+      p.rightArm.rotation.x = t < 0.3 ? -(t / 0.3) * 2.4 : -2.4 + ((t - 0.3) / 0.7) * 2.8;
+      if (pm.actionKind === 'bow') { p.leftArm.rotation.x = -1.6; p.rightArm.rotation.x = -1.5 + Math.sin(t * Math.PI) * 0.25; }
     } else {
-      p.rightArm.rotation.x *= 0.8;
+      p.rightArm.rotation.x *= 0.75;
     }
   }
   return moved;
