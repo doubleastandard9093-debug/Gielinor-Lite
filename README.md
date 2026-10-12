@@ -9,6 +9,12 @@ The original 2D game lives in `/2d/`.
 2. Settings → Pages → Deploy from main branch
 3. Live at `https://yourusername.github.io/repo-name/`
 
+## Graphics
+
+Modern, RuneScape 3-inspired look made entirely in code (no image files or third-party art): sky dome with sun and clouds, warm sunlight with soft shadows, bloom and a light colour grade, splat-textured terrain (grass, dirt paths, sand, cobbles) with hills beyond the map edge, animated water, swaying layered trees, ore-veined rocks, timber and stone buildings with tiled gable roofs, grass/flower/bush ground clutter, and rounded player, NPC and monster models. Most models are baked into one mesh each to keep draw calls low on phones.
+
+**Settings → Graphics quality** cycles Auto / High / Low. Low skips bloom, colour grade, clouds, sway, grass and shadows and renders at a lower resolution. Auto starts on High and drops to Low once if a phone averages under ~26 fps.
+
 ## Controls
 
 - **Tap** a tree, rock, fishing spot, monster, item pile, townsperson, furnace, anvil, range, altar, the bank booth or a shop to walk there and act.

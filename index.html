@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Gielinor">
 <meta name="theme-color" content="#d4af37">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
 <link rel="manifest" href="manifest.json">
 <meta property="og:title" content="Gielinor">
 <meta property="og:image" content="og.jpg">
@@ -284,6 +285,47 @@ body.dpad-on #abilityBar { bottom: calc(var(--chat-h) + var(--sb) + 164px); }
   body.dpad-on #abilityBar { bottom: 12px; }
   #abilityBar button { width: 48px; height: 48px; }
 }
+
+/* ---------- Modern skin (RS3-style): dark slate panels, gold trim, rounded icons ----------
+   Colours, gradients and corner radii only, so sizes and positions stay the same. */
+:root { --rs-bg: linear-gradient(180deg, rgba(40, 44, 50, 0.95), rgba(22, 24, 28, 0.96)); --rs-edge: #8c6d2e; --rs-light: #b8913f; --rs-text: #f0c860;
+  --gold: #d9b24c; --gold-dim: #6e5622; --slate: #1c1f24; --slate2: #2a2e35; }
+html, body { font-family: 'Trebuchet MS', 'Segoe UI', Roboto, -apple-system, Helvetica, Arial, sans-serif; }
+button { color: #f2e6c8; background: linear-gradient(180deg, #3a3f47, #262a30); border-color: #5a4a26; border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.4); }
+button:active { background: linear-gradient(180deg, #2a2e35, #1c1f24); }
+#sidePanel, #window { border-color: var(--rs-edge); border-radius: 10px;
+  box-shadow: 0 0 0 1px #000, inset 0 0 0 1px rgba(255, 220, 140, 0.12), 0 6px 18px rgba(0, 0, 0, 0.55); }
+#tabBar { border-top-color: var(--gold-dim); }
+#tabBar button { background: linear-gradient(180deg, #30343b, #1f2227); border-color: #3e3420; }
+#tabBar button.on { background: linear-gradient(180deg, #7a5a1e, #4a3510); box-shadow: inset 0 0 8px rgba(255, 210, 110, 0.45); }
+#sidePanel #tabBar button:first-child { border-bottom-left-radius: 0; }
+.tab-head, .win-head { color: var(--rs-text); text-shadow: 0 1px 0 #000; }
+.slot { border-color: rgba(0, 0, 0, 0.35); border-radius: 7px; background: radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0.12)); }
+.slot.item { background: radial-gradient(circle at 50% 40%, rgba(255, 230, 170, 0.12), rgba(0, 0, 0, 0.18)); }
+.equipgrid .slot, .toolgrid .slot { background: linear-gradient(180deg, #2a2e35, #1a1c20); border-color: #4a3c1e; }
+.skill, .recipe, .ab, .quest, .skilldetail { background: linear-gradient(180deg, #2a2e35, #1e2126); border-color: #0c0d0f; border-radius: 7px; }
+.skill.sel, .quest.sel { border-color: var(--gold); box-shadow: inset 0 0 6px rgba(255, 210, 110, 0.35); }
+.skill i, .bar i { background: linear-gradient(90deg, #3ab03a, #7ae05a); }
+.style.on, .subtabs button.on, .chips button.on, .qtybar button.on { background: linear-gradient(180deg, #7a5a1e, #4a3510); }
+.perktotal { background: #16181c; border-color: #3e3420; border-radius: 6px; }
+#chat { background: linear-gradient(180deg, rgba(26, 29, 34, 0.82), rgba(16, 18, 21, 0.9)); border-top-color: var(--rs-light); }
+#chatTabs button.on { background: linear-gradient(180deg, #7a5a1e, #4a3510); }
+#minimap { border-color: var(--gold); box-shadow: 0 0 0 2px #2a2210, 0 0 0 3px #000, 0 3px 10px rgba(0, 0, 0, 0.55); }
+#compass { background: radial-gradient(circle at 40% 35%, #3a3f47, #15171a); border-color: var(--gold); }
+.orb { border-color: #6e5622; box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.25), inset 0 -3px 4px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.5); }
+#levelup { background: var(--rs-bg); border-color: var(--gold); border-radius: 10px; }
+#ctxMenu { background: linear-gradient(180deg, #2c3036, #1d2025); border-color: var(--rs-edge); border-radius: 8px; overflow: hidden; color: #f2e6c8; }
+.ctx-title { background: #101215; color: var(--rs-text); }
+.ctx-opt:hover, .ctx-opt:active { background: rgba(217, 178, 76, 0.22); }
+#abilityBar button { background: linear-gradient(180deg, rgba(52, 57, 65, 0.94), rgba(28, 31, 36, 0.94)); border-color: var(--gold-dim); border-radius: 9px; }
+#effects .fx { background: rgba(22, 24, 28, 0.82); border-color: var(--gold-dim); border-radius: 7px; }
+#dialogue { background: linear-gradient(180deg, rgba(36, 40, 46, 0.97), rgba(22, 24, 28, 0.97)); border-color: var(--rs-edge); border-radius: 10px; color: #f2e6c8; }
+#dialogue .d-name { color: var(--rs-text); }
+#dialogue .d-cont { color: #8ac8ff; }
+#dialogue .d-opt { background: linear-gradient(180deg, #3a3f47, #262a30); color: #f2e6c8; border-color: #5a4a26; }
+@media (orientation: landscape) and (max-height: 520px) { #tabBar { border-left-color: var(--gold-dim); } #chat { border-right-color: var(--rs-light); } }
+@media (min-width: 900px) and (min-height: 600px) { #chat { border-right-color: var(--rs-light); } }
 </style>
 <script type="importmap">
 {
