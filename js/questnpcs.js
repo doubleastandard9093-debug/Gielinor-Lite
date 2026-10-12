@@ -35,6 +35,16 @@ const RAW = [
   ['aldo', 'Old Aldo', 11, 12, 'soldier', 'A retired soldier with many scars.', '👴'],
   ['dell', 'Coach Dell', 14, 30, 'ranger', 'Brightwater\u2019s agility coach. Fit as a fiddle.', '🏃'],
   // Wilds
-  ['grell', 'Hermit Grell', -24, -52, 'hermit', 'He has lived alone in the wilds for years.', '🧙‍♂️']
+  ['grell', 'Hermit Grell', -24, -52, 'hermit', 'He has lived alone in the wilds for years.', '🧙‍♂️'],
+  // Port Sarim
+  ['redbeard', 'Captain Redbeard', -83, 69, 'pirate', 'A pirate captain with a magnificent beard.', '🏴‍☠️'],
+  ['wydin', 'Wydin the Grocer', -73, 57, 'cook', 'Port Sarim\u2019s food merchant.', '🧑‍🍳'],
+  ['gerda', 'Net-mender Gerda', -87, 67, 'sailor', 'Her nets have caught more fish than anyone alive.', '🎣'],
+  ['brice', 'Harbourmaster Brice', -77, 66, 'noble', 'Nothing enters or leaves the harbour without his say.', '⚓'],
+  ['thurgo', 'Thurgo', -91, 53, 'dwarf', 'A dwarf smith who loves pie.', '🧔'],
+  ['mabel', 'Old Mabel', -71, 63, 'granny', 'She claims to remember the Water altar being built.', '👵'],
+  ['kenn', 'Kennith', -85, 63, 'kid', 'A cabin boy who missed his ship.', '👦'],
+  ['velma', 'Velma the Witch', -93, 59, 'wizard', 'She smells of herbs and something stranger.', '🧙‍♀️'],
+  ['sorrel', 'Ranger Sorrel', -98, 52, 'ranger', 'She guards the western woods.', '🏹']
 ];
 export const QUEST_NPCS = RAW.map(([id, name, x, z, look, examine, face]) => ({ id, name, x, z, look: L[look], examine, face }));
