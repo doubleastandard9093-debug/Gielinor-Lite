@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { makeRng } from './rng.js';
 import { MONSTER_TYPES } from './gameplay.js';
+import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
 
 export const WORLD_HALF = 70;
 export const SPAWN = { x: 0, z: 0 };
@@ -92,6 +93,49 @@ function tag(root, entity) {
   return entity;
 }
 
+
+// Height of the ground. Flat inside the walkable area; hills rise past the edge.
+export function terrainHeight(x, z) {
+  const d = Math.max(Math.abs(x), Math.abs(z)) - (WORLD_HALF + 3);
+  if (d <= 0) return 0;
+  const roll = 0.65 + 0.35 * Math.sin(x * 0.045 + Math.cos(z * 0.031) * 2.1) * Math.cos(z * 0.052 - x * 0.013);
+  return Math.min(34, d * d * 0.018 * roll + d * 0.15);
+}
+
+// Paint the ground mask in code: R = dirt (paths, mines), G = sand (shore), B = cobbles (squares).
+function paintGroundMask(size) {
+  const N = 512, k = N / size;
+  const cv = document.createElement('canvas'); cv.width = cv.height = N;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, N, N);
+  const X = x => (x + size / 2) * k, Z = z => (z + size / 2) * k;
+  g.globalCompositeOperation = 'lighter';
+  g.lineCap = 'round';
+  const blob = (x, z, r, rgb, a = 1) => {
+    const gr = g.createRadialGradient(X(x), Z(z), 0, X(x), Z(z), r * k);
+    gr.addColorStop(0, `rgba(${rgb},${a})`); gr.addColorStop(0.6, `rgba(${rgb},${a * 0.8})`); gr.addColorStop(1, `rgba(${rgb},0)`);
+    g.fillStyle = gr; g.beginPath(); g.arc(X(x), Z(z), r * k, 0, Math.PI * 2); g.fill();
+  };
+  // soft-edged paths: several passes, wide + faint to narrow + strong
+  for (const [w, a] of [[2.6, 0.25], [2.0, 0.35], [1.5, 0.5]]) {
+    g.strokeStyle = `rgba(255,0,0,${a})`; g.lineWidth = w * k;
+    for (const [x1, z1, x2, z2] of PATHS) { g.beginPath(); g.moveTo(X(x1), Z(z1)); g.lineTo(X(x2), Z(z2)); g.stroke(); }
+  }
+  blob(22, 20, 8, '255,0,0', 0.9);      // mine
+  blob(-9, -28, 5.5, '255,0,0', 0.9);   // high-level mine
+  blob(13, -13, 5, '255,0,0', 0.45);    // goblin camp
+  blob(-18, -16, 7, '255,0,0', 0.3);    // trampled cow field
+  blob(50, -25, 9, '255,0,0', 0.4);     // Ashford yard
+  blob(LAKE.x, LAKE.z, LAKE.r + 2.6, '0,255,0', 1);
+  blob(0, 0, 5.4, '0,0,255', 1);        // Brightwater square
+  blob(50, -24, 3.5, '0,0,255', 0.9);   // Ashford square
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.flipY = false;
+  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}
+
 export function insideLake(x, z, pad = 0) {
   return Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r + pad;
 }
@@ -102,56 +146,28 @@ export function createWorld(scene) {
   const monsters = [];
   const pickables = []; // root objects the tap raycast checks
 
-  // Ground with gentle colour variation (one draw call).
-  const groundGeo = new THREE.PlaneGeometry(WORLD_HALF * 2 + 10, WORLD_HALF * 2 + 10, 45, 45);
-  const colors = [];
-  const base = new THREE.Color(0x4a8a3a);
-  const tmp = new THREE.Color();
+  // ---- Terrain: one textured mesh (grass / dirt paths / sand / cobbles) ----
+  // The play area is flat (feet stay on the ground); rolling hills rise beyond it.
+  const MASK = 170;
+  const mask = paintGroundMask(MASK);
+  const GSIZE = 420, GSEG = 140;
+  const groundGeo = new THREE.PlaneGeometry(GSIZE, GSIZE, GSEG, GSEG);
   const pos = groundGeo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    const v = 0.88 + rng() * 0.2;
-    tmp.copy(base).multiplyScalar(v);
-    colors.push(tmp.r, tmp.g, tmp.b);
-  }
-  groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  const ground = new THREE.Mesh(groundGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.0 }));
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, terrainHeight(pos.getX(i), -pos.getY(i)));
+  groundGeo.computeVertexNormals();
+  const ground = new THREE.Mesh(groundGeo, terrainMaterial(mask, MASK));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
 
-  // Dirt paths from spawn to each area.
-  const pathMat = new THREE.MeshLambertMaterial({ color: 0x8a7650 });
-  function path(x1, z1, x2, z2, w = 1.6) {
-    const len = Math.hypot(x2 - x1, z2 - z1);
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, len), pathMat);
-    m.rotation.x = -Math.PI / 2;
-    m.rotation.z = -Math.atan2(x2 - x1, z2 - z1);
-    m.position.set((x1 + x2) / 2, 0.02, (z1 + z2) / 2);
-    m.receiveShadow = true;
-    scene.add(m);
-  }
-  for (const pth of PATHS) path(...pth);
-  const plaza = new THREE.Mesh(new THREE.CircleGeometry(4.5, 20), new THREE.MeshLambertMaterial({ color: 0x9a9a8a }));
-  plaza.rotation.x = -Math.PI / 2; plaza.position.y = 0.03; plaza.receiveShadow = true;
-  scene.add(plaza);
-
-  // Lake with a sandy shore.
-  const shore = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r + 1.6, 36), new THREE.MeshStandardMaterial({ color: 0xc4b080, roughness: 0.9 }));
-  shore.rotation.x = -Math.PI / 2; shore.position.set(LAKE.x, 0.025, LAKE.z);
-  scene.add(shore);
-  const waterMat = new THREE.MeshStandardMaterial({
-    color: 0x1a5a90,
-    roughness: 0.08,
-    metalness: 0.45,
-    transparent: true,
-    opacity: 0.88
-  });
-  const water = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r, 48), waterMat);
+  // Lake: animated water with shore foam (sand is painted into the ground).
+  const water = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r + 0.25, 64), hookWaterNoise(waterMaterial(LAKE.x, LAKE.z, LAKE.r + 0.25)));
   water.rotation.x = -Math.PI / 2; water.position.set(LAKE.x, 0.05, LAKE.z);
-  water.receiveShadow = true;
   scene.add(water);
-  // Store for simple animation
-  water.userData.wave = true;
+  // Darker lake bed so the edge reads as depth
+  const bed = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r + 0.3, 40), new THREE.MeshBasicMaterial({ color: 0x0c2a3a }));
+  bed.rotation.x = -Math.PI / 2; bed.position.set(LAKE.x, 0.015, LAKE.z);
+  scene.add(bed);
 
   const occupied = [];
   function free(x, z, r = 1.6, townR = 6) {

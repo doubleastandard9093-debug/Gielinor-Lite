@@ -4,8 +4,9 @@ export const IS_TOUCH = (typeof window !== 'undefined') && ('ontouchstart' in wi
 
 export function createScene() {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x4d8fc4);
-  scene.fog = new THREE.FogExp2(0x4d8fc4, 0.0065);
+  // Fog matches the sky's horizon colour so distant land fades into the sky dome.
+  scene.background = new THREE.Color(0xbfdcf0);
+  scene.fog = new THREE.FogExp2(0xbfdcf0, 0.0058);
   return scene;
 }
 
@@ -22,40 +23,41 @@ export function createRenderer() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.25;
+  renderer.toneMappingExposure = 1.12;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.domElement.id = 'game';
   return renderer;
 }
 
 export function createLights(scene) {
-  const hemi = new THREE.HemisphereLight(0xd8ecff, 0x182410, 0.45);
+  // Soft sky/ground bounce light: cool blue from above, warm green-brown from below.
+  const hemi = new THREE.HemisphereLight(0xcfe4ff, 0x6a5a34, 1.15);
   scene.add(hemi);
 
-  const dirLight = new THREE.DirectionalLight(0xfff8e8, 1.85);
-  dirLight.position.set(22, 38, 18);
+  // Warm golden sun (matches the sun in the sky dome).
+  const dirLight = new THREE.DirectionalLight(0xffdcae, 2.7);
+  dirLight.position.set(22, 25, 17);
   dirLight.castShadow = true;
   dirLight.shadow.mapSize.set(2048, 2048);
   const c = dirLight.shadow.camera;
-  c.left = -40; c.right = 40; c.top = 40; c.bottom = -40; c.near = 1; c.far = 140;
-  dirLight.shadow.bias = -0.00008;
-  dirLight.shadow.radius = 3.5;
+  c.left = -34; c.right = 34; c.top = 34; c.bottom = -34; c.near = 1; c.far = 120;
+  dirLight.shadow.bias = -0.0002;
+  dirLight.shadow.normalBias = 0.03;
+  dirLight.shadow.radius = 3;
   scene.add(dirLight);
   scene.add(dirLight.target);
 
-  const fill = new THREE.DirectionalLight(0x88b0ff, 0.55);
-  fill.position.set(-18, 18, -14);
+  // Cool fill from the opposite side keeps shadowed faces readable.
+  const fill = new THREE.DirectionalLight(0x9ab8ff, 0.45);
+  fill.position.set(-18, 14, -14);
   scene.add(fill);
 
-  const rim = new THREE.DirectionalLight(0xffe0b0, 0.3);
-  rim.position.set(4, 12, -28);
-  scene.add(rim);
-
-  return { hemi, dirLight };
+  return { hemi, dirLight, fill };
 }
 
 export function followLight(dirLight, x, z) {
-  dirLight.position.set(x + 22, 38, z + 18);
+  // Same direction as the sky's sun (0.55, 0.62, 0.42).
+  dirLight.position.set(x + 33, 37.2, z + 25.2);
   dirLight.target.position.set(x, 0, z);
 }
 

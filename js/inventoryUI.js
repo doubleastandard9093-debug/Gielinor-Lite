@@ -283,6 +283,7 @@ export function createInventoryUI(api) {
       <div class="savebtns"><button data-act="save">💾 Save</button><button data-act="export">Export</button><button data-act="import">Import</button><button data-act="paste">Paste save</button></div>
       <button class="toggle new" data-act="help">✨ What's new</button>
       ${t('dpad', 'On-screen D-pad', s.showDpad)}
+      <button class="toggle on" data-act="gfx">Graphics quality: ${api.gfxLabel ? api.gfxLabel() : 'Auto'}</button>
       ${t('shadows', 'Shadows', api.shadowsOn())}
       ${t('retaliate', 'Auto Retaliate', s.autoRetaliate)}
       ${t('run', 'Run', s.run)}

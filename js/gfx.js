@@ -1,0 +1,223 @@
+// Graphics helpers for the modern look: sky dome, procedural textures,
+// textured terrain, animated water, swaying foliage, graphics quality.
+// Everything is generated in code (no image files), and kept cheap for phones.
+import * as THREE from 'three';
+import { IS_TOUCH } from './scene.js';
+
+export const SUN_DIR = new THREE.Vector3(0.55, 0.62, 0.42).normalize();
+export const SKY = {
+  top: new THREE.Color(0x3f7fd0),
+  horizon: new THREE.Color(0xbfdcf0),
+  sun: new THREE.Color(0xfff0c8)
+};
+// Shared, ticking time uniform used by water, foliage sway and clouds.
+export const TIME = { value: 0 };
+export const SWAY = { value: 1 };
+
+// ---------------------------------------------------------------------------
+// Graphics quality: 'high' or 'low'. Auto (null) = High on desktop, High on
+// phones too but at a lower pixel ratio; it drops to Low by itself if the
+// phone can't keep a smooth frame rate.
+// ---------------------------------------------------------------------------
+export function resolveQuality(setting) {
+  if (setting === 'high' || setting === 'low') return setting;
+  return 'high';
+}
+export function pixelRatioFor(quality) {
+  const dpr = window.devicePixelRatio || 1;
+  if (quality === 'low') return Math.min(dpr, IS_TOUCH ? 1.25 : 1);
+  return Math.min(dpr, IS_TOUCH ? 1.75 : 2);
+}
+
+// ---------------------------------------------------------------------------
+// Tileable value-noise texture (RGB = three different noise octaves).
+// ---------------------------------------------------------------------------
+function makeNoiseData(size, seed) {
+  let s = seed >>> 0;
+  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const out = new Float32Array(size * size);
+  const octave = (cells, amp) => {
+    const g = new Float32Array(cells * cells);
+    for (let i = 0; i < g.length; i++) g[i] = rnd();
+    const step = size / cells;
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const fx = x / step, fy = y / step;
+      const x0 = Math.floor(fx), y0 = Math.floor(fy);
+      let tx = fx - x0, ty = fy - y0;
+      tx = tx * tx * (3 - 2 * tx); ty = ty * ty * (3 - 2 * ty);
+      const a = g[(y0 % cells) * cells + (x0 % cells)], b = g[(y0 % cells) * cells + ((x0 + 1) % cells)];
+      const c = g[((y0 + 1) % cells) * cells + (x0 % cells)], d = g[((y0 + 1) % cells) * cells + ((x0 + 1) % cells)];
+      out[y * size + x] += amp * (a + (b - a) * tx + (c - a) * ty + (a - b - c + d) * tx * ty);
+    }
+  };
+  return { out, octave };
+}
+let noiseTex = null;
+export function getNoiseTexture() {
+  if (noiseTex) return noiseTex;
+  const size = 256;
+  const data = new Uint8Array(size * size * 4);
+  const chans = [[4, 8, 16], [8, 16, 32], [16, 32, 64]];
+  chans.forEach((cells, ch) => {
+    const { out, octave } = makeNoiseData(size, 1234 + ch * 777);
+    octave(cells[0], 0.55); octave(cells[1], 0.3); octave(cells[2], 0.15);
+    for (let i = 0; i < size * size; i++) data[i * 4 + ch] = Math.max(0, Math.min(255, out[i] * 255));
+  });
+  for (let i = 0; i < size * size; i++) data[i * 4 + 3] = 255;
+  noiseTex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  noiseTex.wrapS = noiseTex.wrapT = THREE.RepeatWrapping;
+  noiseTex.magFilter = THREE.LinearFilter;
+  noiseTex.minFilter = THREE.LinearMipmapLinearFilter;
+  noiseTex.generateMipmaps = true;
+  noiseTex.needsUpdate = true;
+  return noiseTex;
+}
+
+// ---------------------------------------------------------------------------
+// Sky dome: blue gradient, warm sun with glow, drifting soft clouds.
+// ---------------------------------------------------------------------------
+export function createSky(scene) {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      top: { value: SKY.top }, horizon: { value: SKY.horizon }, sunCol: { value: SKY.sun },
+      sunDir: { value: SUN_DIR }, time: TIME, tNoise: { value: getNoiseTexture() }, clouds: { value: 1 }
+    },
+    vertexShader: `varying vec3 vDir;
+      void main(){ vDir = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p; }`,
+    fragmentShader: `uniform vec3 top, horizon, sunCol, sunDir; uniform float time, clouds; uniform sampler2D tNoise; varying vec3 vDir;
+      void main(){
+        vec3 d = normalize(vDir);
+        float h = d.y;
+        vec3 col = mix(horizon, top, pow(clamp(h, 0.0, 1.0), 0.55));
+        col = mix(col, horizon * vec3(0.82, 0.9, 0.8), smoothstep(0.0, -0.25, h));
+        float sd = max(dot(d, sunDir), 0.0);
+        col += sunCol * (pow(sd, 900.0) * 6.0 + pow(sd, 40.0) * 0.25 + pow(sd, 6.0) * 0.12);
+        if (clouds > 0.5 && h > 0.0) {
+          vec2 uv = d.xz / (h + 0.18) * 0.18 + vec2(time * 0.0025, time * 0.001);
+          float c = texture2D(tNoise, uv).r * 0.65 + texture2D(tNoise, uv * 2.7 + 0.3).g * 0.35;
+          c = smoothstep(0.52, 0.78, c) * smoothstep(0.0, 0.22, h);
+          vec3 cc = mix(vec3(0.86, 0.88, 0.94), vec3(1.0, 0.98, 0.93), clamp(sd * 1.4, 0.0, 1.0));
+          col = mix(col, cc, c * 0.85);
+        }
+        gl_FragColor = vec4(col, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+    side: THREE.BackSide, depthWrite: false, fog: false
+  });
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(300, 32, 16), mat);
+  sky.renderOrder = -10;
+  sky.frustumCulled = false;
+  scene.add(sky);
+  return {
+    mesh: sky,
+    follow(camera) { sky.position.copy(camera.position); },
+    setQuality(q) { mat.uniforms.clouds.value = q === 'low' ? 0 : 1; }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Terrain material: splat-blends grass / dirt / sand / cobbles from a mask
+// texture painted in code, with procedural noise detail. One draw call.
+// ---------------------------------------------------------------------------
+export function terrainMaterial(maskTex, maskSize) {
+  const m = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.tMask = { value: maskTex };
+    sh.uniforms.tNoise = { value: getNoiseTexture() };
+    sh.uniforms.maskSize = { value: maskSize };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vWPos; uniform sampler2D tMask, tNoise; uniform float maskSize;
+        vec3 lin(vec3 c){ return pow(c, vec3(2.2)); }`)
+      .replace('#include <map_fragment>', `
+        vec2 wp = vWPos.xz;
+        vec4 mk = texture2D(tMask, wp / maskSize + 0.5);
+        float n1 = texture2D(tNoise, wp * 0.012).r;
+        float n2 = texture2D(tNoise, wp * 0.07).g;
+        float n3 = texture2D(tNoise, wp * 0.45).b;
+        float n4 = texture2D(tNoise, wp * 1.9).r;
+        vec3 grass = mix(vec3(0.27, 0.50, 0.14), vec3(0.45, 0.63, 0.19), smoothstep(0.3, 0.7, n1));
+        grass = mix(grass, vec3(0.20, 0.40, 0.12), smoothstep(0.55, 0.85, n2) * 0.55);
+        grass = mix(grass, vec3(0.55, 0.62, 0.24), smoothstep(0.62, 0.9, n3) * 0.3);
+        grass *= 0.82 + 0.36 * n4;
+        vec3 dirt = mix(vec3(0.47, 0.35, 0.21), vec3(0.58, 0.45, 0.29), n3) * (0.8 + 0.35 * n4);
+        dirt = mix(dirt, vec3(0.62, 0.6, 0.55), smoothstep(0.72, 0.8, n4) * 0.6);
+        vec3 sand = mix(vec3(0.82, 0.72, 0.5), vec3(0.9, 0.82, 0.6), n2) * (0.9 + 0.18 * n4);
+        vec2 cell = wp * 1.35; vec2 ci = floor(cell + vec2(0.0, floor(cell.x) * 0.5)); vec2 cf = fract(cell + vec2(0.0, floor(cell.x) * 0.5));
+        float grout = smoothstep(0.0, 0.09, cf.x) * smoothstep(1.0, 0.91, cf.x) * smoothstep(0.0, 0.09, cf.y) * smoothstep(1.0, 0.91, cf.y);
+        float cv = texture2D(tNoise, ci * 0.137).g;
+        vec3 stone = mix(vec3(0.48, 0.47, 0.44), vec3(0.66, 0.63, 0.57), cv) * (0.9 + 0.15 * n4);
+        stone = mix(vec3(0.3, 0.29, 0.27), stone, grout);
+        float edge = (n2 - 0.5) * 0.45 + (n4 - 0.5) * 0.15;
+        vec3 col = grass;
+        col = mix(col, sand, smoothstep(0.35, 0.6, mk.g + edge));
+        col = mix(col, dirt, smoothstep(0.38, 0.62, mk.r + edge));
+        col = mix(col, stone, smoothstep(0.4, 0.6, mk.b + edge * 0.4));
+        // hills beyond the playable area: grass to rock with height
+        float hrock = smoothstep(4.0, 12.0, vWPos.y + (n2 - 0.5) * 6.0);
+        col = mix(col, mix(vec3(0.45, 0.43, 0.4), vec3(0.6, 0.58, 0.54), n3), hrock);
+        diffuseColor.rgb *= lin(col);
+      `);
+  };
+  return m;
+}
+
+// ---------------------------------------------------------------------------
+// Water: gentle vertex waves, scrolling ripple normals, sky reflection with
+// fresnel, sun glints and foam at the shore. Single cheap shader.
+// ---------------------------------------------------------------------------
+export function waterMaterial(cx, cz, radius) {
+  return new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+      time: { value: 0 }, center: { value: new THREE.Vector2(cx, cz) }, radius: { value: radius },
+      sunDir: { value: SUN_DIR }, sunCol: { value: SKY.sun }, skyCol: { value: SKY.horizon }, skyTop: { value: SKY.top }
+    }]),
+    vertexShader: `uniform float time; varying vec3 vW;
+      #include <fog_pars_vertex>
+      void main(){
+        vec4 w = modelMatrix * vec4(position, 1.0);
+        w.y += sin(w.x * 0.9 + time * 1.3) * 0.025 + sin(w.z * 1.3 - time * 1.7) * 0.02;
+        vW = w.xyz;
+        vec4 mvPosition = viewMatrix * w;
+        gl_Position = projectionMatrix * mvPosition;
+        #include <fog_vertex>
+      }`,
+    fragmentShader: `uniform float time, radius; uniform vec2 center; uniform vec3 sunDir, sunCol, skyCol, skyTop; uniform sampler2D tNoise; varying vec3 vW;
+      #include <fog_pars_fragment>
+      void main(){
+        vec2 p = vW.xz;
+        vec2 a = texture2D(tNoise, p * 0.09 + vec2(time * 0.018, time * 0.011)).rg - 0.5;
+        vec2 b = texture2D(tNoise, p * 0.21 - vec2(time * 0.025, -time * 0.017)).gb - 0.5;
+        vec3 N = normalize(vec3((a.x + b.x) * 0.45, 1.0, (a.y + b.y) * 0.45));
+        vec3 V = normalize(cameraPosition - vW);
+        float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+        float r = length(p - center) / radius;
+        vec3 deep = vec3(0.008, 0.045, 0.10), shallow = vec3(0.025, 0.14, 0.17);
+        vec3 col = mix(deep, shallow, smoothstep(0.55, 1.0, r));
+        vec3 R = reflect(-V, N);
+        vec3 sky = mix(skyCol, skyTop, clamp(R.y, 0.0, 1.0));
+        col = mix(col, sky * 0.7, 0.05 + 0.4 * fres);
+        vec3 H = normalize(sunDir + V);
+        float spec = pow(max(dot(N, H), 0.0), 220.0) * 3.0 + pow(max(dot(N, H), 0.0), 30.0) * 0.08;
+        col += sunCol * spec;
+        float fn = texture2D(tNoise, p * 0.6 + time * 0.03).b;
+        float foam = smoothstep(0.93, 1.0, r + (fn - 0.5) * 0.08 + sin(time * 1.6 + r * 40.0) * 0.008);
+        col = mix(col, vec3(0.8, 0.86, 0.9), foam * 0.7);
+        gl_FragColor = vec4(col, 0.92);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+        #include <fog_fragment>
+      }`,
+    transparent: true, fog: true, depthWrite: false
+  });
+}
+export function hookWaterNoise(mat) { mat.uniforms.tNoise = { value: getNoiseTexture() }; mat.uniforms.time = TIME; return mat; }
+
+// ---------------------------------------------------------------------------
+// Per-frame update.
+// ---------------------------------------------------------------------------
+export function tickGfx(nowMs) { TIME.value = nowMs / 1000; }

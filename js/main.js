@@ -3,6 +3,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, IS_TOUCH } from './scene.js';
 import { createWorld, createPileMesh, SPAWN } from './world.js';
 import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt } from './player.js';
@@ -34,11 +36,21 @@ const camera = createCamera();
 const renderer = createRenderer();
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.35, 0.4, 0.85);
+const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.3, 0.45, 0.9);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+// Final colour grade: a touch more saturation and a soft vignette (High quality only).
+const gradePass = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, sat: { value: 1.12 }, vig: { value: 0.32 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, vig; varying vec2 vUv;
+    void main(){ vec4 c = texture2D(tDiffuse, vUv); float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+      c.rgb = mix(vec3(l), c.rgb, sat); vec2 d = vUv - 0.5; c.rgb *= 1.0 - vig * smoothstep(0.25, 0.85, dot(d, d) * 2.2); gl_FragColor = c; }`
+});
+composer.addPass(gradePass);
 document.body.prepend(renderer.domElement);
 const { dirLight } = createLights(scene);
+const sky = createSky(scene);
 const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);
 const pm = createPlayer(scene);
 const skills = createSkills();
@@ -95,7 +107,38 @@ function giveXP(skill, amount) {
   markDirty();
 }
 
+// Graphics quality. High = bloom, colour grade, clouds, sway, full resolution.
+// Low = plain render at a lower resolution for slower phones.
+const gfx = { quality: 'high', auto: true, slowFrames: 0, frames: 0, sum: 0 };
+function applyGfx() {
+  gfx.auto = player.settings.gfx !== 'high' && player.settings.gfx !== 'low';
+  gfx.quality = gfx.auto && gfx.autoLow ? 'low' : resolveQuality(player.settings.gfx);
+  renderer.setPixelRatio(pixelRatioFor(gfx.quality));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setSize(window.innerWidth, window.innerHeight);
+  sky.setQuality(gfx.quality);
+  SWAY.value = gfx.quality === 'low' ? 0 : 1;
+  setShadows(renderer, dirLight, shadowsOn());
+}
+function gfxLabel() {
+  return player.settings.gfx === 'high' ? 'High' : player.settings.gfx === 'low' ? 'Low' : `Auto (${gfx.quality === 'low' ? 'Low' : 'High'})`;
+}
+// Auto mode on phones: if frames stay slow after loading, drop to Low once.
+function watchFrameRate(dt) {
+  if (!gfx.auto || gfx.autoLow || !IS_TOUCH) return;
+  gfx.frames++;
+  if (gfx.frames < 90) return;
+  gfx.sum += dt;
+  if (gfx.frames >= 390) {
+    const fps = 300 / gfx.sum;
+    gfx.frames = 0; gfx.sum = 0;
+    if (fps < 26) { gfx.autoLow = true; applyGfx(); log('Graphics set to Low to keep the game smooth. Change it in Settings.', 'game'); markDirty(); }
+  }
+}
+
 function shadowsOn() {
+  if (gfx.quality === 'low') return false;
   return player.settings.shadows === null || player.settings.shadows === undefined ? !IS_TOUCH : !!player.settings.shadows;
 }
 
@@ -106,6 +149,7 @@ const invUI = createInventoryUI({
   player, skills,
   attackSpeed: () => attackSpeedTicks(player),
   shadowsOn,
+  gfxLabel: () => gfxLabel(),
   useItem(item) { useItem(item); },
   itemMenu(item, x, y, mode) { itemMenu(item, x, y, mode); },
   unequip(slot) { if (unequip(player, slot, log)) afterEquip(); },
@@ -393,6 +437,7 @@ function setting(act) {
   }
   else if (act === 'dpad') { s.showDpad = !s.showDpad; inputCtl.setDpadVisible(s.showDpad); }
   else if (act === 'shadows') { s.shadows = !shadowsOn(); setShadows(renderer, dirLight, s.shadows); }
+  else if (act === 'gfx') { s.gfx = s.gfx === 'high' ? 'low' : s.gfx === 'low' ? null : 'high'; gfx.autoLow = false; applyGfx(); log(`Graphics: ${gfxLabel()}.`, 'game'); }
   else if (act === 'retaliate') s.autoRetaliate = !s.autoRetaliate;
   else if (act === 'run') toggleRun();
   else if (act === 'autoloot') s.autoLoot = !s.autoLoot;
@@ -1284,7 +1329,7 @@ function afterLoad() {
   refreshMaxHp();
   applyEquipmentLook(pm, player.equipment);
   inputCtl.setDpadVisible(!!player.settings.showDpad);
-  setShadows(renderer, dirLight, shadowsOn());
+  applyGfx();
   rig.fx = pm.mesh.position.x; rig.fz = pm.mesh.position.z;
   resolveCollisions(pm.mesh.position);
   player.questPoints = questPoints(player);
@@ -1346,6 +1391,7 @@ function updateViewOffset() {
 window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setSize(window.innerWidth, window.innerHeight);
+  bloom.resolution.set(window.innerWidth, window.innerHeight);
   updateViewOffset();
 });
 if (window.innerHeight > window.innerWidth) { rig.dist = rig.targetDist = 19; }
@@ -1354,16 +1400,14 @@ const barEnts = [...monsters, playerEnt];
 let last = performance.now();
 let frame = 0;
 function animate(now) {
-  // Simple water wave
-  if (window._water && window._water.userData.wave) {
-    window._water.position.y = 0.05 + Math.sin((now || performance.now()) * 0.0012) * 0.025;
-  }
   requestAnimationFrame(animate);
   if (document.hidden) return;
   now = now || performance.now();
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   frame++;
+  tickGfx(now);
+  watchFrameRate(dt);
 
   // Arrow keys turn the camera
   if (keys.left) rotateRig(rig, dt * 1.8, 0);
@@ -1391,7 +1435,8 @@ function animate(now) {
   updateArrow(dt);
   updateRig(rig, camera, pm.mesh.position.x, pm.mesh.position.z, dt);
   followLight(dirLight, rig.fx, rig.fz);
-  composer.render();
+  sky.follow(camera);
+  if (gfx.quality === 'low') renderer.render(scene, camera); else composer.render();
 
   overlays.update(camera, barEnts, now);
   if (frame % 3 === 0) {
@@ -1414,6 +1459,7 @@ window.addEventListener('keydown', e => {
 });
 
 window.gielinor = {
+  gfx, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
   renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, giveXP, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor,
   get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; },

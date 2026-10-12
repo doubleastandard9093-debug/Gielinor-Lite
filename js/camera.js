@@ -5,7 +5,7 @@ export function createCameraRig() {
     pitch: 0.9,        // radians above the horizon
     dist: 17,
     targetYaw: 0, targetPitch: 0.9, targetDist: 17,
-    minPitch: 0.42, maxPitch: 1.38,
+    minPitch: 0.3, maxPitch: 1.38,
     minDist: 7, maxDist: 30,
     fx: 0, fz: 0       // smoothed follow point
   };

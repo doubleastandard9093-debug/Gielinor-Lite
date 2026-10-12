@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS = {
   showDpad: false,
   autoLoot: false,   // send drops straight to the pack instead of the ground
   shadows: null,     // null = pick automatically (off on phones)
+  gfx: null,         // graphics quality: null = auto, 'high' or 'low'
   chatFilter: 'all',
   chatCollapsed: false
 };
