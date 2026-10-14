@@ -17,6 +17,7 @@ import { setupInput } from './input.js';
 import { setupUI } from './ui.js';
 import { createOverlays } from './overlays.js';
 import { createMinimap } from './minimap.js';
+import { createHud } from './hud.js';
 import { createSkills, addXP, combatLevel, SKILL_ICONS, perk, perksBetween, maxPrayer, setPerkBoost } from './skills.js';
 import { createPlayerState, addItem, removeItem, recalcMaxHp, roomFor, canAdd } from './playerState.js';
 import { RECIPES, ITEMS, canCraft, hasInputs, recipeOutputQty, examineItem, isRangedWeapon, slotFor, isTool, toolType, TOOL_TYPES, WOODS, rarityOf, rarityColor } from './items.js';
@@ -480,12 +481,15 @@ function toggleRun() {
   markDirty();
 }
 
+let hud;
 const minimap = createMinimap({
   onPrayerOrb: () => invUI.showTab('prayer'),
   onWalk: (x, z) => { stopAction(); walkTo(x, z); },
   onCompass: () => { rig.targetYaw = Math.round(rig.targetYaw / (Math.PI * 2)) * Math.PI * 2; },
   onRunToggle: toggleRun
 });
+hud = createHud({ player, skills, monsters, levelColor, combatLevelOf: () => combatLevel(skills),
+  getTarget: () => (action && action.kind === 'attack' && action.mon && action.mon.alive ? action.mon : null) });
 
 // ---------------------------------------------------------------------------
 // Picking what was tapped
@@ -1827,6 +1831,7 @@ function animate(now) {
   if (gfx.quality === 'low') renderer.render(scene, camera); else composer.render();
 
   overlays.update(camera, barEnts, now);
+  if (frame % 3 === 1) hud.update(now);
   if (frame % 3 === 0) {
     minimap.draw(pm.mesh.position.x, pm.mesh.position.z, rig.yaw, nodes, monsters, piles);
     minimap.setOrbs(player.hp, player.maxHp, player.runEnergy, player.settings.run, player.prayerPoints, maxPrayer(skills), player.activePrayers.length > 0);

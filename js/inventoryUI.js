@@ -418,11 +418,11 @@ export function createInventoryUI(api) {
   function renderBar() {
     const now = api.tick();
     const list = ABILITIES.filter(a => unlocked(skills, a));
-    const html = list.map(a => {
+    const html = list.map((a, i) => {
       const cd = Math.max(0, (api.cooldowns()[a.id] || 0) - now);
       const total = api.cooldownOf(a);
       const queued = api.queued() === a.id;
-      return `<button data-ability="${a.id}" class="${cd ? 'cd' : ''} ${queued ? 'queued' : ''}" title="${esc(a.name)}: ${esc(a.desc)}"><span>${a.icon}</span>${cd ? `<i style="height:${(cd / total * 100).toFixed(0)}%"></i><b>${Math.ceil(cd * 0.6)}</b>` : ''}</button>`;
+      return `<button data-ability="${a.id}" class="${cd ? 'cd' : ''} ${queued ? 'queued' : ''}" title="${esc(a.name)}: ${esc(a.desc)}"><span>${a.icon}</span>${cd ? `<i style="--cd:${(cd / total * 100).toFixed(1)}%"></i><b>${Math.ceil(cd * 0.6)}</b>` : ''}${i < 8 ? `<kbd>${i + 1}</kbd>` : ''}</button>`;
     }).join('');
     bar.style.display = list.length ? 'grid' : 'none';
     if (bar._html !== html) { bar._html = html; bar.innerHTML = html; }

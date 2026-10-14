@@ -107,7 +107,8 @@ export function setupUI(settings) {
   function xpDrop(skill, icon, amount) {
     const d = document.createElement('div');
     d.className = 'xpdrop';
-    d.textContent = `${icon} +${Math.round(amount * 10) / 10} xp`;
+    d.innerHTML = `<span class="xd-ico">${icon}</span><b>+${Math.round(amount * 10) / 10}</b>`;
+    window.dispatchEvent(new CustomEvent('xpdrop', { detail: { skill, amount } }));
     d.title = skill;
     drops.appendChild(d);
     setTimeout(() => d.remove(), 1700);
