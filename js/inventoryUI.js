@@ -25,6 +25,8 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>World streaming (RuneScape-style chunks)</b></p>
+<p>The map is now split into 32×32 chunks. Buildings, stalls, props and monsters only load in the chunks around you (5×5 on Low, 7×7 on High) and unload as you walk away, so the world can keep growing without slowing your phone. Monsters keep their health and respawn timers while unloaded.</p>
 <p><b>Bigger world, smoother graphics</b></p>
 <p>The map is now about <b>440 × 440</b>. Grass and flowers load in nearby chunks only, and trees and rocks share draw calls so your phone stays smooth. Materials catch the light better, and distant trees stop swaying past about 50 steps. Graphics quality (Auto / High / Low) still controls the glow, clouds and shadows.</p>
 <p><b>100 new quests</b></p>

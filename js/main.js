@@ -6,6 +6,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, IS_TOUCH } from './scene.js';
+import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from './chunk.js';
 import { createWorld, createPileMesh, SPAWN, setDecorQuality, updateDecorChunks } from './world.js';
 import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt } from './player.js';
 import { createCameraRig, rotateRig, zoomRig, updateRig } from './camera.js';
@@ -55,6 +56,12 @@ const { dirLight } = createLights(scene);
 const sky = createSky(scene);
 const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);
 const pm = createPlayer(scene);
+// Chunk streaming: static props, buildings and NPC stalls attach only near the player.
+scene.updateMatrixWorld(true);
+const chunkSkip = new Set([ground, pm.mesh, ...monsters.map(m => m.mesh)]);
+adoptSceneObjects(scene, chunkSkip);
+for (const m of monsters) registerDynamic(m.mesh, () => m.mesh.position, scene);
+window.chunkStats = chunkStats;
 const skills = createSkills();
 const player = createPlayerState();
 player.mesh = pm.mesh;
@@ -1615,6 +1622,7 @@ function animate(now) {
   }
 
   if (frame % 15 === 0) cullWorld();
+  if (frame % 10 === 3) { setLoadRadius(gfx.quality === 'low' ? 2 : 3); updateChunks(pm.mesh.position.x, pm.mesh.position.z, scene); }
   if (frame % 30 === 7) { const vm = onVisit(player, pm.mesh.position.x, pm.mesh.position.z); for (const m of vm) log(m, 'game'); if (vm.length) markDirty(); }
   updateMonsters(dt, now);
   updateFish(dt);
