@@ -5,9 +5,10 @@ import { QUEST_NPCS } from './questnpcs.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
 import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap } from './models.js';
 
-// The world is now about 300 x 300 with five towns. (Aaron's edit asked for 250 each way;
-// 150 fits every town with room to spare and keeps phones fast.)
-export const WORLD_HALF = 150;
+// The world is about 440 x 440. Chunked decor + instance packing keep phones smooth.
+export const WORLD_HALF = 220;
+export const CHUNK_SIZE = 64; // decor / clutter streaming grid
+
 export const SPAWN = { x: 0, z: 0 };
 export const LAKE = { x: -20, z: 16, r: 7 };
 // Town centres. Names with spaces need quotes.
@@ -940,14 +941,59 @@ export function createWorld(scene) {
     nodes.push(createNpc(p.x, p.z, n.id, n.name, n.look, p.x + 1, p.z + 1));
   }
 
+
+  // Outer wilderness filler (own rng — keeps every previous placement identical).
+  {
+    const orng = makeRng(7711);
+    const ofree = (x, z, r = 1.6) => {
+      if (Math.abs(x) > WORLD_HALF - 3 || Math.abs(z) > WORLD_HALF - 3) return false;
+      if (insideLake(x, z, 2.2)) return false;
+      for (const o of occupied) if (Math.hypot(o.x - x, o.z - z) < r + o.r) return false;
+      for (const t of Object.values(TOWNS)) if (Math.hypot(t.x - x, t.z - z) < 14) return false;
+      return true;
+    };
+    for (const [kind, n] of [['Tree', 36], ['Oak', 8], ['Willow', 5], ['Maple', 5], ['Yew', 4]]) {
+      for (let i = 0; i < n; i++) {
+        let p = null;
+        for (let t = 0; t < 50 && !p; t++) {
+          const x = (orng() - 0.5) * (WORLD_HALF - 8) * 2, z = (orng() - 0.5) * (WORLD_HALF - 8) * 2;
+          if (Math.hypot(x, z) < 155) continue;
+          if (!ofree(x, z, 1.8)) continue;
+          occupied.push({ x, z, r: 1.8 }); p = { x, z };
+        }
+        if (p) nodes.push(createTree(p.x, p.z, kind));
+      }
+    }
+  }
+
   flushTreesAndRocks();
   scatterDecor(scene, rng, occupied);
   return { ground, nodes, monsters, pickables, buildings };
 }
 
-// ---- Ground clutter (grass, flowers, bushes) ----
+// ---- Ground clutter (grass, flowers, bushes) in 64×64 chunks ----
 let decorFine = null;
-export function setDecorQuality(q) { if (decorFine) for (const m of decorFine) m.visible = q !== 'low'; }
+const decorChunks = new Map(); // key "cx,cz" -> { group, fine: meshes[] }
+let decorChunkActive = new Set();
+export function setDecorQuality(q) {
+  if (!decorFine) return;
+  const show = q !== 'low';
+  for (const m of decorFine) m.visible = show;
+}
+export function updateDecorChunks(px, pz, radius = 110) {
+  // A chunk is needed when its nearest point is within the radius (usually 3x3 or fewer).
+  const need = new Set();
+  for (const [key, c] of decorChunks) {
+    const nx = Math.max(c.minX, Math.min(px, c.minX + CHUNK_SIZE)), nz = Math.max(c.minZ, Math.min(pz, c.minZ + CHUNK_SIZE));
+    if ((nx - px) ** 2 + (nz - pz) ** 2 < radius * radius) need.add(key);
+  }
+  for (const key of decorChunkActive) {
+    if (!need.has(key)) { const c = decorChunks.get(key); if (c) c.group.visible = false; decorChunkActive.delete(key); }
+  }
+  for (const key of need) {
+    if (!decorChunkActive.has(key)) { const c = decorChunks.get(key); if (c) c.group.visible = true; decorChunkActive.add(key); }
+  }
+}
 function distToSeg(px, pz, x1, z1, x2, z2) {
   const dx = x2 - x1, dz = z2 - z1, l2 = dx * dx + dz * dz || 1;
   const t = Math.max(0, Math.min(1, ((px - x1) * dx + (pz - z1) * dz) / l2));
@@ -965,35 +1011,70 @@ function scatterDecor(scene, rng, occupied) {
     if (Math.hypot(x - 22, z - 20) < 6 || Math.hypot(x + 9, z + 28) < 4) return false;
     return true;
   };
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), sc = new THREE.Vector3(), c = new THREE.Color();
-  function scatter(geo, mat, count, range, pad, scaleMin, scaleMax, colorFn, shadow) {
-    const inst = new THREE.InstancedMesh(geo, mat, count);
+  // Density scales gently with area so phones aren't crushed by the bigger map.
+  const areaScale = (WORLD_HALF / 150) ** 2;
+  const grassMat = makeFoliageMat({}, 2.5);
+  const flowerMat = makeFoliageMat({}, 2.5);
+  const FLOWER = [0xf0e040, 0xffffff, 0xe05a8a, 0x9a6ae0, 0xff8a3a];
+  const bushGeo = bake([paint(blob(0.6, 0.45, 0.6, { detail: 1, lump: 0.28, seed: 4, flat: 0.6 }), (x, y, z, nx, ny) => new THREE.Color(0x2e6a22).multiplyScalar(0.7 + 0.45 * (0.5 + ny * 0.5)))]);
+  bushGeo.translate(0, 0.25, 0);
+  const pebGeo = bake([col(blob(0.12, 0.07, 0.1, { detail: 0, lump: 0.3, seed: 9 }), 0x8a857c, 0.3)]);
+  const grassGeo = tuftGeometry(), flowerGeo = flowerGeometry();
+  // Collect placements per chunk, then build one InstancedMesh per (chunk, kind).
+  const buckets = new Map(); // key -> { grass:[], flowers:[], bushes:[], pebbles:[] }
+  function bucket(x, z) {
+    const cx = Math.floor((x + WORLD_HALF) / CHUNK_SIZE), cz = Math.floor((z + WORLD_HALF) / CHUNK_SIZE);
+    const key = cx + ',' + cz;
+    if (!buckets.has(key)) buckets.set(key, { grass: [], flowers: [], bushes: [], pebbles: [] });
+    return buckets.get(key);
+  }
+  function scatterInto(kind, count, range, pad, scaleMin, scaleMax, colorFn) {
     let n = 0;
     for (let tries = 0; n < count && tries < count * 6; tries++) {
       const x = (rng() - 0.5) * range * 2, z = (rng() - 0.5) * range * 2;
       if (!ok(x, z, pad)) continue;
-      const s = scaleMin + rng() * (scaleMax - scaleMin);
-      m4.compose(p.set(x, 0, z), q.setFromEuler(e.set(0, rng() * Math.PI * 2, 0)), sc.set(s, s, s));
-      inst.setMatrixAt(n, m4);
-      if (colorFn) inst.setColorAt(n, colorFn(c));
+      const s = scaleMin + rng() * (scaleMax - scaleMin), ry = rng() * Math.PI * 2;
+      const c = colorFn ? colorFn(new THREE.Color()) : null;
+      bucket(x, z)[kind].push({ x, z, s, ry, c });
       n++;
     }
-    inst.count = n;
-    inst.castShadow = !!shadow; inst.receiveShadow = true;
-    inst.computeBoundingSphere();
-    scene.add(inst);
-    return inst;
   }
-  const grassMat = makeFoliageMat({}, 2.5);
-  const grass = scatter(tuftGeometry(), grassMat, 8000, WORLD_HALF - 2, 0.3, 0.7, 1.4, cc => cc.setHSL(0.22 + rng() * 0.06, 0.35, 0.75 + rng() * 0.2));
-  const FLOWER = [0xf0e040, 0xffffff, 0xe05a8a, 0x9a6ae0, 0xff8a3a];
-  const flowers = scatter(flowerGeometry(), makeFoliageMat({}, 2.5), 900, WORLD_HALF - 2, 0.3, 0.8, 1.3, cc => cc.setHex(FLOWER[(rng() * FLOWER.length) | 0]));
-  const bushGeo = bake([paint(blob(0.6, 0.45, 0.6, { detail: 1, lump: 0.28, seed: 4, flat: 0.6 }), (x, y, z, nx, ny) => new THREE.Color(0x2e6a22).multiplyScalar(0.7 + 0.45 * (0.5 + ny * 0.5)))]);
-  bushGeo.translate(0, 0.25, 0);
-  scatter(bushGeo, foliageMat, 320, WORLD_HALF - 3, 1.0, 0.7, 1.4, cc => cc.setHSL(0.27 + rng() * 0.07, 0.4 + rng() * 0.2, 0.55 + rng() * 0.15), true);
-  const pebGeo = bake([col(blob(0.12, 0.07, 0.1, { detail: 0, lump: 0.3, seed: 9 }), 0x8a857c, 0.3)]);
-  scatter(pebGeo, vcMat, 650, WORLD_HALF - 2, 0.2, 0.6, 2.0, cc => cc.setScalar(0.75 + rng() * 0.35));
-  decorFine = [grass, flowers];
+  scatterInto('grass', Math.round(8000 * Math.min(areaScale, 1.6)), WORLD_HALF - 2, 0.3, 0.7, 1.4, cc => cc.setHSL(0.22 + rng() * 0.06, 0.35, 0.75 + rng() * 0.2));
+  scatterInto('flowers', Math.round(900 * Math.min(areaScale, 1.6)), WORLD_HALF - 2, 0.3, 0.8, 1.3, cc => cc.setHex(FLOWER[(rng() * FLOWER.length) | 0]));
+  scatterInto('bushes', Math.round(320 * Math.min(areaScale, 1.5)), WORLD_HALF - 3, 1.0, 0.7, 1.4, cc => cc.setHSL(0.27 + rng() * 0.07, 0.4 + rng() * 0.2, 0.55 + rng() * 0.15));
+  scatterInto('pebbles', Math.round(650 * Math.min(areaScale, 1.5)), WORLD_HALF - 2, 0.2, 0.6, 2.0, cc => cc.setScalar(0.75 + rng() * 0.35));
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), sc = new THREE.Vector3();
+  decorFine = [];
+  for (const [key, lists] of buckets) {
+    const group = new THREE.Group();
+    group.visible = false;
+    group.name = 'decor:' + key;
+    const fine = [];
+    function makeInst(geo, mat, list, shadow) {
+      if (!list.length) return null;
+      const inst = new THREE.InstancedMesh(geo, mat, list.length);
+      list.forEach((it, i) => {
+        m4.compose(p.set(it.x, 0, it.z), q.setFromEuler(e.set(0, it.ry, 0)), sc.set(it.s, it.s, it.s));
+        inst.setMatrixAt(i, m4);
+        if (it.c) inst.setColorAt(i, it.c);
+      });
+      inst.count = list.length;
+      inst.castShadow = !!shadow; inst.receiveShadow = true;
+      inst.computeBoundingSphere();
+      group.add(inst);
+      return inst;
+    }
+    const g = makeInst(grassGeo, grassMat, lists.grass, false); if (g) fine.push(g);
+    const f = makeInst(flowerGeo, flowerMat, lists.flowers, false); if (f) fine.push(f);
+    makeInst(bushGeo, foliageMat, lists.bushes, true);
+    makeInst(pebGeo, vcMat, lists.pebbles, false);
+    scene.add(group);
+    const [kx, kz] = key.split(',').map(Number);
+    decorChunks.set(key, { group, fine, minX: kx * CHUNK_SIZE - WORLD_HALF, minZ: kz * CHUNK_SIZE - WORLD_HALF });
+    for (const m of fine) decorFine.push(m);
+  }
+  // Start with spawn neighbourhood visible.
+  updateDecorChunks(0, 0, 60);
 }
 
 // Pile of items on the ground. Shared look, one small mesh each.

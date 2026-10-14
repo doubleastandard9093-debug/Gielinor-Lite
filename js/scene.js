@@ -6,12 +6,12 @@ export function createScene() {
   const scene = new THREE.Scene();
   // Fog matches the sky's horizon colour so distant land fades into the sky dome.
   scene.background = new THREE.Color(0xbfdcf0);
-  scene.fog = new THREE.FogExp2(0xbfdcf0, 0.0078);
+  scene.fog = new THREE.FogExp2(0xbfdcf0, 0.0064);
   return scene;
 }
 
 export function createCamera() {
-  const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.1, 400);
+  const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.1, 520);
   camera.position.set(0, 16, 12);
   return camera;
 }

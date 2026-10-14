@@ -85,4 +85,4 @@ The game saves itself every 15 seconds and whenever you leave the app. Old saves
 - **Port Sarim** (south-west): bank, general store, Betty's Magic Emporium, the docks agility course, sailors to pickpocket; bandits and the Chaos altar to the south-east
 - **Varrock** (far east): palace, bank, weaponsmith, general store, Aubury's Rune Shop, essence mine, agility course; the scorched wilderness with demons and dragons to the north
 - **Falador** (north-west): White Knights' Castle, bank, armoury, inn, Nessa's herb stall, agility course; ogres and Grumsh to the north-west
-- Signposts at the town roads point the way. The world is 300 x 300 (WORLD_HALF = 150); distant objects are hidden in the fog to keep phones fast.
+- Signposts at the town roads point the way. The world is about 440 x 440 (WORLD_HALF = 220); trees/rocks are instanced, decor streams in 64×64 chunks, and distant objects are hidden in the fog to keep phones fast.

@@ -6,7 +6,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, IS_TOUCH } from './scene.js';
-import { createWorld, createPileMesh, SPAWN, setDecorQuality } from './world.js';
+import { createWorld, createPileMesh, SPAWN, setDecorQuality, updateDecorChunks } from './world.js';
 import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt } from './player.js';
 import { createCameraRig, rotateRig, zoomRig, updateRig } from './camera.js';
 import { setupInput } from './input.js';
@@ -1566,7 +1566,7 @@ let frame = 0;
 // ---- Distance culling: the world is big, so only draw what is near (fog hides the edge) ----
 const cullList = [...nodes, ...buildings].filter(e => e && e.mesh);
 function cullWorld() {
-  const R = gfx.quality === 'low' ? 60 : 85, R2 = R * R;
+  const R = gfx.quality === 'low' ? 70 : 100, R2 = R * R;
   const px = pm.mesh.position.x, pz = pm.mesh.position.z;
   for (const e of cullList) {
     const o = e.mesh, dx = o.position.x - px, dz = o.position.z - pz, far = dx * dx + dz * dz > R2;
@@ -1580,6 +1580,7 @@ function cullWorld() {
     else if (!far && o.userData.culled) { o.visible = m.alive || m.dying; o.userData.culled = false; }
   }
   if (scene.userData.packGatherInstances) scene.userData.packGatherInstances();
+  updateDecorChunks(px, pz, gfx.quality === 'low' ? 45 : 60); // fine clutter fades in fog well before this
 }
 
 function animate(now) {
