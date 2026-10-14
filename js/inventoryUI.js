@@ -5,7 +5,7 @@ import { INV_SIZE, slotsUsed } from './playerState.js';
 import { stylesFor, currentStyle, equipmentBonuses, playerMaxHit, playerAccuracy, monsterAccuracy, MONSTER_TYPES, SHOP_STOCK, TOOL_STOCK, sellPrice, buyPrice, stockVisible, bestTool, SHOPS, SPELLS, canCast, castsLeft, runeCost, magicMaxHit, staffRune, BOUNTIES } from './gameplay.js';
 import { boostOf, POTIONS } from './potions.js';
 import { PRAYERS, isActive, drainPerTick, prayerBonus } from './prayer.js';
-import { ABILITIES, unlocked } from './abilities.js';
+import { ABILITIES, unlocked, adrenCost, adrenGain } from './abilities.js';
 import { QUESTS, questStatus, questPoints, QUEST_POINTS_TOTAL, QUEST_TOWNS, activeQuestBonuses } from './quests.js';
 import { esc } from './ui.js';
 import { iconImg } from './icons.js';
@@ -277,7 +277,7 @@ export function createInventoryUI(api) {
       <div class="ablist">${ABILITIES.map(a => {
         const ok = unlocked(skills, a);
         const cd = Math.max(0, (api.cooldowns()[a.id] || 0) - now);
-        return `<div class="ab ${ok ? 'ok' : ''}" ${ok ? `data-ability="${a.id}"` : ''}><span class="abi">${a.icon}</span><div><b>${a.name}</b> <small class="${ok ? 'lvl' : 'need'}">${a.skill} ${a.level}</small><br><small>${a.desc}${cd ? ` <i>(${(cd * 0.6).toFixed(0)}s)</i>` : ''}</small></div></div>`;
+        return `<div class="ab ${ok ? 'ok' : ''}" ${ok ? `data-ability="${a.id}"` : ''}><span class="abi">${a.icon}</span><div><b>${a.name}</b> <small class="${ok ? 'lvl' : 'need'}">${a.skill} ${a.level}</small> <small class="tier t-${a.tier || 'basic'}">${(a.tier || 'basic')}${adrenCost(a) ? ` · ${adrenCost(a)}% adrenaline` : ` · +${adrenGain(a)}%`}</small><br><small>${a.desc}${cd ? ` <i>(${(cd * 0.6).toFixed(0)}s)</i>` : ''}</small></div></div>`;
       }).join('')}</div>
       <button class="toggle ${player.settings.autoRetaliate ? 'on' : ''}" data-act="retaliate">Auto Retaliate: ${player.settings.autoRetaliate ? 'On' : 'Off'}</button>
       <button class="toggle ${player.settings.run ? 'on' : ''}" data-act="run">Run: ${player.settings.run ? 'On' : 'Off'} (${Math.floor(player.runEnergy)}%)</button>
@@ -529,7 +529,8 @@ export function createInventoryUI(api) {
       const cd = Math.max(0, (api.cooldowns()[a.id] || 0) - now);
       const total = api.cooldownOf(a);
       const queued = api.queued() === a.id;
-      return `<button data-ability="${a.id}" class="${cd ? 'cd' : ''} ${queued ? 'queued' : ''}" title="${esc(a.name)}: ${esc(a.desc)}"><span>${a.icon}</span>${cd ? `<i style="--cd:${(cd / total * 100).toFixed(1)}%"></i><b>${Math.ceil(cd * 0.6)}</b>` : ''}${i < 8 ? `<kbd>${i + 1}</kbd>` : ''}</button>`;
+      const cost = adrenCost(a), low = cost && (api.adrenaline ? api.adrenaline() : 0) < cost;
+      return `<button data-ability="${a.id}" class="${cd ? 'cd' : ''} ${queued ? 'queued' : ''} t-${a.tier || 'basic'} ${low ? 'noadr' : ''}" data-tip="${esc(a.name)} (${a.tier || 'basic'}${cost ? `, costs ${cost}% adrenaline` : `, +${adrenGain(a)}% adrenaline`}): ${esc(a.desc)}"><span>${a.icon}</span>${cost ? `<em>${cost}</em>` : ''}${cd ? `<i style="--cd:${(cd / total * 100).toFixed(1)}%"></i><b>${Math.ceil(cd * 0.6)}</b>` : ''}${i < 8 ? `<kbd>${i + 1}</kbd>` : ''}</button>`;
     }).join('');
     bar.style.display = list.length ? 'grid' : 'none';
     if (bar._html !== html) { bar._html = html; bar.innerHTML = html; }

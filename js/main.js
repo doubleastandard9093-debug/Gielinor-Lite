@@ -18,6 +18,7 @@ import { setupUI } from './ui.js';
 import { createOverlays } from './overlays.js';
 import { createMinimap } from './minimap.js';
 import { createHud } from './hud.js';
+import { adrenCost, adrenGain } from './abilities.js';
 import { createSkills, addXP, combatLevel, SKILL_ICONS, perk, perksBetween, maxPrayer, setPerkBoost } from './skills.js';
 import { createPlayerState, addItem, removeItem, recalcMaxHp, roomFor, canAdd } from './playerState.js';
 import { RECIPES, ITEMS, canCraft, hasInputs, recipeOutputQty, examineItem, isRangedWeapon, slotFor, isTool, toolType, TOOL_TYPES, WOODS, rarityOf, rarityColor } from './items.js';
@@ -175,6 +176,7 @@ function shadowsOn() {
 const invUI = createInventoryUI({
   player, skills,
   attackSpeed: () => attackSpeedTicks(player),
+  adrenaline: () => (hud ? hud.adrenaline : 0),
   shadowsOn: () => !!dirLight.castShadow,
   shadowsNote: () => gfx.quality === 'low' ? ' (Low graphics)' : '',
   gfxLabel: () => gfxLabel(),
@@ -1209,6 +1211,12 @@ function useAbility(id) {
   const ranged = isRangedWeapon(player.equipment.weapon);
   if (a.style === 'melee' && ranged) { log(`${a.name} needs a melee weapon.`, 'warn'); return; }
   if (a.style === 'ranged' && !ranged) { log(`${a.name} needs a bow.`, 'warn'); return; }
+  const cost = adrenCost(a);
+  const adr = hud ? hud.adrenaline : 0;
+  if (cost && adr + 1e-6 < cost) { log(`${a.name} needs ${cost}% adrenaline (you have ${Math.floor(adr)}%). Use basic skills and land hits to build it.`, 'warn'); return; }
+  const queuedNeedsTarget = !['fortify', 'rage', 'rejuv'].includes(id);
+  if (queuedNeedsTarget && (!action || action.kind !== 'attack' || !action.mon.alive)) { log('Attack something first, then use that.', 'warn'); return; }
+  if (hud) { if (cost) hud.spend(cost); else hud.gain(adrenGain(a)); }
   const cd = cooldownTicks(skills, a);
   if (id === 'fortify') { buffs.fortifyUntil = tick + 10; cooldowns[id] = tick + cd; log('You brace yourself. (Fortify: 50% less damage)', 'combat'); }
   else if (id === 'rage') { buffs.rageUntil = tick + 15; cooldowns[id] = tick + cd; log('You fly into a rage! (Berserk)', 'combat'); }
@@ -1899,7 +1907,7 @@ document.addEventListener('pointerdown', e => {
 }, true);
 window.gielinor = {
   gfx, terrainHeight, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
-  renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, giveXP, setAutocast, get crossing() { return crossing; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
+  renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }

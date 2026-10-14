@@ -88,5 +88,9 @@ export function createHud({ player, skills, monsters, getTarget, levelColor, com
       el.style.setProperty('--p', e && m ? ((e.left / m) * 100).toFixed(1) + '%' : '100%');
     });
   }
-  return { update, get adrenaline() { return adrenaline; } };
+  return {
+    update, get adrenaline() { return adrenaline; },
+    spend(n) { if (adrenaline + 1e-6 < n) return false; adrenaline = Math.max(0, adrenaline - n); lastFight = performance.now(); return true; },
+    gain(n) { adrenaline = Math.min(100, adrenaline + n); lastFight = performance.now(); }
+  };
 }
