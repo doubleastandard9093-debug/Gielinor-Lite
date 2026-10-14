@@ -250,6 +250,8 @@ function paintGroundMask(size) {
   blob(132, -22, 6, '255,0,0', 0.9);     // Varrock essence mine
   blob(-80, 74, 6, '0,255,0', 0.8);      // Port Sarim sandy docks
   blob(122, -122, 18, '255,0,0', 0.45);  // scorched wilderness
+  blob(130, -175, 7.8, '0,255,0', 1);    // mountain pond shore
+  for (const [x, z, r] of [[-175, -150, 7], [205, 120, 12], [-225, 40, 6], [-205, 95, 6], [160, 205, 7], [-20, 230, 4], [60, -205, 8]]) blob(x, z, r, '255,0,0', 0.5); // trodden camps
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.NoColorSpace;
   tex.flipY = false;
@@ -257,9 +259,19 @@ function paintGroundMask(size) {
   return tex;
 }
 
-export function insideLake(x, z, pad = 0) {
-  return Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r + pad;
+// Small ponds out in the wilds (fishing). insideLake covers them too.
+// Landmarks out in the wilds, listed on nearby signposts.
+export const LANDMARKS = [
+  { n: "Travellers' camp", x: -175, z: -150 }, { n: 'Old ruins', x: 205, z: 120 }, { n: 'Watchtower', x: -225, z: 40 }, { n: 'Bandit hideout', x: -205, z: 95 },
+  { n: "Hunter's camp", x: 160, z: 205 }, { n: 'Wayside shrine', x: -20, z: 230 }, { n: 'Mountain cave', x: 60, z: -205 }, { n: 'Mountain pond', x: 130, z: -175 }
+];
+export const PONDS = [{ x: 130, z: -175, r: 5 }];
+export function waterAt(x, z, pad = 0) {
+  if (Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r + pad) return LAKE;
+  for (const p of PONDS) if (Math.hypot(x - p.x, z - p.z) < p.r + pad) return p;
+  return null;
 }
+export function insideLake(x, z, pad = 0) { return !!waterAt(x, z, pad); }
 
 export function createWorld(scene) {
   const rng = makeRng(2004);
@@ -948,7 +960,8 @@ export function createWorld(scene) {
     pickables.push(g);
     colliders.push({ minX: x - 0.15, maxX: x + 0.15, minZ: z - 0.15, maxZ: z + 0.15 });
     const guilds = GUILDS.map(G => ({ n: `${G.name} (${G.skill} ${G.level})`, dx: G.x - x, dz: G.z - z, d: Math.hypot(G.x - x, G.z - z) })).filter(t => t.d < 75);
-    const text = 'The signpost reads: ' + [...away, ...guilds].map(t => `${t.n}, ${compass(t.dx, t.dz)} (${Math.round(t.d)} steps)`).join(' · ');
+    const marks = LANDMARKS.map(L => ({ n: L.n, dx: L.x - x, dz: L.z - z, d: Math.hypot(L.x - x, L.z - z) })).filter(t => t.d > 12 && t.d < 140).sort((a, b) => a.d - b.d).slice(0, 3);
+    const text = 'The signpost reads: ' + [...away, ...guilds, ...marks].map(t => `${t.n}, ${compass(t.dx, t.dz)} (${Math.round(t.d)} steps)`).join(' · ');
     return tag(g, { mesh: g, type: 'sign', name: 'Signpost', text, alive: true, x, z, radius: 0.6 });
   }
 
@@ -1194,6 +1207,125 @@ export function createWorld(scene) {
       const bk = createBank(b.x + ux * half + dn.nx * 0.4, b.z + uz * half + dn.nz * 0.4);
       nodes.push(bk);
     }
+  }
+
+  // ---- The wilds: points of interest across the outer ring (own rng, after everything else) ----
+  {
+    const wr = makeRng(5150);
+    const flat = (x, z, r) => { FLAT_SPOTS.push({ x, z, r }); occupied.push({ x, z, r }); };
+    const solid = (x, z, hw, hd) => colliders.push({ minX: x - hw, maxX: x + hw, minZ: z - hd, maxZ: z + hd });
+    const prop = (x, z, parts, name, examine, ry = 0, extra = {}) => {
+      const g = new THREE.Group(); g.add(kit(parts)); g.position.set(x, 0, z); g.rotation.y = ry; scene.add(g); pickables.push(g);
+      return tag(g, { mesh: g, type: 'poi', name, examine, alive: true, x, z, radius: 1, ...extra });
+    };
+    const fireAt = (x, z) => {
+      const parts = [];
+      for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; parts.push([blob(0.16, 0.11, 0.14, { detail: 1, lump: 0.2, seed: i }), 0x7a7268, Math.cos(a) * 0.5, 0.08, Math.sin(a) * 0.5]); }
+      parts.push([prim.cyl(0.06, 0.06, 0.8, 7), 0x4a2e16, 0, 0.12, 0, 0, 0.4, Math.PI / 2], [prim.cyl(0.06, 0.06, 0.8, 7), 0x4a2e16, 0, 0.14, 0, 0, -0.6, Math.PI / 2]);
+      const e = prop(x, z, parts, 'Campfire', 'A crackling campfire. You could cook on it.', 0, { type: 'station', kind: 'range' });
+      const fl = new THREE.Mesh(prim.cone(0.25, 0.7, 8), glowMat(0xff8a2a)); fl.position.y = 0.45; e.mesh.add(fl);
+      const fl2 = new THREE.Mesh(prim.cone(0.14, 0.45, 7), glowMat(0xffd060)); fl2.position.y = 0.35; e.mesh.add(fl2);
+      e.name = 'Campfire'; return e;
+    };
+    const tent = (x, z, ry, hex) => {
+      const p = [[prim.prism(2.2, 1.7, 2.6), hex, 0, 0, 0, 0, 0, 0, 0.3], [prim.box(0.06, 1.9, 0.06), 0x5a3a1e, 0, 0.95, 1.32], [prim.box(0.06, 1.9, 0.06), 0x5a3a1e, 0, 0.95, -1.32],
+        [prim.prism(0.9, 1.0, 0.04), 0x2a2018, 0, 0, 1.31, 0, 0, 0, 0]];
+      for (const sx of [-1, 1]) p.push([prim.cyl(0.01, 0.01, 1.4, 4), 0xd8c89a, sx * 1.5, 0.6, 1.5, 0.4, 0, sx * 0.9]);
+      const e = prop(x, z, p, 'Tent', 'A weathered canvas tent.', ry); solid(x, z, 1.1, 1.3); return e;
+    };
+    const npcAt = (x, z, id, name, look, say, extra = {}) => { const n = createNpc(x, z, id, name, look, x + 1, z + 1); Object.assign(n, { say, ...extra }); nodes.push(n); return n; };
+    const bush = (x, z, item) => {
+      const leaf = 0x3a6a2a, berry = item === 'White berries' ? 0xf0f0e0 : 0xc02040;
+      const g = new THREE.Group(); const full = new THREE.Group();
+      g.add(kit([[blob(0.6, 0.5, 0.6, { detail: 2, lump: 0.25, seed: x }), leaf, 0, 0.5, 0], [blob(0.4, 0.35, 0.4, { detail: 1, lump: 0.25, seed: z }), 0x4a7a32, 0.3, 0.75, 0.2]]));
+      const bp = []; for (let i = 0; i < 14; i++) { const a = i * 2.4, e2 = (i % 4) * 0.3; bp.push([prim.sphere(0.055, 6, 5), berry, Math.cos(a) * 0.55 * Math.cos(e2), 0.5 + Math.sin(e2) * 0.45, Math.sin(a) * 0.55 * Math.cos(e2), 0, 0, 0, 0.1]); }
+      full.add(kit(bp)); g.add(full);
+      g.position.set(x, 0, z); scene.add(g); pickables.push(g);
+      return tag(g, { mesh: g, full, type: 'forage', name: item === 'White berries' ? 'White berry bush' : 'Redberry bush', item, alive: true, x, z, radius: 0.8, xp: item === 'White berries' ? 18 : 8, level: item === 'White berries' ? 20 : 1 });
+    };
+    const wall = (x, z, w, h, ry, p) => p.push([prim.box(w, h, 0.5), 0x8a8478, x, h / 2, z, 0, ry, 0, 0.35], [blob(w * 0.3, 0.12, 0.3, { detail: 1, lump: 0.4, seed: x + z }), 0x4a6a2a, x, h, z]);
+
+    // 1) Travellers' campsite (north-west)
+    { const cx = -175, cz = -150; flat(cx, cz, 9);
+      nodes.push(fireAt(cx, cz)); tent(cx - 4, cz - 3, 0.6, 0x8a6a4a); tent(cx + 4, cz - 3.5, -0.5, 0x5a6a4a);
+      prop(cx + 1.6, cz + 1.4, [[prim.cyl(0.2, 0.2, 1.2, 9), 0x6a4a2a, 0, 0.2, 0, 0, 0, Math.PI / 2]], 'Log seat', 'A log to sit on by the fire.', 0.4);
+      npcAt(cx - 1.8, cz + 1.2, 'camper', 'Weary Traveller', { body: 0x6a5a4a, legs: 0x3a3028, beard: 0x5a4a3a }, "The road from Falador is long. Rest by the fire a while; you can cook on it if you've caught anything.");
+      npcAt(cx + 2.2, cz - 0.6, 'bard', 'Wandering Bard', { body: 0x8a2a4a, legs: 0x2a2a3a, hat: 0x6a1a3a, hatH: 0.16 }, "I sing of the snowy peaks to the north. They say a cave there runs deep, crawling with spiders.");
+    }
+    // 2) Old ruins (east) with the restless dead
+    { const cx = 205, cz = 120; flat(cx, cz, 14); const p = [];
+      wall(-5, -4, 6, 2.6, 0, p); wall(-8, 0, 5, 1.6, Math.PI / 2, p); wall(4, -5, 3, 1.1, 0.1, p); wall(7, 1, 4, 2.0, Math.PI / 2, p); wall(1, 6, 5, 0.9, 0.05, p);
+      for (const [x, z, h] of [[-3, 3, 3.4], [2, 3, 1.4], [-1, -1, 2.6]]) p.push([prim.cyl(0.4, 0.45, h, 12), 0xa8a294, x, h / 2, z, 0, 0, 0, 0.3]);
+      p.push([prim.cyl(0.4, 0.4, 3.2, 12), 0x9a9486, 4, 0.4, -1, 0, 0.3, Math.PI / 2, 0.3]);
+      const r = prop(cx, cz, p, 'Ancient ruins', 'The broken walls of a forgotten keep. Something stirs among the stones.');
+      solid(cx - 5, cz - 4, 3, 0.3); solid(cx - 8, cz, 0.3, 2.5); solid(cx + 7, cz + 1, 0.3, 2);
+      for (const [x, z] of [[-2, 1], [3, -2], [0, 4], [-5, 3]]) monsters.push(createMonster('Skeleton', cx + x, cz + z, 3));
+      for (const [x, z] of [[6, 5], [-6, -6]]) monsters.push(createMonster('Zombie', cx + x, cz + z, 3));
+      npcAt(cx - 12, cz + 2, 'warden', 'Ruins Warden', { body: 0x4a4a5a, legs: 0x2a2a3a, hat: 0x6a6a72, hatH: 0.26 }, null, { bounty: { id: 'ruins', mon: 'Skeleton', n: 5, gp: 350, xp: { Prayer: 300, Defence: 400 }, ask: "The dead won't stay down in those ruins. Put five skeletons back in the ground and I'll pay you." } });
+    }
+    // 3) Watchtower on the western plateau + bandit hideout
+    { const cx = -225, cz = 40; flat(cx, cz, 7); const p = [];
+      p.push([prim.cyl(2.0, 2.4, 7, 16), 0x8a8478, 0, 3.5, 0, 0, 0, 0, 0.4], [prim.cyl(2.6, 2.6, 0.3, 16), 0x6a5a4a, 0, 7.15, 0]);
+      for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; p.push([prim.box(0.6, 0.7, 0.4), 0x8a8478, Math.cos(a) * 2.4, 7.6, Math.sin(a) * 2.4, 0, -a, 0, 0.3]); }
+      p.push([prim.cone(2.9, 2.4, 16), 0x7a3a2a, 0, 9.4, 0, 0, 0, 0, 0.3], [prim.box(1.0, 1.9, 0.2), 0x3a2a1a, 0, 0.95, 2.3, 0, 0, 0, 0], [prim.box(0.4, 0.8, 0.2), 0x1a1a22, 1.3, 4.5, 1.8, 0, 0.6, 0]);
+      prop(cx, cz, p, 'Watchtower', 'A stone watchtower keeping an eye on the western highlands.'); solid(cx, cz, 2.2, 2.2);
+      npcAt(cx + 2.5, cz + 3.5, 'watchman', 'Captain Brann', { body: 0x3a3a6a, legs: 0x2a2a3a, hat: 0x8a8a94, hatH: 0.26 }, null, { bounty: { id: 'bandits', mon: 'Bandit', n: 4, gp: 400, xp: { Attack: 350, Strength: 350 }, ask: "Bandits hide out in the rocks north of my tower. Bring four of them to justice and the crown will reward you." } });
+      const bx = -205, bz = 95; flat(bx, bz, 7); tent(bx, bz - 2, 0.2, 0x4a3a2a); nodes.push(fireAt(bx + 2, bz + 2));
+      for (const [x, z] of [[-3, 3], [3, -2], [4, 4], [-2, -4]]) monsters.push(createMonster('Bandit', bx + x, bz + z, 3));
+      nodes.push(createSignpost(cx + 5, cz + 6));
+    }
+    // 4) Hunter camp (south-east) with a wolf pack in the dale
+    { const cx = 160, cz = 205; flat(cx, cz, 8); tent(cx - 3, cz - 2, -0.3, 0x6a5a3a); nodes.push(fireAt(cx + 1.5, cz + 1));
+      const rack = []; for (const x of [-1, 1]) rack.push([prim.box(0.1, 1.8, 0.1), 0x5a3a1e, x, 0.9, 0]); rack.push([prim.box(2.2, 0.08, 0.08), 0x5a3a1e, 0, 1.7, 0]);
+      for (let i = 0; i < 3; i++) rack.push([prim.box(0.5, 0.8, 0.03), [0x8a6a4a, 0x7a7a80, 0x9a8a70][i], -0.7 + i * 0.7, 1.25, 0, 0, 0, 0, 0.2]);
+      prop(cx + 3.5, cz - 2.5, rack, 'Drying rack', 'Pelts drying in the wind.', 0.5);
+      npcAt(cx + 0.5, cz + 3.4, 'hunter', 'Rhea the Hunter', { body: 0x4a5a2a, legs: 0x3a3020, hat: 0x3a4a1a, hatH: 0.16 }, null, { bounty: { id: 'wolves', mon: 'Wolf', n: 5, gp: 300, xp: { Ranged: 400, Agility: 150 }, ask: "Wolves have been taking deer all along the dale. Thin the pack: five wolves, and I'll pay you in coin and know-how." } });
+      for (let i = 0; i < 6; i++) monsters.push(createMonster('Wolf', cx - 20 + (wr() - 0.5) * 16, cz - 25 + (wr() - 0.5) * 12, 4));
+      nodes.push(createSignpost(cx + 6, cz + 5));
+    }
+    // 5) Wayside shrine (south) — pray to restore prayer
+    { const cx = -20, cz = 230; flat(cx, cz, 6);
+      const g = new THREE.Group(); const p = [[prim.cyl(1.6, 1.8, 0.3, 18), 0x9a9486, 0, 0.15, 0], [prim.box(1.0, 1.2, 0.6), 0xd8d0c0, 0, 0.9, 0], [prim.cone(0.7, 0.9, 4), 0xc8c0b0, 0, 1.95, 0, 0, Math.PI / 4]];
+      for (let i = 0; i < 4; i++) { const a = i / 4 * Math.PI * 2 + 0.785; p.push([prim.cyl(0.12, 0.14, 1.6, 8), 0xb8b0a0, Math.cos(a) * 1.3, 0.9, Math.sin(a) * 1.3]); }
+      g.add(kit(p)); const orb = new THREE.Mesh(prim.sphere(0.18, 14, 10), glowMat(0x9ad8ff)); orb.position.y = 1.65; g.add(orb);
+      g.position.set(cx, 0, cz); scene.add(g); pickables.push(g); solid(cx, cz, 0.6, 0.4);
+      nodes.push(tag(g, { mesh: g, type: 'altar', name: 'Wayside shrine', alive: true, x: cx, z: cz, radius: 1.2 }));
+      for (let i = 0; i < 5; i++) { const a = i * 1.3; nodes.push(bush(cx + Math.cos(a) * 7, cz + Math.sin(a) * 7, i % 2 ? 'White berries' : 'Redberries')); }
+    }
+    // 6) Cave entrance in the northern mountains, guarded by giant spiders, with ore outside
+    { const cx = 60, cz = -205; flat(cx, cz, 10); const p = [];
+      for (let i = 0; i < 9; i++) { const a = Math.PI * (i / 8); p.push([blob(1.4, 1.6, 1.2, { detail: 2, lump: 0.25, seed: i }), 0x6a645c, Math.cos(a) * 3, Math.sin(a) * 3.2, -1, 0, 0, 0]); }
+      p.push([blob(2.8, 2.4, 1.0, { detail: 2, lump: 0.1, seed: 9 }), 0x08080a, 0, 1.4, -1.6, 0, 0, 0, 0]);
+      for (let i = 0; i < 5; i++) p.push([prim.cone(0.12, 0.6, 6), 0x5a544c, -1.6 + i * 0.8, 3.0, -0.4, Math.PI]);
+      prop(cx, cz, p, 'Cave entrance', 'A dark cave mouth breathing cold air. Webs hang across it; it looks too dangerous to enter yet.'); solid(cx, cz - 1.2, 4, 1.4);
+      for (const [x, z] of [[-4, 4], [4, 5], [0, 7]]) monsters.push(createMonster('Giant Spider', cx + x, cz + z, 3));
+      for (const [ore, x, z] of [['Coal', -7, 2], ['Coal', -8, 4], ['Mithril', 7, 2], ['Iron', 8, 4]]) nodes.push(createRock(cx + x, cz + z, ore));
+      for (const [x, z] of [[-60, -230], [-20, -250], [110, -240]]) monsters.push(createMonster('Ice Giant', x, z, 4));
+    }
+    // 7) Mountain pond with fishing spots (north-east foothills)
+    { const P = PONDS[0]; flat(P.x, P.z, P.r + 5);
+      const w = new THREE.Mesh(new THREE.CircleGeometry(P.r + 0.25, 48), hookWaterNoise(waterMaterial(P.x, P.z, P.r + 0.25))); w.rotation.x = -Math.PI / 2; w.position.set(P.x, 0.05, P.z); scene.add(w);
+      const b = new THREE.Mesh(new THREE.CircleGeometry(P.r + 0.3, 32), new THREE.MeshBasicMaterial({ color: 0x0c2a3a })); b.rotation.x = -Math.PI / 2; b.position.set(P.x, 0.015, P.z); scene.add(b);
+      ['Lure', 'Net', 'Cage'].forEach((k, i) => { const a = i * 2.1; nodes.push(createFish(P.x + Math.cos(a) * (P.r - 0.6), P.z + Math.sin(a) * (P.r - 0.6), k)); });
+      npcAt(P.x + P.r + 1.5, P.z, 'angler', 'Old Angler', { body: 0x3a5a6a, legs: 0x3a3a2a, hat: 0x6a8a3a, hatW: 0.7, hatH: 0.1 }, "Quiet up here. Trout and salmon bite on the lure, and there's lobster if you've a cage.");
+    }
+    // 8) Berry thickets scattered through the ring, and a few more wild spawns
+    for (let i = 0; i < 18; i++) {
+      for (let t = 0; t < 20; t++) {
+        const a = wr() * Math.PI * 2, d = 170 + wr() * 100, x = Math.cos(a) * d, z = Math.sin(a) * d;
+        if (Math.abs(x) > WORLD_HALF - 8 || Math.abs(z) > WORLD_HALF - 8 || occupied.some(o => Math.hypot(o.x - x, o.z - z) < o.r + 2)) continue;
+        occupied.push({ x, z, r: 1 }); nodes.push(bush(x, z, wr() < 0.35 ? 'White berries' : 'Redberries')); break;
+      }
+    }
+    for (const [x, z] of [[-150, 185], [-140, 195], [-160, 200]]) monsters.push(createMonster('Moss Giant', x, z, 4));
+    for (const [x, z] of [[230, -60], [238, -52]]) monsters.push(createMonster('Hill Giant', x, z, 4));
+    for (const [x, z] of [[-245, -120], [-250, -130]]) monsters.push(createMonster('Dark Archer', x, z, 3));
+    // 9) A wandering merchant who walks between the camps
+    { const m = npcAt(-170, -146, 'pedlar', 'Wandering Pedlar', { body: 0x8a6a2a, legs: 0x4a3a2a, hat: 0x5a3a1a, hatW: 0.7, hatH: 0.1 }, null, { shop: 'shop' });
+      m.patrol = [[-170, -146], [-150, -120], [-125, -95], [-150, -120]]; m.wander = true; }
+    { const m = npcAt(196, 118 + 12, 'pilgrim', 'Pilgrim', { body: 0xd8d0b0, legs: 0x8a8070 }, "I walk from the ruins to the shrine and back, and pray for the lost along the way.");
+      m.patrol = [[193, 132], [175, 150], [160, 170], [175, 150]]; m.wander = true; }
+    for (const [x, z] of [[-168, -132], [196, 132], [-12, 222], [52, -190], [174, 112]]) nodes.push(createSignpost(x, z));
   }
 
   // ---- Elevation: keep every town, road, building and work spot level, then lift the land ----

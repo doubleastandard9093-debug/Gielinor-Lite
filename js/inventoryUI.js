@@ -25,6 +25,17 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>The wilds come alive.</b> The outer ring of the map now has places to find, each with a signpost pointing the way and a white dot on the minimap:</p>
+<ul>
+<li><b>Travellers' camp</b> (far north-west): tents, a campfire you can cook on, a traveller, a bard, and a <b>Wandering Pedlar</b> who trades on the road.</li>
+<li><b>Old ruins</b> (east): skeletons and zombies, plus the <b>Ruins Warden</b>, who pays a repeatable bounty for 5 skeletons.</li>
+<li><b>Watchtower</b> (west highlands): <b>Captain Brann</b> pays a repeatable bounty for 4 bandits from the hideout to the north.</li>
+<li><b>Hunter's camp</b> (south-east): <b>Rhea the Hunter</b> pays a repeatable bounty for 5 wolves from the pack in the dale.</li>
+<li><b>Wayside shrine</b> (south): pray here to restore your prayer.</li>
+<li><b>Mountain cave</b> (north): guarded by giant spiders, with coal, iron and mithril rocks outside and Ice Giants on the slopes.</li>
+<li><b>Mountain pond</b> (north-east): Lure, Net and Cage fishing, and an old angler.</li>
+</ul>
+<p>Redberry and white berry bushes grow across the countryside; pick them for Herblore XP. Moss Giants roam the southern dale, Hill Giants the east and Dark Archers the far west. Birds fly overhead, and rabbits and deer graze in the open and bolt when you get close.</p>
 <p><b>Hills, valleys and mountains.</b> The land now rolls. Gentle hills start just outside town and grow toward the edge of the map, with winding ridges, a low dale in the south, a raised plateau in the far west and a snow-capped mountain range across the far north. Steep slopes show bare rock and the peaks have snow. Towns, roads, buildings, the lake and every work spot stay level, and you, the townsfolk and the monsters all walk on the ground. The camera follows you up and down.</p>
 <p><b>Richer shading.</b> Characters have their own materials. Skin has fine pore detail and a warm glow where light passes through it, fur has a soft sheen and a rim of sky light, dragon scales are glossier, and spider shells shine. Every character has a soft contact shadow underneath. On High, sun shadows are sharper and higher resolution (4096), and the light balance shows form better. Low keeps the cheap path.</p>
 <p><b>Detailed monsters.</b> Up close, every mob uses a new detailed model. Wolves have shaggy fur, a neck ruff, teeth, amber eyes and jointed legs with paws. Cows have patterned hides, udders, split hooves and sometimes horns. Giant spiders have eight three-jointed legs, eight eyes, fangs and hourglass, banded or spotted markings. Dragons have scales, belly plates, curved horns, back spines and boned wing membranes. Goblins are wiry with pointed ears and claws, and giants and ogres are heavily muscled. No two spawns look the same: size, colour, markings, ears, tails and horns vary. Watch out for rare named ones such as <i>Scarface the Wolf</i>, <i>Old Bessie the Cow</i> and <i>Snaggletooth the Goblin</i>.</p>

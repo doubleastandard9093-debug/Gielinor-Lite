@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { shapes, contactShadow } from './anatomy.js';
 import { terrainHeight } from './world.js';
-import { WORLD_HALF, insideLake, LAKE, colliders } from './world.js';
+import { WORLD_HALF, waterAt, colliders } from './world.js';
 
 export const WALK_SPEED = 3.3;  // world units per second
 export const RUN_SPEED = 6.2;
@@ -193,10 +193,11 @@ function stepTo(pos, dx, dz, step) {
   pos.z += dz * step;
   pos.x = Math.max(-WORLD_HALF + 1, Math.min(WORLD_HALF - 1, pos.x));
   pos.z = Math.max(-WORLD_HALF + 1, Math.min(WORLD_HALF - 1, pos.z));
-  if (insideLake(pos.x, pos.z, -0.3)) {
-    const ax = pos.x - LAKE.x, az = pos.z - LAKE.z, d = Math.hypot(ax, az) || 1;
-    pos.x = LAKE.x + (ax / d) * (LAKE.r - 0.3);
-    pos.z = LAKE.z + (az / d) * (LAKE.r - 0.3);
+  const W = waterAt(pos.x, pos.z, -0.3);
+  if (W) {
+    const ax = pos.x - W.x, az = pos.z - W.z, d = Math.hypot(ax, az) || 1;
+    pos.x = W.x + (ax / d) * (W.r - 0.3);
+    pos.z = W.z + (az / d) * (W.r - 0.3);
   }
   resolveCollisions(pos);
 }

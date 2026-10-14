@@ -7,9 +7,10 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
 import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from './chunk.js';
-import { terrainHeight } from './world.js';
+import { terrainHeight, insideLake, WORLD_HALF, TOWNS } from './world.js';
 import { createWorld, createPileMesh, SPAWN, setDecorQuality, updateDecorChunks } from './world.js';
 import { updateLod, setLodRange, poseHumanoid } from './anatomy.js';
+import { createCritters } from './critters.js';
 import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt } from './player.js';
 import { createCameraRig, rotateRig, zoomRig, updateRig } from './camera.js';
 import { setupInput } from './input.js';
@@ -61,10 +62,13 @@ const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);
 const pm = createPlayer(scene);
 // Chunk streaming: static props, buildings and NPC stalls attach only near the player.
 scene.updateMatrixWorld(true);
-const chunkSkip = new Set([ground, pm.mesh, ...monsters.map(m => m.mesh)]);
+const wanderers = nodes.filter(n => n.wander);
+const chunkSkip = new Set([ground, pm.mesh, ...monsters.map(m => m.mesh), ...wanderers.map(n => n.mesh)]);
 adoptSceneObjects(scene, chunkSkip);
 for (const m of monsters) registerDynamic(m.mesh, () => m.mesh.position, scene);
+for (const n of wanderers) registerDynamic(n.mesh, () => n.mesh.position, scene);
 window.chunkStats = chunkStats;
+const updateCritters = createCritters(scene, terrainHeight, (x, z) => insideLake(x, z, 1) || blockedAt(x, z) || Math.abs(x) > WORLD_HALF - 4 || Math.abs(z) > WORLD_HALF - 4 || Object.values(TOWNS).some(t => Math.hypot(t.x - x, t.z - z) < 22));
 const skills = createSkills();
 const player = createPlayerState();
 player.mesh = pm.mesh;
@@ -695,6 +699,8 @@ const EXAMINE = {
 };
 function entExamine(ent) {
   if (ent.type === 'building') return `${ent.name}: ${ent.examine}`;
+  if (ent.type === 'poi') return ent.examine;
+  if (ent.type === 'forage') return ent.alive ? `A bush heavy with ${ent.item.toLowerCase()}. (Herblore ${ent.level})` : 'This bush has been picked clean. It will grow back soon.';
   if (ent.type === 'npc') return (NPC_INFO[ent.npc] || {}).examine || `It's ${ent.name}.`;
   if (ent.type === 'tree' && !ent.alive) return 'This tree has been cut down.';
   if (ent.type === 'rock' && !ent.alive) return 'There is currently no ore available in this rock.';
@@ -752,6 +758,7 @@ function optionsFor(ent) {
       return [{ action: verb, target: ent.name, color: cy, fn: () => startAction({ kind: 'station', node: ent }) }, ex];
     }
     case 'altar': return [{ action: 'Pray-at', target: 'Altar', color: cy, fn: () => startAction({ kind: 'altar', node: ent }) }, ex];
+    case 'forage': return [{ action: 'Pick-from', target: ent.name, color: cy, fn: () => startAction({ kind: 'forage', node: ent }) }, ex];
     case 'sign': return [{ action: 'Read', target: 'Signpost', color: cy, fn: () => log(ent.text, 'examine') }, ex];
     case 'agility': return [{ action: ent.verb, target: ent.name, color: cy, fn: () => startAction({ kind: 'agility', node: ent, obstacle: ent.obstacle }) }, ex];
     case 'runealtar': return [{ action: 'Craft-rune', target: ent.name, color: cy, fn: () => startAction({ kind: 'runecraft', node: ent, altar: ent.altar }) }, ex];
@@ -1057,6 +1064,8 @@ function talkTo(ent) {
     // Shopkeepers with quests still offer to trade afterwards.
     const sh = ent.npc === 'bob' ? 'tools' : ent.npc === 'merchant' ? 'shop' : ent.shop;
     if (sh) script = [...script, { choose: [["Let's trade.", [{ run: () => invUI.open(sh) }]], ['Goodbye.', []]] }];
+  } else if (ent.bounty) {
+    script = bountyTalk(ent);
   } else if (ent.say) {
     script = [['npc', ent.say]];
   } else if (ent.shop) {
@@ -1070,6 +1079,32 @@ function talkTo(ent) {
     { choose: [['Let\'s trade.', [{ run: () => invUI.open('shop') }]], ['No thanks.', [['npc', 'Suit yourself.']]]] }
   ];
   ui.dialogue(name, face, script, () => { updateQuestMarks(); markDirty(); });
+}
+// ---- Wilds: foraging and repeatable bounties ----
+function forage(ent) {
+  if (!ent.alive) { log('The bush has been picked clean. Come back later.', 'warn'); return; }
+  if (skills.Herblore.level < ent.level) { log(`You need a Herblore level of ${ent.level} to pick these.`, 'warn'); return; }
+  if (!canAdd(player, ent.item)) { log('Your inventory is too full to hold any more.', 'warn'); return; }
+  const n = 1 + (Math.random() < 0.35 ? 1 : 0);
+  addItem(player, ent.item, n); giveXP('Herblore', ent.xp * n);
+  log(`You pick ${n > 1 ? 'a handful of' : 'some'} ${ent.item.toLowerCase()}.`, 'skill');
+  depleteNode(ent, 45000);
+  markDirty();
+}
+function bountyTalk(ent) {
+  const B = ent.bounty; player.bounties = player.bounties || {};
+  const cur = player.bounties[B.id];
+  if (!cur) return [['npc', B.ask], { choose: [["I'll do it.", [{ run: () => { player.bounties[B.id] = { mon: B.mon, got: 0, n: B.n }; log(`Bounty started: defeat ${B.n} ${B.mon.toLowerCase()}s for ${ent.name}.`, 'game'); markDirty(); } }, ['npc', 'Good. Come back when it is done.']]], ['Not now.', [['npc', 'The offer stands.']]]] }];
+  if (cur.got < cur.n) return [['npc', `${cur.got} of ${cur.n} so far. Keep at it.`]];
+  return [['npc', 'Well done! Here is your reward. Come back any time; there are always more.'], { run: () => {
+    player.gold += B.gp; for (const [sk, xp] of Object.entries(B.xp)) giveXP(sk, xp);
+    delete player.bounties[B.id]; player.bountiesDone = (player.bountiesDone || 0) + 1;
+    log(`Bounty complete! You receive ${B.gp} coins and experience.`, 'loot', '#ffd700'); markDirty();
+  } }];
+}
+function bountyKill(name) {
+  if (!player.bounties) return;
+  for (const b of Object.values(player.bounties)) if (b.mon === name && b.got < b.n) { b.got++; log(b.got >= b.n ? `Bounty: all ${b.n} ${name.toLowerCase()}s defeated. Return for your reward.` : `Bounty: ${b.got}/${b.n} ${name.toLowerCase()}s.`, 'game'); }
 }
 function updateQuestMarks() {
   for (const n of nodes) if (n.type === 'npc') n.questMark = questsForNpc(n.npc).some(x => !isDone(player, x.id));
@@ -1195,6 +1230,7 @@ function killMonster(mon, now) {
     log(`Bloodlust: you heal ${heal} hitpoints.`, 'combat');
   }
   for (const m of onKill(player, mon.name)) log(m, 'game');
+  bountyKill(mon.name);
   if (action && action.mon === mon) stopAction();
   const drops = rollLoot(mon.name);
   const x = mon.mesh.position.x, z = mon.mesh.position.z;
@@ -1388,6 +1424,7 @@ function updateAction() {
   else if (a.kind === 'bank') { invUI.open('bank'); stopAction(); }
   else if (a.kind === 'shop') { log(`${ent.name}: "Have a look at my wares."`, 'game'); invUI.open(a.shop || 'shop'); stopAction(); }
   else if (a.kind === 'talk') { stopAction(); talkTo(ent); }
+  else if (a.kind === 'forage') { stopAction(); pm.actionAnim = 1; pm.actionKind = 'tool'; forage(ent); }
   else if (a.kind === 'well') { stopAction(); pm.actionAnim = 1; pm.actionKind = 'tool'; fillVials(); }
   else if (a.kind === 'altar') {
     stopAction();
@@ -1728,6 +1765,7 @@ function animate(now) {
   updateMonsters(dt, now);
   updatePatrols(dt, now);
   updateCharacters(dt, now);
+  updateCritters(dt, now, pm.mesh.position.x, pm.mesh.position.z);
   updateFish(dt);
   updateFires(now);
   updateArrow(dt);
