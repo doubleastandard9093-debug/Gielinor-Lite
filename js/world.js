@@ -4,6 +4,7 @@ import { MONSTER_TYPES, AGILITY_COURSES, RUNE_ALTARS } from './gameplay.js';
 import { QUEST_NPCS } from './questnpcs.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
 import { buildHumanoidRig, varyLook, hashStr } from './anatomy.js';
+import { buildCreatureRig, rollVariant, namedVariant } from './creatures.js';
 import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap } from './models.js';
 
 // The world is about 440 x 440. Chunked decor + instance packing keep phones smooth.
@@ -751,33 +752,49 @@ export function createWorld(scene) {
       default: return [[hairCapG(0.29), 0x9a9aa8, 0, 1.76, 0, 0, 0, 0, 0.1], [prim.cyl(0.03, 0.03, 2.2, 6), 0x6a5a3a, 0.45, 1.15, 0.15], [prim.cone(0.07, 0.3, 4), 0xb0b0b8, 0.45, 2.38, 0.15]];
     }
   }
+  let monSeq = 0;
   function createMonster(typeName, x, z, roam, bounds = null) {
     const t = MONSTER_TYPES[typeName];
     const root = new THREE.Group();
     const body = new THREE.Group();
     const legs = [];
-    const c = t.color;
+    const seed = hashStr(typeName + (monSeq++) + x.toFixed(2));
+    const v = rollVariant(typeName, t, seed);
+    const variant = t.boss ? null : namedVariant(typeName, seed);
+    const c = v.color;
     const cr = creatureParts(t.shape, c, typeName);
+    const lo = new THREE.Group(); body.add(lo);
+    let extras = [], headExtras = [];
     if (cr) {
-      body.add(kit(cr.top));
-      for (const L of cr.legs) { const p = legPivot(L.parts, L.x, L.y, L.z); body.add(p); legs.push(p); }
+      lo.add(kit(cr.top));
+      for (const L of cr.legs) { const p = legPivot(L.parts, L.x, L.y, L.z); lo.add(p); legs.push(p); }
     } else {
-      const skin = t.skin || (typeName === 'Goblin' ? 0x6aa040 : typeName === 'Hill Giant' ? 0xb08a5a : typeName === 'Black Knight' ? 0x1a1a22 : 0xd4a574);
+      const skin = v.tint;
       const bald = /Giant|Ogre|Grumsh|Skeleton|Zombie|Demon|Goblin/.test(typeName);
       const h = humanoidParts({ body: c, skin, legs: new THREE.Color(c).multiplyScalar(0.55).getHex(), hair: bald ? null : 0x3a2a1a, sleeve: c });
-      body.add(kit([...h.top, ...monsterExtras(typeName, skin, c)]));
-      for (const lx of [-0.13, 0.13]) { const p = legPivot(h.leg.map(q => [q[0].clone(), ...q.slice(1)]), lx, h.hipY, 0); body.add(p); legs.push(p); }
+      const ex = monsterExtras(typeName, skin, c);
+      // detailed rig: head-height extras ride on the head, the rest on the torso
+      const keep = typeName === 'Goblin' ? ex.slice(3) : /Skeleton|Zombie/.test(typeName) ? ex.slice(2) : ex;
+      for (const [geo, hex, px = 0, py = 0, pz = 0, rx = 0, ry = 0, rz = 0, amt = 0.22] of keep.map(q => [q[0].clone(), ...q.slice(1)])) {
+        if (py > 1.55 && Math.abs(px) < 0.35) headExtras.push(put(col(geo.clone(), hex, amt), px, py - 1.5, pz, rx, ry, rz));
+        else extras.push(put(col(geo.clone(), hex, amt), px, py, pz, rx, ry, rz));
+      }
+      lo.add(kit([...h.top, ...ex]));
+      for (const lx of [-0.13, 0.13]) { const p = legPivot(h.leg.map(q => [q[0].clone(), ...q.slice(1)]), lx, h.hipY, 0); lo.add(p); legs.push(p); }
     }
     root.add(body);
-    root.scale.setScalar(t.scale);
+    const sc = t.scale * (variant ? 1.15 : v.k);
+    root.scale.setScalar(sc);
     root.position.set(x, 0, z);
     scene.add(root);
     pickables.push(root);
-    return tag(root, {
-      ...t, mesh: root, body, legs, maxHp: t.hp, hp: t.hp, alive: true,
+    const e = tag(root, {
+      ...t, mesh: root, body, legs, loLegs: legs, maxHp: t.hp, hp: t.hp, alive: true, variant,
       x, z, spawnX: x, spawnZ: z, roam, bounds, radius: 0.7 * Math.max(1, t.scale * 0.8),
       state: 'idle', target: null, wanderAt: 0, nextAttackTick: 0, deathT: 0, respawnAt: 0, lastHitAt: -1e9
     });
+    e.lod = { lo, hi: null, parent: body, buildHi: () => buildCreatureRig(typeName, t, rollVariant(typeName, t, seed), extras.map(g => g.clone()), headExtras.map(g => g.clone())) };
+    return e;
   }
 
   // ---- Agility obstacles: the root sits at the start point, the model spans to the end point ----

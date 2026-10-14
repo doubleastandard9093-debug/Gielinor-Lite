@@ -15,6 +15,8 @@ Modern, RuneScape 3-inspired look made entirely in code (no image files or third
 
 **Character detail** (`js/anatomy.js`): jointed humanoid rigs (shoulder > elbow > hand with fingers and thumb, hip > knee > foot), lathe-shaped muscled limbs and torso, faces (skull with jaw and brow, nose, nostrils, eyes with iris and pupil, eyelids, brows, lips, ears) and eight hair styles. `varyLook` seeds height, build, skin, hair, eyes and clothing per NPC. Distance LOD: a cheap baked mesh far away, and the detailed rig built on demand within 30 units (10 on Low) and freed when you walk away.
 
+**Creature detail** (`js/creatures.js`): close monsters get a detailed rig per type (wolf, cow, spider, dragon, plus muscled humanoids for goblins, giants, ogres, demons, skeletons and zombies). Fur, hide, chitin and scales are painted into vertex colours, and legs have knees, hocks or three spider joints. `rollVariant` seeds size, tint, markings and part differences per spawn. `namedVariant` gives about 1 in 8 spawns a name (display only; quests still count the base type).
+
 **Guilds** (`GUILDS` in world.js): Mining Guild (Mining 60: high-level rocks, furnace, anvil, bank), Cooking Guild (Cooking 32: two ranges, bank) and Crafting Guild (Crafting 40: furnace, anvil, bank). Entry is level-checked at the door.
 
 **Skill content:** Fletching has bows, arrows, crossbows and bolts. Smithing adds thrown daggers and throwing axes (thrown weapons need no ammo) and a Battlestaff. Crafting adds cloth, Wizard and Mystic robes and staves. Fishing adds anchovies, tuna and monkfish. Cooking adds buff dishes (Hearty stew: Strength; Monk's broth: prayer restore; Fisherman's pie: Defence; Warrior's feast: Attack and Strength).

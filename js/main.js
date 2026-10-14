@@ -714,7 +714,7 @@ function optionsFor(ent) {
   }
   if (ent.hp !== undefined) {
     const auto = autocastSpell();
-    const opts = [{ action: auto ? `Attack (${auto.name})` : 'Attack', target: `${ent.name} (level-${ent.level})`, color: levelColor(ent.level), fn: () => startAction({ kind: 'attack', mon: ent, spell: auto ? auto.id : null }) }];
+    const opts = [{ action: auto ? `Attack (${auto.name})` : 'Attack', target: `${ent.variant ? ent.variant + ' the ' + ent.name : ent.name} (level-${ent.level})`, color: levelColor(ent.level), fn: () => startAction({ kind: 'attack', mon: ent, spell: auto ? auto.id : null }) }];
     const sp = auto || bestSpell(skills, player);
     if (sp && !auto) opts.push({ action: `Cast ${sp.name}`, target: ent.name, color: '#a0c0ff', fn: () => startAction({ kind: 'attack', mon: ent, spell: sp.id }) });
     if (THIEVE_TARGETS[ent.name]) opts.push({ action: 'Pickpocket', target: ent.name, color: '#ffff00', fn: () => startAction({ kind: 'thieve', node: ent, target: ent.name }) });
@@ -1448,7 +1448,16 @@ function updateMonsters(dt, now) {
     }
     m.walkT = (m.walkT || 0) + (moving ? dt * 9 : 0);
     const sw = moving ? Math.sin(m.walkT) * 0.6 : 0;
-    m.legs.forEach((l, i) => { l.rotation.x = (i % 2 ? sw : -sw); });
+    m.legs.forEach((l, i) => {
+      const ud = l.userData;
+      if (ud.spider) { l.rotation.x = (i % 2 ? sw : -sw) * 0.5 * (((i >> 1) % 2) ? 1 : -1); ud.knee.rotation.x = ud.kneeRest + (moving ? Math.max(0, Math.sin(m.walkT + i)) * 0.3 : 0); return; }
+      const ph = i === 1 || i === 2 ? m.walkT + Math.PI : m.walkT;
+      l.rotation.x = (ud.rest || 0) + (i % 2 ? sw : -sw) * (ud.rest !== undefined ? 0.8 : 1);
+      if (ud.knee) ud.knee.rotation.x = (ud.kneeRest || 0) + (moving ? Math.max(0, Math.sin(ph)) * (ud.kneeRest !== undefined ? 0.6 : 0.8) : 0);
+    });
+    if (m.rigHi) poseHumanoid(m.rigHi, m.walkT, moving ? 1 : 0, m.lungeT || 0, 0);
+    else if (m.lod && m.lod.hi && m.lod.hi.userData.head && moving) m.lod.hi.userData.head.rotation.x = Math.sin(m.walkT * 2) * 0.05;
+    if (m.lod && m.lod.hi && m.lod.hi.userData.wings) { const f = Math.sin(now * 0.003 + m.spawnX) * 0.12; m.lod.hi.userData.wings.forEach((w, k) => { w.rotation.z = (k ? 1 : -1) * (0.25 + f); }); }
     if (m.lungeT > 0) { m.lungeT = Math.max(0, m.lungeT - dt * 3); m.body.position.z = Math.sin(m.lungeT * Math.PI) * 0.35; }
   }
 }
