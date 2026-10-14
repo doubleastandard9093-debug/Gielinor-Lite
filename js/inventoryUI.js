@@ -448,7 +448,7 @@ export function createInventoryUI(api) {
       <button class="toggle new" data-act="help">✨ What's new</button>
       <div class="craftskill">Graphics</div>
       <button class="toggle on" data-act="gfx">Graphics quality: <b>${api.gfxLabel ? api.gfxLabel() : 'Auto'}</b></button>
-      ${t('shadows', 'Shadows', api.shadowsOn())}
+      <button class="toggle ${api.shadowsOn() ? 'on' : ''}" data-act="shadows">Shadows: ${api.shadowsOn() ? 'On' : 'Off'}${api.shadowsNote ? api.shadowsNote() : ''}</button>
       <div class="craftskill">Interface</div>
       ${v('uiscale', 'UI scale', Math.round((s.uiScale || 1) * 100) + '%')}
       ${t('nameplates', 'Nameplates', s.nameplates !== false)}

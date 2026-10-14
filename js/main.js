@@ -165,7 +165,8 @@ function watchFrameRate(dt) {
 
 function shadowsOn() {
   if (gfx.quality === 'low') return false;
-  return player.settings.shadows === null || player.settings.shadows === undefined ? !IS_TOUCH : !!player.settings.shadows;
+  // Default: on for desktop and whenever High is chosen explicitly (console/PC target); phones on Auto start without.
+  return player.settings.shadows === null || player.settings.shadows === undefined ? (!IS_TOUCH || player.settings.gfx === 'high') : !!player.settings.shadows;
 }
 
 // ---------------------------------------------------------------------------
@@ -174,7 +175,8 @@ function shadowsOn() {
 const invUI = createInventoryUI({
   player, skills,
   attackSpeed: () => attackSpeedTicks(player),
-  shadowsOn,
+  shadowsOn: () => !!dirLight.castShadow,
+  shadowsNote: () => gfx.quality === 'low' ? ' (Low graphics)' : '',
   gfxLabel: () => gfxLabel(),
   useItem(item) { useItem(item); },
   itemMenu(item, x, y, mode) { itemMenu(item, x, y, mode); },
@@ -470,7 +472,10 @@ function setting(act) {
   else if (act === 'uisound') s.uiSound = !s.uiSound;
   else if (act === 'uivolume') { const opts = [0.25, 0.5, 1]; s.uiVolume = opts[(opts.indexOf(s.uiVolume || 0.5) + 1) % opts.length]; }
   else if (act === 'dpad') { s.showDpad = !s.showDpad; inputCtl.setDpadVisible(s.showDpad); }
-  else if (act === 'shadows') { s.shadows = !shadowsOn(); setShadows(renderer, dirLight, s.shadows, gfx.quality); }
+  else if (act === 'shadows') {
+    if (gfx.quality === 'low') { log('Shadows are off on Low graphics. Switch to High to use them.', 'warn'); }
+    else { s.shadows = !shadowsOn(); setShadows(renderer, dirLight, s.shadows, gfx.quality); }
+  }
   else if (act === 'gfx') { s.gfx = s.gfx === 'high' ? 'low' : s.gfx === 'low' ? null : 'high'; gfx.autoLow = false; applyGfx(); log(`Graphics: ${gfxLabel()}.`, 'game'); }
   else if (act === 'retaliate') s.autoRetaliate = !s.autoRetaliate;
   else if (act === 'run') toggleRun();
