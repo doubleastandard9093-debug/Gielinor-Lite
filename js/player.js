@@ -9,6 +9,41 @@ export const RUN_SPEED = 6.2;
 
 const METAL = { Bronze: 0xb87333, Iron: 0x9a9a9a, Steel: 0xd0d8e0, Mithril: 0x5a6ad0, Adamant: 0x3a9a5a, Rune: 0x3ab8d0, Wooden: 0x8a5a2a, Oak: 0xc49a5a, Willow: 0x9aaa5a, Maple: 0xc0702a, Yew: 0x6a4a2a, Magic: 0x5a8ae0, Leather: 0x7a4a24, Hard: 0x5a3a1a, Shortbow: 0x8a5a2a };
 
+// Hand with a palm, four fingers of three jointed segments and a two-segment thumb.
+// Origin at the wrist (sits at the end of the forearm). hand.userData.curl(c) closes it: 0 open, 1 fist/grip.
+function articulatedHand(side, mat) {
+  const hand = new THREE.Group(); hand.position.set(0, -0.29, 0);
+  const add = (geo, parent, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
+  const palm = add(new THREE.SphereGeometry(0.05, 12, 8), hand, 0, -0.055, 0.005); palm.scale.set(0.95, 1.25, 0.55);
+  const fx = [-0.03, -0.01, 0.01, 0.03], fl = [0.03, 0.035, 0.033, 0.026];
+  const fingers = [];
+  for (let i = 0; i < 4; i++) {
+    const r = 0.0105 - (i === 3 ? 0.0015 : 0), L = fl[i];
+    let parent = hand, y = -0.112; const segs = [];
+    for (let j = 0; j < 3; j++) {
+      const len = L * [0.75, 0.6, 0.5][j], rr = r * [1, 0.92, 0.82][j];
+      const jt = new THREE.Group(); jt.position.set(j ? 0 : fx[i] * side, y, j ? 0 : 0.005); parent.add(jt);
+      add(new THREE.CapsuleGeometry(rr, len, 2, 6), jt, 0, -len / 2 - rr * 0.5, 0);
+      if (j === 0) add(new THREE.SphereGeometry(r * 1.15, 6, 4), jt, 0, 0.005, -0.01);
+      segs.push(jt); parent = jt; y = -len - rr * 0.9;
+    }
+    fingers.push(segs);
+  }
+  // thumb: base pivots across the palm, tip curls over the fingers
+  const tb = new THREE.Group(); tb.position.set(-0.04 * side, -0.05, 0.025); tb.rotation.set(0.4, 0, -0.5 * side); hand.add(tb);
+  add(new THREE.CapsuleGeometry(0.013, 0.03, 2, 6), tb, 0, -0.022, 0);
+  const tt = new THREE.Group(); tt.position.y = -0.046; tb.add(tt);
+  add(new THREE.CapsuleGeometry(0.011, 0.022, 2, 6), tt, 0, -0.016, 0);
+  hand.userData.curl = c => {
+    if (hand.userData.c === c) return; hand.userData.c = c;
+    for (let i = 0; i < 4; i++) { const f = fingers[i], k = c * (1 + i * 0.04); f[0].rotation.x = 0.15 + k * 1.35; f[1].rotation.x = 0.1 + k * 1.5; f[2].rotation.x = 0.05 + k * 1.1; }
+    tb.rotation.set(0.4 + c * 0.5, 0, (-0.5 + c * 0.35) * side); tt.rotation.x = c * 1.0;
+  };
+  hand.userData.curl(0.3);
+  return hand;
+}
+export function handCurl(arm, c) { const h = arm.userData.elbow.children.find(o => o.userData.curl); if (h) h.userData.curl(c); }
+
 export function createPlayer(scene) {
   const playerGroup = new THREE.Group();
   const std = (c, rough = 0.6, metal = 0.05) => new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: metal });
@@ -58,9 +93,9 @@ export function createPlayer(scene) {
     mesh(shapes.deltoid(1.02), bodyMat, Math.sign(x) * 0.02, -0.02, 0, pivot);
     const elbow = new THREE.Group(); elbow.position.y = -0.34; pivot.add(elbow);
     mesh(shapes.forearm(1, 18), skin, 0, 0, 0, elbow);
-    mesh(mergeGeometries(shapes.hand(Math.sign(x), 0.65, 8)), skin, 0, -0.29, 0, elbow);
+    elbow.add(articulatedHand(Math.sign(x), skin));
     elbow.rotation.x = -0.25;
-    pivot.userData.elbow = elbow;
+    pivot.userData.elbow = elbow; pivot.rotation.order = 'ZXY';
     return pivot;
   }
   function leg(x) {
@@ -71,7 +106,7 @@ export function createPlayer(scene) {
     mesh(shapes.kneecap(1), legMat, 0, -0.01, 0.07, knee);
     const bootMat = std(0x2e2016, 0.6);
     mesh(mergeGeometries(shapes.foot(16)), bootMat, 0, -0.28, 0, knee);
-    pivot.userData.knee = knee;
+    pivot.userData.knee = knee; pivot.rotation.order = 'ZXY';
     return pivot;
   }
   const leftArm = arm(-0.39), rightArm = arm(0.39);
@@ -312,5 +347,8 @@ export function updatePlayer(pm, keys, dt, running, camYaw) {
       elbow(p.rightArm).rotation.x += (-0.25 - elbow(p.rightArm).rotation.x) * k;
     }
   }
+  { const r = p.sword.visible ? 1 : 0.3, l = p.bow.visible ? 1 : p.shield.visible ? 0.85 : 0.3;
+    pm.curlL = (pm.curlL ?? 0.3) + (l - (pm.curlL ?? 0.3)) * Math.min(1, dt * 12); pm.curlR = (pm.curlR ?? 0.3) + (r - (pm.curlR ?? 0.3)) * Math.min(1, dt * 12);
+    handCurl(p.leftArm, Math.round(pm.curlL * 50) / 50); handCurl(p.rightArm, Math.round(pm.curlR * 50) / 50); }
   return moved;
 }
