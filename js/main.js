@@ -465,6 +465,10 @@ function setting(act) {
     const text = window.prompt('Paste your save text here (open the .json file, Select All, Copy):');
     if (text && text.trim()) finishImport(applySaveData(text.trim(), skills, player, pm));
   }
+  else if (act === 'uiscale') { const opts = [0.85, 1, 1.15, 1.3]; s.uiScale = opts[(opts.indexOf(s.uiScale || 1) + 1) % opts.length]; document.documentElement.style.setProperty('--ui-scale', s.uiScale); window.dispatchEvent(new Event('resize')); }
+  else if (act === 'nameplates') s.nameplates = s.nameplates === false;
+  else if (act === 'uisound') s.uiSound = !s.uiSound;
+  else if (act === 'uivolume') { const opts = [0.25, 0.5, 1]; s.uiVolume = opts[(opts.indexOf(s.uiVolume || 0.5) + 1) % opts.length]; }
   else if (act === 'dpad') { s.showDpad = !s.showDpad; inputCtl.setDpadVisible(s.showDpad); }
   else if (act === 'shadows') { s.shadows = !shadowsOn(); setShadows(renderer, dirLight, s.shadows, gfx.quality); }
   else if (act === 'gfx') { s.gfx = s.gfx === 'high' ? 'low' : s.gfx === 'low' ? null : 'high'; gfx.autoLow = false; applyGfx(); log(`Graphics: ${gfxLabel()}.`, 'game'); }
@@ -1683,6 +1687,22 @@ window.addEventListener('resize', () => {
 if (window.innerHeight > window.innerWidth) { rig.dist = rig.targetDist = 19; }
 
 const barEnts = [...monsters, playerEnt];
+// Nearby monsters (and close townsfolk) get floating nameplates.
+function refreshPlates() {
+  const px = pm.mesh.position.x, pz = pm.mesh.position.z, list = [];
+  for (const m of monsters) {
+    if (!m.alive || !m.mesh.visible) continue;
+    const d = Math.hypot(m.mesh.position.x - px, m.mesh.position.z - pz);
+    if (d < 18) list.push({ d, ent: m, name: (m.variant ? m.variant + ' the ' : '') + m.name, level: m.level, color: levelColor(m.level), kind: m.variant ? 'named' : 'mob' });
+  }
+  for (const n of nodes) {
+    if (n.type !== 'npc' || !n.mesh || !n.mesh.visible) continue;
+    const d = Math.hypot(n.mesh.position.x - px, n.mesh.position.z - pz);
+    if (d < 9) list.push({ d: d + 2, ent: n, name: n.name, kind: n.questMark ? 'npc quest' : 'npc' });
+  }
+  list.sort((a, b) => a.d - b.d);
+  overlays.setPlates(list.slice(0, 14));
+}
 let last = performance.now();
 let frame = 0;
 // ---- Distance culling: the world is big, so only draw what is near (fog hides the edge) ----
@@ -1834,6 +1854,8 @@ function animate(now) {
   if (gfx.quality === 'low') renderer.render(scene, camera); else composer.render();
 
   overlays.update(camera, barEnts, now);
+  if (frame % 10 === 4) { if (player.settings.nameplates === false) overlays.setPlates([]); else refreshPlates(); }
+  overlays.updatePlates(camera, now);
   if (frame % 3 === 1) hud.update(now);
   if (frame % 3 === 0) {
     minimap.draw(pm.mesh.position.x, pm.mesh.position.z, rig.yaw, nodes, monsters, piles);
@@ -1854,6 +1876,22 @@ window.addEventListener('keydown', e => {
   if (n >= 1 && n <= 8) { const list = ABILITIES.filter(a => abilityUnlocked(skills, a)); if (list[n - 1]) useAbility(list[n - 1].id); }
 });
 
+// Fade out the title/loading screen once the first frames are drawn.
+setTimeout(() => { const ld = document.getElementById('loader'); if (ld) { ld.classList.add('done'); setTimeout(() => ld.remove(), 900); } }, 300);
+// UI scale (Settings) applies to every HUD block.
+document.documentElement.style.setProperty('--ui-scale', player.settings.uiScale || 1);
+// Optional soft UI clicks (WebAudio, generated - no sound files). Off by default.
+let uiAudio = null;
+document.addEventListener('pointerdown', e => {
+  if (!player.settings.uiSound || !e.target.closest || !e.target.closest('button, .slot.item, .ctx-opt, .d-opt')) return;
+  try {
+    uiAudio = uiAudio || new (window.AudioContext || window.webkitAudioContext)();
+    const o = uiAudio.createOscillator(), g = uiAudio.createGain(), t = uiAudio.currentTime;
+    o.type = 'triangle'; o.frequency.setValueAtTime(880, t); o.frequency.exponentialRampToValueAtTime(440, t + 0.06);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime((player.settings.uiVolume || 0.5) * 0.12, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    o.connect(g); g.connect(uiAudio.destination); o.start(t); o.stop(t + 0.1);
+  } catch (er) { /* audio unavailable */ }
+}, true);
 window.gielinor = {
   gfx, terrainHeight, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
   renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, giveXP, setAutocast, get crossing() { return crossing; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,

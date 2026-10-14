@@ -10,7 +10,10 @@ export function createMinimap({ onWalk, onCompass, onRunToggle, onPrayerOrb }) {
       <div class="orb" id="prayOrb" title="Prayer points - tap for prayers"><span class="orb-ico">🙏</span><b>10</b></div>
       <div class="orb" id="runOrb" title="Run energy - tap to toggle run"><span class="orb-ico">🏃</span><b>100</b></div>
     </div>
-    <div id="minimap"><canvas></canvas><div id="compass" title="Face north">N</div></div>`;
+    <div id="minimap"><canvas></canvas><div id="compass" title="Face north">N</div>
+      <div id="mmZoom"><button data-z="1" title="Zoom in">+</button><button data-z="-1" title="Zoom out">−</button></div>
+      <button id="mmLegendBtn" title="Map key">?</button>
+      <div id="mmLegend"></div></div>`;
   document.body.appendChild(wrap);
   const canvas = wrap.querySelector('canvas');
   const ctx = canvas.getContext('2d');
@@ -22,7 +25,16 @@ export function createMinimap({ onWalk, onCompass, onRunToggle, onPrayerOrb }) {
   compass.addEventListener('click', e => { e.stopPropagation(); onCompass(); });
   runOrb.addEventListener('click', () => onRunToggle());
 
-  const SCALE = 3.2;   // minimap pixels per world unit (at canvas resolution)
+  const SCALE = 3.2;
+  let zoom = 1;
+  const zoomBox = wrap.querySelector('#mmZoom');
+  zoomBox.addEventListener('click', e => { e.stopPropagation(); const b = e.target.closest('[data-z]'); if (b) zoom = Math.max(0.5, Math.min(2.5, zoom * (+b.dataset.z > 0 ? 1.25 : 0.8))); });
+  const legend = wrap.querySelector('#mmLegend');
+  legend.innerHTML = '<b>Map key</b>' + [['#ffffff', 'You'], ['#ffff00', 'Monster'], ['#3ad0ff', 'Quest giver'], ['#ffb000', 'Shop / townsfolk'], ['#ffd700', 'Bank'], ['#ff7a1a', 'Furnace, anvil, range'],
+    ['#c080ff', 'Altar'], ['#ff60ff', 'Rune altar'], ['#7fd0ff', 'Fishing spot'], ['#8a8a8a', 'Rock'], ['#1f5a1a', 'Tree'], ['#7aff4a', 'Herb patch'], ['#e04060', 'Berry bush'], ['#40e0a0', 'Agility'], ['#c89a5a', 'Signpost'], ['#ff3030', 'Loot']]
+    .map(([c, l]) => `<div><i style="background:${c}"></i>${l}</div>`).join('');
+  wrap.querySelector('#mmLegendBtn').addEventListener('click', e => { e.stopPropagation(); legend.classList.toggle('show'); });
+  legend.addEventListener('click', e => { e.stopPropagation(); legend.classList.remove('show'); });   // minimap pixels per world unit (at canvas resolution)
   // Pre-render the static ground once.
   const S = Math.ceil((WORLD_HALF * 2 + 10) * 4);
   const base = document.createElement('canvas');
@@ -64,7 +76,7 @@ export function createMinimap({ onWalk, onCompass, onRunToggle, onPrayerOrb }) {
   let lastYaw = 0, lastPx = 0, lastPz = 0;
   canvas.addEventListener('click', e => {
     const r = canvas.getBoundingClientRect();
-    const k = SCALE * (size / 140);
+    const k = SCALE * zoom * (size / 140);
     const sx = (e.clientX - r.left - r.width / 2) * (size / r.width) / k;
     const sy = (e.clientY - r.top - r.height / 2) * (size / r.width) / k;
     if (sx * sx + sy * sy > (size / 2 / k) ** 2) return;
@@ -82,7 +94,7 @@ export function createMinimap({ onWalk, onCompass, onRunToggle, onPrayerOrb }) {
     if (!size) resize();
     if (!size) return;
     lastYaw = yaw; lastPx = px; lastPz = pz;
-    const k = SCALE * (size / 140); // pixels per world unit
+    const k = SCALE * zoom * (size / 140); // pixels per world unit
     const half = size / 2;
     ctx.save();
     ctx.clearRect(0, 0, size, size);
@@ -121,8 +133,13 @@ export function createMinimap({ onWalk, onCompass, onRunToggle, onPrayerOrb }) {
     }
     for (const p of piles) dot(p.x, p.z, DOT.pile, r);
     for (const mo of monsters) if (mo.alive) dot(mo.mesh.position.x, mo.mesh.position.z, DOT.monster, r);
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(half - r, half - r, r * 2, r * 2);
+    // player arrow (points up = camera forward)
+    ctx.save(); ctx.translate(half, half);
+    ctx.beginPath(); ctx.moveTo(0, -r * 2.4); ctx.lineTo(r * 1.6, r * 1.6); ctx.lineTo(0, r * 0.8); ctx.lineTo(-r * 1.6, r * 1.6); ctx.closePath();
+    ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = Math.max(1, r * 0.45); ctx.strokeStyle = '#000'; ctx.stroke(); ctx.restore();
+    // inner vignette for depth
+    const vg = ctx.createRadialGradient(half, half, half * 0.6, half, half, half);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.45)'); ctx.fillStyle = vg; ctx.fillRect(0, 0, size, size);
     compass.style.transform = `rotate(${yaw}rad)`;
   }
 

@@ -179,6 +179,7 @@ export function createInventoryUI(api) {
     if (b.dataset.tab === tab && !collapsed) collapsed = true;
     else { tab = b.dataset.tab; collapsed = false; }
     render();
+    if (!collapsed) { content.classList.remove('tab-in'); void content.offsetWidth; content.classList.add('tab-in'); content.scrollTop = 0; }
   }));
 
   // ---------------- Tabs ----------------
@@ -414,17 +415,29 @@ export function createInventoryUI(api) {
   function renderSettings() {
     const s = player.settings;
     const t = (act, label, on) => `<button class="toggle ${on ? 'on' : ''}" data-act="${act}">${label}: ${on ? 'On' : 'Off'}</button>`;
+    const v = (act, label, val) => `<button class="toggle on" data-act="${act}">${label}: <b>${val}</b></button>`;
+    const KEYS = [['Click / tap', 'Walk or do the default action'], ['Right-click / hold', 'All options'], ['W A S D', 'Walk'], ['Arrow keys', 'Turn and tilt the camera'], ['Mouse wheel / pinch', 'Zoom'], ['1 – 8', 'Combat skills on the action bar'], ['Drag', 'Rotate the camera']];
     return `<div class="tab-head"><b>Settings</b></div>
       <div class="savebtns"><button data-act="save">💾 Save</button><button data-act="export">Export</button><button data-act="import">Import</button><button data-act="paste">Paste save</button></div>
       <button class="toggle new" data-act="help">✨ What's new</button>
-      ${t('dpad', 'On-screen D-pad', s.showDpad)}
-      <button class="toggle on" data-act="gfx">Graphics quality: ${api.gfxLabel ? api.gfxLabel() : 'Auto'}</button>
+      <div class="craftskill">Graphics</div>
+      <button class="toggle on" data-act="gfx">Graphics quality: <b>${api.gfxLabel ? api.gfxLabel() : 'Auto'}</b></button>
       ${t('shadows', 'Shadows', api.shadowsOn())}
+      <div class="craftskill">Interface</div>
+      ${v('uiscale', 'UI scale', Math.round((s.uiScale || 1) * 100) + '%')}
+      ${t('nameplates', 'Nameplates', s.nameplates !== false)}
+      ${t('dpad', 'On-screen D-pad', s.showDpad)}
+      <button class="toggle" data-act="camera">Reset camera</button>
+      <div class="craftskill">Sound</div>
+      ${t('uisound', 'Interface sounds', !!s.uiSound)}
+      ${s.uiSound ? v('uivolume', 'Volume', Math.round((s.uiVolume || 0.5) * 100) + '%') : ''}
+      <div class="craftskill">Gameplay</div>
       ${t('retaliate', 'Auto Retaliate', s.autoRetaliate)}
       ${t('run', 'Run', s.run)}
       ${t('autoloot', 'Auto-pickup loot', s.autoLoot)}
-      <button class="toggle" data-act="camera">Reset camera</button>
-      <div class="help"><b>Controls</b><br>Tap to walk or act · hold (or right-click) for options · drag to turn camera · pinch or scroll to zoom · tap the minimap to walk · tap the compass to face north. Desktop: WASD walk, arrow keys turn the camera, 1-8 use combat skills.</div>`;
+      <div class="craftskill">Keybinds &amp; controls</div>
+      <div class="keybinds">${KEYS.map(([k, d]) => `<div><kbd>${k}</kbd><span>${d}</span></div>`).join('')}</div>
+      <div class="help">Tap the minimap to walk there, + and − zoom it, ? shows the map key, and the compass faces north.</div>`;
   }
 
   // ---------------- Windows ----------------
@@ -447,8 +460,8 @@ export function createInventoryUI(api) {
     return list.filter(s => stockVisible(s, player, skills));
   }
   function renderWindow() {
-    if (!mode) { win.style.display = 'none'; return; }
-    win.style.display = 'flex';
+    if (!mode) { if (win.style.display !== 'none') { win.style.display = 'none'; win._html = ''; } return; }
+    if (win.style.display !== 'flex') { win.style.display = 'flex'; win.classList.remove('win-in'); void win.offsetWidth; win.classList.add('win-in'); }
     let html;
     if (mode === 'bank') {
       const all = Object.entries(player.bank).filter(([, q]) => q > 0);

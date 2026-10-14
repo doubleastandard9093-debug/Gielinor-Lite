@@ -1,4 +1,5 @@
 // Chat box, options menu, tap markers, XP drops and level-up messages.
+import { portraitURL } from './portrait.js';
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export { esc };
 
@@ -20,11 +21,16 @@ export function setupUI(settings) {
   const messages = [];
   let filter = FILTERS.find(f => f.id === (settings.chatFilter || 'all')) || FILTERS[0];
 
+  const unread = {};
+  function paintBadges() {
+    tabs.forEach(b => { const n = unread[b.dataset.f] || 0; b.dataset.unread = n > 99 ? '99+' : n || ''; b.classList.toggle('unread', n > 0); });
+  }
   function matches(m) { return !filter.types || filter.types.includes(m.type); }
   function lineEl(m) {
     const d = document.createElement('div');
     d.className = 'c-' + m.type;
     d.textContent = m.text;
+    d.title = m.at;
     if (m.color) { d.style.color = m.color; d.style.fontWeight = 'bold'; }
     return d;
   }
@@ -39,6 +45,7 @@ export function setupUI(settings) {
     if (b.dataset.f === 'toggle') { settings.chatCollapsed = !settings.chatCollapsed; renderAll(); return; }
     filter = FILTERS.find(f => f.id === b.dataset.f);
     settings.chatFilter = filter.id;
+    unread[filter.id] = 0; paintBadges();
     renderAll();
   }));
 
@@ -47,7 +54,9 @@ export function setupUI(settings) {
     const now = performance.now();
     if (text === lastText && now - lastAt < 400) return; // drop exact duplicates fired together
     lastText = text; lastAt = now;
-    const m = { text, type, color };
+    const m = { text, type, color, at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+    for (const f of FILTERS) if (f !== filter && f.types && f.types.includes(type)) unread[f.id] = (unread[f.id] || 0) + 1;
+    paintBadges();
     messages.push(m);
     if (messages.length > 150) {
       messages.shift();
@@ -125,14 +134,26 @@ export function setupUI(settings) {
     bannerEl.innerHTML = queue.shift();
     bannerEl.style.display = 'block';
     bannerEl.classList.remove('pop'); void bannerEl.offsetWidth; bannerEl.classList.add('pop');
+    if (bannerEl.querySelector('.lu-icon')) burst();
     setTimeout(nextBanner, 2800);
+  }
+  // Level-up juice: a ring flash and a spray of gold sparks around the banner (no sound).
+  function burst() {
+    const fx = document.createElement('div'); fx.className = 'lu-burst';
+    let h = '<i class="lu-ring"></i>';
+    for (let i = 0; i < 28; i++) {
+      const a = Math.random() * Math.PI * 2, d = 60 + Math.random() * 120;
+      h += `<b style="--dx:${(Math.cos(a) * d).toFixed(0)}px;--dy:${(Math.sin(a) * d * 0.7 - 20).toFixed(0)}px;--d:${(0.7 + Math.random() * 0.8).toFixed(2)}s;--s:${(3 + Math.random() * 4).toFixed(1)}px;--h:${(38 + Math.random() * 18) | 0}"></b>`;
+    }
+    fx.innerHTML = h; bannerEl.appendChild(fx);
+    setTimeout(() => fx.remove(), 1700);
   }
   function banner(html) {
     queue.push(html);
     if (!showing) nextBanner();
   }
   function levelUp(skill, icon, level, perks = []) {
-    queue.push(`<div class="lu-icon">${icon}</div><div><b>Congratulations!</b> You just advanced a ${esc(skill)} level.<br>Your ${esc(skill)} level is now ${level}.` +
+    queue.push(`<div class="lu-head">Level up!</div><div class="lu-icon">${icon}</div><div class="lu-lvl">${level}</div><div><b>Congratulations!</b> You just advanced a ${esc(skill)} level.<br>Your ${esc(skill)} level is now ${level}.` +
       // Milestones first; long lists (big XP jumps) are trimmed here but every perk is named in chat.
       [...perks].sort((x, y) => (y.milestone ? 1 : 0) - (x.milestone ? 1 : 0)).slice(0, 4)
         .map(p => `<br><span class="lu-perk">New perk: ${p.milestone ? '★ ' : ''}${esc(p.name)} (${esc(p.desc)})</span>`).join('') +
@@ -153,8 +174,10 @@ export function setupUI(settings) {
       const e = dq.shift();
       if (Array.isArray(e)) {
         const who = e[0] === 'npc' ? dName : 'You';
-        dlg.innerHTML = `<div class="d-face">${e[0] === 'npc' ? dIcon : '🧑'}</div><div class="d-body"><div class="d-name">${esc(who)}</div>
-          <div class="d-text">${esc(e[1])}</div><div class="d-cont">Tap here to continue</div></div>`;
+        const isNpc = e[0] === 'npc';
+        dlg.innerHTML = `<div class="d-face ${isNpc ? '' : 'you'}"><img src="${portraitURL(isNpc ? dName : 'You (adventurer)', isNpc ? {} : { cloth: '#6a4a2a', female: false })}" alt=""><span class="d-badge">${isNpc ? dIcon : '🧑'}</span></div><div class="d-body"><div class="d-name">${esc(who)}</div>
+          <div class="d-text">${esc(e[1])}</div><div class="d-cont">Tap here to continue ▸</div></div>`;
+        dlg.classList.remove('d-in'); void dlg.offsetWidth; dlg.classList.add('d-in');
         dlg.dataset.kind = 'line';
         dlg.style.display = 'flex';
         return;

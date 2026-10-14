@@ -28,6 +28,18 @@ export function createOverlays() {
     return el;
   }
 
+  // Nameplates: name, level and a slim HP bar over nearby monsters and townsfolk.
+  const plates = [];
+  for (let i = 0; i < 14; i++) {
+    const el = document.createElement('div');
+    el.className = 'nameplate'; el.style.display = 'none';
+    el.innerHTML = '<span class="np-name"></span><span class="np-lvl"></span><i class="np-hp"><b></b></i>';
+    layer.appendChild(el);
+    plates.push({ el, ent: null, key: '' });
+  }
+  let plateList = [];
+  function setPlates(list) { plateList = list; }
+
   let w = window.innerWidth, h = window.innerHeight;
   window.addEventListener('resize', () => { w = window.innerWidth; h = window.innerHeight; });
 
@@ -75,5 +87,29 @@ export function createOverlays() {
     }
   }
 
-  return { splat, update };
+  function updatePlates(camera, now) {
+    for (let i = 0; i < plates.length; i++) {
+      const p = plates[i], d = plateList[i];
+      if (!d || !d.ent.mesh.visible) { if (p.el.style.display !== 'none') p.el.style.display = 'none'; p.ent = null; continue; }
+      const ent = d.ent;
+      const key = d.name + '|' + (d.level || '') + '|' + d.color + '|' + (d.kind || '');
+      if (p.key !== key) {
+        p.key = key; p.el.className = 'nameplate ' + (d.kind || '');
+        p.el.children[0].textContent = d.name;
+        p.el.children[1].textContent = d.level ? `Lv ${d.level}` : '';
+        p.el.children[1].style.background = d.color || '';
+        p.el.children[1].style.display = d.level ? '' : 'none';
+      }
+      const hurt = ent.hp !== undefined && ent.maxHp && ent.hp < ent.maxHp;
+      p.el.children[2].style.display = hurt ? 'block' : 'none';
+      if (hurt) p.el.children[2].firstChild.style.width = Math.max(0, Math.min(100, ent.hp / ent.maxHp * 100)).toFixed(0) + '%';
+      const showBar = now - (ent.lastHitAt || -1e9) < 6000;
+      if (!toScreen(ent, (ent.barHeight || 2) + (showBar ? 0.95 : 0.55), camera)) { p.el.style.display = 'none'; continue; }
+      p.el.style.display = 'flex';
+      p.el.style.transform = `translate(-50%, -100%) translate(${v.x | 0}px, ${v.y | 0}px)`;
+      p.ent = ent;
+    }
+  }
+
+  return { splat, update, setPlates, updatePlates };
 }
