@@ -27,6 +27,7 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>Adrenaline and keybinds.</b> Basic combat skills now build adrenaline (+9%). Fortify and Snipe cost 50%, and Berserk and Rejuvenate cost 100%. The action bar shows each cost and greys out skills you can't afford yet. You can change every key in Settings → Keybinds and reset them to defaults. New painted icons for the tinderbox, net, rod, harpoon, lobster pot, needle, bird nest and Herblore secondaries. The Shadows setting now shows whether shadows are really on, and on a phone the side panel no longer covers the orbs.</p>
 <p><b>A whole new interface.</b></p>
 <ul>
 <li><b>New look.</b> Panels are framed in gold over dark stone, with filigree corners, parchment journals, and buttons and tabs that light up when you touch them.</li>
