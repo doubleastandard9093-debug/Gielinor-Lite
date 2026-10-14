@@ -3,6 +3,7 @@ import { makeRng } from './rng.js';
 import { MONSTER_TYPES, AGILITY_COURSES, RUNE_ALTARS } from './gameplay.js';
 import { QUEST_NPCS } from './questnpcs.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
+import { buildHumanoidRig, varyLook, hashStr } from './anatomy.js';
 import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap } from './models.js';
 
 // The world is about 440 x 440. Chunked decor + instance packing keep phones smooth.
@@ -623,16 +624,21 @@ export function createWorld(scene) {
   // Generic rounded townsperson NPC (one baked mesh). look: { body, legs, hat, skin, beard, apron }
   function createNpc(x, z, npc, name, look, faceX = 0, faceZ = 0) {
     const g = new THREE.Group();
-    const L = { ...look, skin: look.skin || 0xe0ae84, legs: look.legs || 0x3a2a1a, hair: look.hat ? null : (look.beard ? new THREE.Color(look.beard).multiplyScalar(0.8).getHex() : 0x4a3220) };
+    const L = varyLook({ ...look, legs: look.legs || undefined, hair: look.hat ? null : (look.beard ? new THREE.Color(look.beard).multiplyScalar(0.8).getHex() : undefined) }, hashStr(name + npc + x.toFixed(1)));
     const h = humanoidParts(L);
     const parts = [...h.top, ...npcExtras(look)];
     for (const lx of [-0.13, 0.13]) for (const [geo, hex, px = 0, py = 0, pz = 0, rx, ry, rz, amt] of h.leg) parts.push([geo.clone(), hex, px + lx, py + h.hipY, pz, rx, ry, rz, amt]);
-    g.add(kit(parts));
+    const lo = kit(parts);
+    lo.scale.set(L.build, L.height, L.build);
+    g.add(lo);
     g.position.set(x, 0, z);
     g.rotation.y = Math.atan2(faceX - x, faceZ - z);
     scene.add(g);
     pickables.push(g);
-    return tag(g, { mesh: g, type: 'npc', npc, name, alive: true, x, z, radius: 0.6 });
+    const headExtras = npcExtras(look).map(([geo, hex, px = 0, py = 0, pz = 0, rx = 0, ry = 0, rz = 0, amt = 0.22]) => put(col(geo, hex, amt), px, py - 1.5, pz, rx, ry, rz));
+    const e = tag(g, { mesh: g, type: 'npc', npc, name, alive: true, x, z, radius: 0.6 });
+    e.lod = { lo, hi: null, parent: g, buildHi: () => { const r = buildHumanoidRig({ ...L, headExtras: headExtras.map(q => q.clone()), noCollar: !!look.apron }, { extras: look.apron ? [put(col(prim.box(0.42, 0.62, 0.03), look.apron, 0.1), 0, 0.98, 0.21, -0.05)] : [] }); r.userData.id = x; return r; } };
+    return e;
   }
 
   function createStation(x, z, kind) {

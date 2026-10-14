@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { shapes } from './anatomy.js';
 import { WORLD_HALF, insideLake, LAKE, colliders } from './world.js';
 
 export const WALK_SPEED = 3.3;  // world units per second
@@ -17,11 +19,11 @@ export function createPlayer(scene) {
   const bodyMat = std(0x6b4423, 0.65);
   const body = new THREE.Group();
   playerGroup.add(body);
-  const chest = mesh(capsule(0.27, 0.34), bodyMat, 0, 1.12, 0, body); chest.scale.set(1, 1, 0.72);
-  mesh(sphere(0.13, 12, 8), bodyMat, -0.33, 1.37, 0, body);
-  mesh(sphere(0.13, 12, 8), bodyMat, 0.33, 1.37, 0, body);
+  const chest = mesh(shapes.torso(1.02, 1.05, 28), bodyMat, 0, 0, 0, body);
+  for (const sx of [-1, 1]) { mesh(shapes.pec(1.02), bodyMat, sx * 0.1, 1.3, 0.095, body); const tr = mesh(shapes.trap(1.02), bodyMat, sx * 0.1, 1.45, -0.02, body); tr.rotation.z = sx * -0.25; }
+  mesh(new THREE.TorusGeometry(0.1, 0.022, 6, 18), bodyMat, 0, 1.5, 0, body).rotation.x = Math.PI / 2 - 0.2;
   const legMat = std(0x3a2a1a, 0.7);
-  const hips = mesh(sphere(0.25, 14, 8), legMat, 0, 0.8, 0, body); hips.scale.set(1, 0.6, 0.75);
+  const hips = mesh(sphere(0.25, 14, 8), legMat, 0, 0.8, 0, body); hips.scale.set(1.08, 0.6, 0.8);
   mesh(new THREE.CylinderGeometry(0.262, 0.262, 0.08, 16), std(0x3a2414, 0.5), 0, 0.88, 0, body);
   mesh(new THREE.BoxGeometry(0.1, 0.08, 0.04), std(0xc9a227, 0.35, 0.6), 0, 0.88, 0.25, body);
 
@@ -29,11 +31,20 @@ export function createPlayer(scene) {
   const skin = std(0xe0ae84, 0.75);
   const headG = new THREE.Group(); headG.position.y = 1.5; body.add(headG);
   mesh(new THREE.CylinderGeometry(0.085, 0.095, 0.16, 10), skin, 0, 0, 0, headG);
-  const head = mesh(sphere(0.255, 20, 16), skin, 0, 0.24, 0, headG); head.scale.set(1, 1.08, 0.98);
-  mesh(sphere(0.045, 8, 6), skin, 0, 0.21, 0.25, headG);
-  const eyeMat = std(0x1a1410, 0.3);
-  for (const ex of [-0.088, 0.088]) { mesh(sphere(0.034, 8, 6), eyeMat, ex, 0.28, 0.215, headG); mesh(new THREE.BoxGeometry(0.1, 0.022, 0.03), std(0x3a2a1a), ex, 0.345, 0.22, headG); }
-  for (const ex of [-0.255, 0.255]) { const e = mesh(sphere(0.055, 8, 6), skin, ex, 0.24, 0, headG); e.scale.set(0.5, 1, 0.8); }
+  const head = mesh(shapes.skull(32), skin, 0, 0.25, 0.01, headG);
+  mesh(shapes.nose(1), skin, 0, 0.225, 0.255, headG);
+  const eyeW = std(0xf4f0e8, 0.25), eyeMat = std(0x2a4a6a, 0.2), pupil = std(0x0a0806, 0.1), lipMat = std(0xb07a62, 0.55), browMat = std(0x3a2a1a, 0.9);
+  for (const sx of [-1, 1]) {
+    const ex = sx * 0.085;
+    mesh(sphere(0.034, 12, 10), eyeW, ex, 0.275, 0.205, headG).scale.set(1, 0.72, 0.6);
+    mesh(sphere(0.017, 10, 8), eyeMat, ex, 0.275, 0.224, headG);
+    mesh(sphere(0.008, 6, 4), pupil, ex, 0.275, 0.236, headG);
+    const lid = mesh(new THREE.SphereGeometry(0.036, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), skin, ex, 0.284, 0.205, headG); lid.scale.set(1.05, 0.5, 0.75); lid.rotation.x = -0.25;
+    const br = mesh(new THREE.BoxGeometry(0.085, 0.018, 0.03), browMat, sx * 0.088, 0.325, 0.215, headG); br.rotation.set(0.1, 0, sx * -0.12);
+    mesh(shapes.ear(), skin, sx * 0.24, 0.25, -0.01, headG);
+    mesh(sphere(0.011, 6, 4), std(0x6a4030, 0.8), sx * 0.018, 0.19, 0.27, headG);
+  }
+  mesh(sphere(0.04, 12, 6), lipMat, 0, 0.135, 0.225, headG).scale.set(1.3, 0.35, 0.6);
   const hairMat = std(0x3a2a1a, 0.8);
   const hair = new THREE.Group(); headG.add(hair);
   const cap = mesh(new THREE.SphereGeometry(0.275, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.56), hairMat, 0, 0.27, -0.02, hair); cap.rotation.x = -0.3;
@@ -42,20 +53,23 @@ export function createPlayer(scene) {
   // Arms and legs hang from pivots at the shoulder/hip so they can swing; elbows and knees bend.
   function arm(x) {
     const pivot = new THREE.Group(); pivot.position.set(x, 1.36, 0); body.add(pivot);
-    mesh(capsule(0.088, 0.24), bodyMat, 0, -0.18, 0, pivot);
-    const elbow = new THREE.Group(); elbow.position.y = -0.38; pivot.add(elbow);
-    mesh(capsule(0.075, 0.22), skin, 0, -0.14, 0, elbow);
-    mesh(sphere(0.085, 10, 8), skin, 0, -0.33, 0.01, elbow);
+    mesh(shapes.upperArm(1, 18), bodyMat, 0, 0, 0, pivot);
+    mesh(shapes.deltoid(1.02), bodyMat, Math.sign(x) * 0.02, -0.02, 0, pivot);
+    const elbow = new THREE.Group(); elbow.position.y = -0.34; pivot.add(elbow);
+    mesh(shapes.forearm(1, 18), skin, 0, 0, 0, elbow);
+    mesh(mergeGeometries(shapes.hand(Math.sign(x), 0.65, 8)), skin, 0, -0.29, 0, elbow);
     elbow.rotation.x = -0.25;
     pivot.userData.elbow = elbow;
     return pivot;
   }
   function leg(x) {
     const pivot = new THREE.Group(); pivot.position.set(x, 0.76, 0); playerGroup.add(pivot);
-    mesh(capsule(0.115, 0.28), legMat, 0, -0.2, 0, pivot);
-    const knee = new THREE.Group(); knee.position.y = -0.38; pivot.add(knee);
-    mesh(capsule(0.1, 0.24), legMat, 0, -0.15, 0, knee);
-    const boot = mesh(sphere(0.125, 12, 8), std(0x2e2016, 0.6), 0, -0.33, 0.05, knee); boot.scale.set(1, 0.65, 1.5);
+    mesh(shapes.thigh(1, 20), legMat, 0, 0, 0, pivot);
+    const knee = new THREE.Group(); knee.position.y = -0.4; pivot.add(knee);
+    mesh(shapes.shin(1, 20), legMat, 0, 0, 0, knee);
+    mesh(shapes.kneecap(1), legMat, 0, -0.01, 0.07, knee);
+    const bootMat = std(0x2e2016, 0.6);
+    mesh(mergeGeometries(shapes.foot(16)), bootMat, 0, -0.28, 0, knee);
     pivot.userData.knee = knee;
     return pivot;
   }

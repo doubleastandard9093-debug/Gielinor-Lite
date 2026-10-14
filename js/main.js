@@ -8,6 +8,7 @@ import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY } from './gfx.j
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, IS_TOUCH } from './scene.js';
 import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from './chunk.js';
 import { createWorld, createPileMesh, SPAWN, setDecorQuality, updateDecorChunks } from './world.js';
+import { updateLod, setLodRange, poseHumanoid } from './anatomy.js';
 import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt } from './player.js';
 import { createCameraRig, rotateRig, zoomRig, updateRig } from './camera.js';
 import { setupInput } from './input.js';
@@ -130,6 +131,7 @@ function applyGfx() {
   sky.setQuality(gfx.quality);
   setDecorQuality(gfx.quality);
   SWAY.value = gfx.quality === 'low' ? 0 : 1;
+  setLodRange(gfx.quality);
   setShadows(renderer, dirLight, shadowsOn());
 }
 function gfxLabel() {
@@ -1612,7 +1614,9 @@ function updatePatrols(dt, now) {
     const o = n.mesh;
     if (!o.parent) continue;
     if (action && (action.node === n)) continue;
+    n._mv = 0;
     if (n.waitUntil && now < n.waitUntil) continue;
+    n._mv = 1;
     n.pi = n.pi || 0;
     const [tx, tz] = n.patrol[n.pi], dx = tx - o.position.x, dz = tz - o.position.z, d = Math.hypot(dx, dz);
     if (d < 0.05) { n.pi = (n.pi + 1) % n.patrol.length; n.waitUntil = now + 2500 + Math.random() * 3000; continue; }
@@ -1634,6 +1638,23 @@ function updateRoofs() {
   for (const b of interiorBuildings) { const r = b.mesh.userData.roof; if (r) r.visible = b !== inB; }
 }
 window.insideOf = insideOf;
+const lodList = nodes.filter(n => n.lod);
+// Monsters animate whichever rig (far baked or near detailed) is showing.
+function syncMonsterRig(m) {
+  const r = m.lod.hi;
+  m.legs = r ? (r.userData.legs || m.loLegs) : m.loLegs;
+  m.rigHi = r && r.userData.arms ? r : null;
+}
+// Idle and walking poses for townsfolk shown with the detailed rig.
+function updateCharacters(dt, now) {
+  for (const n of lodList) {
+    const r = n.lod.hi; if (!r || !n.mesh.parent) continue;
+    const mv = n._mv || 0;
+    n._wt = (n._wt || 0) + dt * 7 * mv;
+    poseHumanoid(r, n._wt, mv, 0, 0);
+    r.userData.body.position.y = Math.sin(now * 0.002 + r.userData.id) * 0.006;
+  }
+}
 function cullWorld() {
   const R = gfx.quality === 'low' ? 70 : 100, R2 = R * R;
   const px = pm.mesh.position.x, pz = pm.mesh.position.z;
@@ -1649,6 +1670,9 @@ function cullWorld() {
     else if (!far && o.userData.culled) { o.visible = m.alive || m.dying; o.userData.culled = false; }
   }
   if (scene.userData.packGatherInstances) scene.userData.packGatherInstances();
+  const cx = camera.position.x, cz = camera.position.z;
+  for (const e of lodList) if (e.mesh.parent || e.lod.hi) updateLod(e, px, pz);
+  for (const m of monsters) if (m.lod && updateLod(m, px, pz)) syncMonsterRig(m);
   updateDecorChunks(px, pz, gfx.quality === 'low' ? 45 : 60); // fine clutter fades in fog well before this
 }
 
@@ -1690,6 +1714,7 @@ function animate(now) {
   if (frame % 30 === 7) { const vm = onVisit(player, pm.mesh.position.x, pm.mesh.position.z); for (const m of vm) log(m, 'game'); if (vm.length) markDirty(); }
   updateMonsters(dt, now);
   updatePatrols(dt, now);
+  updateCharacters(dt, now);
   updateFish(dt);
   updateFires(now);
   updateArrow(dt);
