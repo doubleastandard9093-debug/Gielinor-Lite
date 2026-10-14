@@ -939,8 +939,8 @@ function scatterDecor(scene, rng, occupied) {
 
 // Pile of items on the ground. Shared look, one small mesh each.
 const pileGeo = new THREE.BoxGeometry(0.35, 0.22, 0.35);
-const pileMat = new THREE.MeshLambertMaterial({ color: 0xc9a227 });
-const pileMat2 = new THREE.MeshLambertMaterial({ color: 0xe8e0d0 });
+const pileMat = new THREE.MeshStandardMaterial({ color: 0xc9a227, roughness: 0.45, metalness: 0.6 });
+const pileMat2 = new THREE.MeshStandardMaterial({ color: 0xe8e0d0, roughness: 0.8, metalness: 0.0 });
 export function createPileMesh(scene, x, z) {
   const g = new THREE.Group();
   const a = new THREE.Mesh(pileGeo, pileMat); a.position.y = 0.11;

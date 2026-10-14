@@ -2,7 +2,7 @@
 // meshes, so each tree, rock or building is one draw call. All original art.
 import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { TIME, SWAY } from './gfx.js';
+import { TIME, SWAY, attachNoiseBump } from './gfx.js';
 
 // Smooth pseudo-noise (cheap sum of sines), roughly -1..1.
 export function snoise(x, y, z, s = 0) {
@@ -121,11 +121,12 @@ export function col(geo, hex, amt = 0.22) { return shade(geo, hex, amt); }
 // ---------------------------------------------------------------------------
 // Materials: one shared vertex-colour material, and one with gentle wind sway.
 // ---------------------------------------------------------------------------
-export const vcMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+// Shared vertex-colour Standard materials (roughness/metalness tuned for outdoor props).
+export const vcMat = attachNoiseBump(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, metalness: 0.04 }), 0.2);
 export function makeFoliageMat(opts = {}, amount = 1) {
-  const m = new THREE.MeshLambertMaterial({ vertexColors: true, ...opts });
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.0, ...opts });
   m.onBeforeCompile = sh => swayShader(sh, amount);
-  m.customProgramCacheKey = () => 'foliage-sway-' + amount + (opts.side || 0);
+  m.customProgramCacheKey = () => 'foliage-std-lod-' + amount + (opts.side || 0);
   return m;
 }
 function swayShader(sh, amount) {
@@ -138,10 +139,12 @@ function swayShader(sh, amount) {
         #ifdef USE_INSTANCING
           wo = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
         #endif
+        // shader LOD: sway fades out between 40 and 60 units from the camera
+        float lod = 1.0 - smoothstep(40.0, 60.0, length(cameraPosition.xz - wo.xz));
         float h = max(transformed.y - 0.9, 0.0);
         float ph = wo.x * 0.37 + wo.z * 0.23;
-        transformed.x += sin(time * 1.25 + ph) * 0.03 * h * sway * AMT;
-        transformed.z += cos(time * 1.05 + ph * 1.3) * 0.025 * h * sway * AMT;
+        transformed.x += sin(time * 1.25 + ph) * 0.03 * h * sway * AMT * lod;
+        transformed.z += cos(time * 1.05 + ph * 1.3) * 0.025 * h * sway * AMT * lod;
       }`.replace(/AMT/g, amount.toFixed(2)).replace('transformed.y - 0.9', amount > 1 ? 'transformed.y' : 'transformed.y - 0.9'));
 }
 export const foliageMat = makeFoliageMat();

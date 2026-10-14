@@ -972,7 +972,7 @@ function buryOne() {
 const fireGeo = new THREE.ConeGeometry(0.35, 0.8, 6);
 const fireMat = new THREE.MeshBasicMaterial({ color: 0xff8a1a });
 const logGeo = new THREE.BoxGeometry(0.9, 0.15, 0.15);
-const logMat = new THREE.MeshLambertMaterial({ color: 0x5a3a1a });
+const logMat = new THREE.MeshStandardMaterial({ color: 0x5a3a1a, roughness: 0.9, metalness: 0.0 });
 function lightFire(a) {
   if (!bestTool(player, skills, 'tinderbox')) { log('You need a tinderbox on your toolbelt.', 'warn'); stopAction(); return; }
   const x = pm.mesh.position.x, z = pm.mesh.position.z;

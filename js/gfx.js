@@ -121,7 +121,7 @@ export function createSky(scene) {
 // texture painted in code, with procedural noise detail. One draw call.
 // ---------------------------------------------------------------------------
 export function terrainMaterial(maskTex, maskSize) {
-  const m = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0.0 });
   m.onBeforeCompile = sh => {
     sh.uniforms.tMask = { value: maskTex };
     sh.uniforms.tNoise = { value: getNoiseTexture() };
@@ -143,6 +143,9 @@ export function terrainMaterial(maskTex, maskSize) {
         vec3 grass = mix(vec3(0.27, 0.50, 0.14), vec3(0.45, 0.63, 0.19), smoothstep(0.3, 0.7, n1));
         grass = mix(grass, vec3(0.20, 0.40, 0.12), smoothstep(0.55, 0.85, n2) * 0.55);
         grass = mix(grass, vec3(0.55, 0.62, 0.24), smoothstep(0.62, 0.9, n3) * 0.3);
+        // shader LOD: fine grain fades out with distance (less shimmer on phones)
+        float fineK = 1.0 - smoothstep(40.0, 70.0, length(cameraPosition - vWPos));
+        n4 = mix(0.5, n4, fineK); n3 = mix(0.5, n3, fineK * 0.5 + 0.5);
         grass *= 0.82 + 0.36 * n4;
         vec3 dirt = mix(vec3(0.47, 0.35, 0.21), vec3(0.58, 0.45, 0.29), n3) * (0.8 + 0.35 * n4);
         dirt = mix(dirt, vec3(0.62, 0.6, 0.55), smoothstep(0.72, 0.8, n4) * 0.6);
@@ -180,7 +183,8 @@ export function waterMaterial(cx, cz, radius) {
       #include <fog_pars_vertex>
       void main(){
         vec4 w = modelMatrix * vec4(position, 1.0);
-        w.y += sin(w.x * 0.9 + time * 1.3) * 0.025 + sin(w.z * 1.3 - time * 1.7) * 0.02;
+        float wLod = 1.0 - smoothstep(45.0, 80.0, length(cameraPosition.xz - w.xz));
+        w.y += (sin(w.x * 0.9 + time * 1.3) * 0.025 + sin(w.z * 1.3 - time * 1.7) * 0.02) * wLod;
         vW = w.xyz;
         vec4 mvPosition = viewMatrix * w;
         gl_Position = projectionMatrix * mvPosition;
@@ -220,4 +224,42 @@ export function hookWaterNoise(mat) { mat.uniforms.tNoise = { value: getNoiseTex
 // ---------------------------------------------------------------------------
 // Per-frame update.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Cheap world-space noise bump for Standard materials that lack UVs.
+// Detail fades out past ~55 units so distant props stay cheap on phones.
+// ---------------------------------------------------------------------------
+export function attachNoiseBump(mat, strength = 0.22) {
+  const prevKey = mat.customProgramCacheKey ? mat.customProgramCacheKey.bind(mat) : () => '';
+  const prev = mat.onBeforeCompile;
+  mat.onBeforeCompile = sh => {
+    if (prev) prev(sh);
+    sh.uniforms.tNoiseBump = { value: getNoiseTexture() };
+    sh.uniforms.bumpStr = { value: strength };
+    if (!sh.vertexShader.includes('vBumpW')) {
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vBumpW;')
+        .replace('#include <project_vertex>', '#include <project_vertex>\nvBumpW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    }
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vBumpW; uniform sampler2D tNoiseBump; uniform float bumpStr;`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        {
+          float k = bumpStr * (1.0 - smoothstep(40.0, 70.0, length(cameraPosition - vBumpW)));
+          if (k > 0.002) {
+            float hx = texture2D(tNoiseBump, vBumpW.xz * 0.18).r;
+            float hz = texture2D(tNoiseBump, vBumpW.xz * 0.18 + 0.37).g;
+            vec3 nw = normalize(vec3((hx - 0.5) * k * 2.0, 1.0, (hz - 0.5) * k * 2.0));
+            // blend into view-space normal
+            vec3 nt = normalize(normalMatrix * nw);
+            normal = normalize(mix(normal, nt, 0.55));
+          }
+        }`);
+  };
+  mat.customProgramCacheKey = () => prevKey() + '-nb' + strength;
+  mat.needsUpdate = true;
+  return mat;
+}
+
 export function tickGfx(nowMs) { TIME.value = nowMs / 1000; }
