@@ -239,6 +239,40 @@ export function treeGeometry(kind, rng) {
   return bake(parts);
 }
 
+// Short stump left after a tree is chopped (one shared geo per bark colour).
+export function stumpGeometry(kind, rng) {
+  const L = TREE_LOOK[kind] || TREE_LOOK.Tree;
+  const parts = [];
+  const h = 0.55, r = L.r * 0.95;
+  const g = prim.cyl(r * 0.7, r, h, 8);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const k = 1 + 0.1 * snoise(p.getX(i) * 4, p.getY(i) * 2, p.getZ(i) * 4, 8);
+    p.setX(i, p.getX(i) * k); p.setZ(i, p.getZ(i) * k);
+  }
+  g.computeVertexNormals();
+  place(g, 0, h / 2, 0);
+  const bc = new THREE.Color(L.bark), c = new THREE.Color();
+  paint(g, (x, y, z) => c.copy(bc).multiplyScalar(0.7 + 0.35 * (0.5 + 0.5 * Math.sin(Math.atan2(z, x) * 5 + y))));
+  parts.push(g);
+  // cut top disc
+  const top = col(prim.cyl(r * 0.72, r * 0.72, 0.06, 10), new THREE.Color(L.bark).offsetHSL(0.02, -0.1, 0.15).getHex(), 0.15);
+  place(top, 0, h + 0.02, 0);
+  parts.push(top);
+  for (let i = 0; i < 3; i++) {
+    const a = i * Math.PI * 2 / 3 + 0.4;
+    const root = col(prim.cone(r * 0.28, r * 1.1, 5), L.bark, 0.3);
+    place(root, Math.cos(a) * r * 0.7, r * 0.25, Math.sin(a) * r * 0.7, Math.sin(a) * 1.1, 0, -Math.cos(a) * 1.1);
+    parts.push(root);
+  }
+  return bake(parts);
+}
+
+// Empty rock shell after ore is mined (grey, no crystals).
+export function emptyRockGeometry(rng) {
+  return rockGeometry(null, rng || (() => 0.5));
+}
+
 // ---------------------------------------------------------------------------
 // Rocks: smooth boulder cluster with coloured ore veins and crystals.
 // ---------------------------------------------------------------------------

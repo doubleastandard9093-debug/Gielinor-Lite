@@ -845,13 +845,15 @@ const GOT = item => WOODS.includes(item) ? `You get some ${item.toLowerCase()}.`
 const HERB_LEVEL = herb => (ITEMS[herb] && ITEMS[herb].herbLevel) || 1;
 function depleteNode(node, ms) {
   node.alive = false;
-  node.full.visible = false;
+  if (node.syncInstance) node.syncInstance(node);
+  else if (node.full) node.full.visible = false;
   if (node.depleted) node.depleted.visible = true;
   node.respawnAt = performance.now() + ms;
 }
 function respawnNode(node) {
   node.alive = true;
-  node.full.visible = true;
+  if (node.syncInstance) node.syncInstance(node);
+  else if (node.full) node.full.visible = true;
   if (node.depleted) node.depleted.visible = false;
 }
 
@@ -1568,7 +1570,7 @@ function cullWorld() {
   const px = pm.mesh.position.x, pz = pm.mesh.position.z;
   for (const e of cullList) {
     const o = e.mesh, dx = o.position.x - px, dz = o.position.z - pz, far = dx * dx + dz * dz > R2;
-    if (far && o.visible) { o.visible = false; o.userData.culled = true; }
+    if (far && !o.userData.culled) { o.visible = false; o.userData.culled = true; }
     else if (!far && o.userData.culled) { o.visible = true; o.userData.culled = false; }
   }
   for (const m of monsters) {
@@ -1577,6 +1579,7 @@ function cullWorld() {
     if (far && o.visible && m.alive && !m.dying) { o.visible = false; o.userData.culled = true; }
     else if (!far && o.userData.culled) { o.visible = m.alive || m.dying; o.userData.culled = false; }
   }
+  if (scene.userData.packGatherInstances) scene.userData.packGatherInstances();
 }
 
 function animate(now) {

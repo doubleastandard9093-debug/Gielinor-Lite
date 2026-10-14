@@ -3,7 +3,7 @@ import { makeRng } from './rng.js';
 import { MONSTER_TYPES, AGILITY_COURSES, RUNE_ALTARS } from './gameplay.js';
 import { QUEST_NPCS } from './questnpcs.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
-import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap } from './models.js';
+import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap } from './models.js';
 
 // The world is now about 300 x 300 with five towns. (Aaron's edit asked for 250 each way;
 // 150 fits every town with room to spare and keeps phones fast.)
@@ -234,39 +234,97 @@ export function createWorld(scene) {
     { x: -2, z: -31, r: 6 }, { x: -16, z: -33, r: 5 });
   for (const pth of PATHS) for (let t = 0.1; t <= 1; t += 0.1) occupied.push({ x: pth[0] + (pth[2] - pth[0]) * t, z: pth[1] + (pth[3] - pth[1]) * t, r: 0.6 });
 
-  // ---- Trees (one swaying mesh each) ----
-  const treeGeoCache = {};
+  // ---- Trees & rocks: InstancedMesh (one draw call per type) + invisible proxies for picking ----
+  const treeGeoCache = {}, stumpGeoCache = {}, rockGeoCache = {}, emptyRockGeoCache = {};
+  const pendingTrees = [], pendingRocks = [];
+  const invisMat = new THREE.MeshBasicMaterial({ visible: false });
+  const treeHitGeo = new THREE.BoxGeometry(1.4, 3.6, 1.4);
+  const rockHitGeo = new THREE.BoxGeometry(1.6, 1.0, 1.6);
+  const _im = new THREE.Matrix4(), _iq = new THREE.Quaternion(), _ie = new THREE.Euler(), _ip = new THREE.Vector3(), _is = new THREE.Vector3();
+  function writeInstance(mesh, i, x, y, z, ry, sx, sy, sz) {
+    _ie.set(0, ry, 0); _iq.setFromEuler(_ie);
+    _im.compose(_ip.set(x, y, z), _iq, _is.set(sx, sy, sz));
+    mesh.setMatrixAt(i, _im);
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+  // Rebuild one InstancedMesh so only nearby, living trees/rocks are drawn.
+  function packGroup(group) {
+    if (!group) return;
+    let n = 0;
+    for (const e of group.ents) {
+      if (!e.alive || e.mesh.userData.culled) continue;
+      writeInstance(group.mesh, n++, e.x, 0, e.z, e.instRy, e.instScale, e.instScale, e.instScale);
+    }
+    group.mesh.count = n;
+    group.mesh.instanceMatrix.needsUpdate = true;
+    if (n) group.mesh.computeBoundingSphere();
+  }
+  function syncInstance(ent) { if (ent.instGroup) packGroup(ent.instGroup); }
   function createTree(x, z, kind) {
-    // A few shape variants per kind are shared between trees to save memory.
-    const key = kind + ((rng() * 3) | 0);
+    const variant = (rng() * 3) | 0;
+    const key = kind + variant;
     if (!treeGeoCache[key]) treeGeoCache[key] = treeGeometry(kind, makeRng(key.length * 97 + key.charCodeAt(key.length - 1) * 13));
+    if (!stumpGeoCache[kind]) stumpGeoCache[kind] = stumpGeometry(kind, makeRng(kind.length * 41 + 7));
     const root = new THREE.Group();
-    const mesh = new THREE.Mesh(treeGeoCache[key], foliageMat);
-    mesh.castShadow = true; mesh.receiveShadow = true;
-    root.add(mesh);
+    const hit = new THREE.Mesh(treeHitGeo, invisMat); hit.position.y = 1.6; root.add(hit);
+    const stump = new THREE.Mesh(stumpGeoCache[kind], vcMat);
+    stump.castShadow = true; stump.receiveShadow = true; stump.visible = false;
+    root.add(stump);
     root.position.set(x, 0, z);
-    root.rotation.y = rng() * Math.PI * 2;
-    const s = 0.85 + rng() * 0.3;
-    root.scale.set(s, s, s);
     scene.add(root);
     pickables.push(root);
     const name = kind === 'Tree' ? 'Tree' : kind;
-    return tag(root, { mesh: root, full: root, type: 'tree', kind, name, alive: true, x, z, radius: 0.9 });
+    const ry = rng() * Math.PI * 2, s = 0.85 + rng() * 0.3; // same rng order as before (world layout unchanged)
+    const ent = tag(root, { mesh: root, full: root, depleted: stump, type: 'tree', kind, name, alive: true, x, z, radius: 0.9,
+      instKey: key, instScale: s, instRy: ry, syncInstance });
+    pendingTrees.push(ent);
+    return ent;
   }
-
-  // ---- Rocks (boulders with ore veins and crystals) ----
   const ORE_COLOR = { Copper: 0xd0803a, Tin: 0xd8d8d0, Iron: 0x8a4a32, Coal: 0x1a1a1a, Mithril: 0x5a6ad8, Adamantite: 0x3aa860, Runite: 0x40c8e0, Dragon: 0xd03030, Essence: 0xd8e0f0 };
   function createRock(x, z, ore) {
+    if (!rockGeoCache[ore]) rockGeoCache[ore] = rockGeometry(ORE_COLOR[ore] ?? 0x888888, makeRng((ore || 'x').length * 53 + 11));
+    if (!emptyRockGeoCache[ore]) emptyRockGeoCache[ore] = emptyRockGeometry(makeRng((ore || 'x').length * 17 + 3));
+    // Rocks used to build a unique mesh from the shared rng (38 draws); keep consuming
+    // the same amount so every tree, monster and patch stays where it was.
+    for (let i = 0; i < 38; i++) rng();
     const root = new THREE.Group();
-    const mesh = new THREE.Mesh(rockGeometry(ORE_COLOR[ore] ?? 0x888888, rng), vcMat);
-    mesh.castShadow = true; mesh.receiveShadow = true;
-    root.add(mesh);
+    const hit = new THREE.Mesh(rockHitGeo, invisMat); hit.position.y = 0.4; root.add(hit);
+    const empty = new THREE.Mesh(emptyRockGeoCache[ore], vcMat);
+    empty.castShadow = true; empty.receiveShadow = true; empty.visible = false;
+    empty.rotation.y = rng() * Math.PI * 2;
+    root.add(empty);
     root.position.set(x, 0, z);
-    root.rotation.y = rng() * Math.PI * 2;
     scene.add(root);
     pickables.push(root);
-    return tag(root, { mesh: root, full: root, type: 'rock', ore, name: ore === 'Essence' ? 'Essence rock' : 'Rocks', alive: true, x, z, radius: 0.8 });
+    const s = 0.9 + 0.25 * (0.5 + 0.5 * Math.sin(x * 12.9898 + z * 78.233)), ry = empty.rotation.y;
+    const ent = tag(root, { mesh: root, full: root, depleted: empty, type: 'rock', ore, name: ore === 'Essence' ? 'Essence rock' : 'Rocks', alive: true, x, z, radius: 0.8,
+      instKey: ore, instScale: s, instRy: ry, syncInstance });
+    pendingRocks.push(ent);
+    return ent;
   }
+  const instanceGroups = [];
+  function flushInstances(list, geoOf, material, shadow) {
+    const groups = new Map();
+    for (const e of list) { if (!groups.has(e.instKey)) groups.set(e.instKey, []); groups.get(e.instKey).push(e); }
+    for (const [key, ents] of groups) {
+      const geo = geoOf(key, ents[0]);
+      const inst = new THREE.InstancedMesh(geo, material, ents.length);
+      inst.castShadow = !!shadow; inst.receiveShadow = true;
+      inst.frustumCulled = true; // bounds refreshed when we pack
+      const group = { mesh: inst, ents };
+      ents.forEach(e => { e.instanceMesh = inst; e.instGroup = group; });
+      packGroup(group);
+      scene.add(inst);
+      instanceGroups.push(group);
+    }
+  }
+  function flushTreesAndRocks() {
+    flushInstances(pendingTrees, (key) => treeGeoCache[key], foliageMat, true);
+    flushInstances(pendingRocks, (key) => rockGeoCache[key], vcMat, true);
+    pendingTrees.length = 0; pendingRocks.length = 0;
+  }
+  // Exposed so the main loop can re-pack after distance cull flips.
+  scene.userData.packGatherInstances = () => { for (const g of instanceGroups) packGroup(g); };
 
   // ---- Fishing spots ----
   const ringMat = new THREE.MeshBasicMaterial({ color: 0xd8f0ff, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
@@ -882,6 +940,7 @@ export function createWorld(scene) {
     nodes.push(createNpc(p.x, p.z, n.id, n.name, n.look, p.x + 1, p.z + 1));
   }
 
+  flushTreesAndRocks();
   scatterDecor(scene, rng, occupied);
   return { ground, nodes, monsters, pickables, buildings };
 }
