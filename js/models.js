@@ -418,16 +418,50 @@ export function creatureParts(shape, c, typeName) {
       legs: [[0.26, 0.45], [-0.26, 0.45], [0.26, -0.5], [-0.26, -0.5]].map(([x, z]) => ({ x, y: 0.72, z, parts: [[prim.capsule(0.09, 0.5, 3, 8), 0xf2efe8, 0, -0.35, 0], [prim.cyl(0.1, 0.1, 0.1, 8), 0x3a3028, 0, -0.68, 0]] }))
     };
   }
-  if (shape === 'quad') {
+  if (typeName === 'Wolf') {
+    // Compact wolf: short deep torso, raised head, long snout, tall ears, bushy tail.
     return {
       top: [
-        [blob(0.3, 0.3, 0.62, { detail: 2, lump: 0.1, seed: 1 }), c, 0, 0.72, 0], [blob(0.3, 0.32, 0.32, { detail: 1, lump: 0.12, seed: 2 }), lighter, 0, 0.82, 0.45],
-        [blob(0.2, 0.2, 0.24, { detail: 1, lump: 0.08, seed: 3 }), c, 0, 0.98, 0.78], [prim.capsule(0.08, 0.22, 3, 8), lighter, 0, 0.92, 1.02, Math.PI / 2],
-        [prim.sphere(0.04, 6, 4), 0x111111, 0, 0.94, 1.18, 0, 0, 0, 0], [prim.sphere(0.03, 6, 4), 0xe0c020, 0.09, 1.04, 0.95, 0, 0, 0, 0], [prim.sphere(0.03, 6, 4), 0xe0c020, -0.09, 1.04, 0.95, 0, 0, 0, 0],
-        [prim.cone(0.06, 0.18, 5), c, 0.1, 1.2, 0.72, -0.2], [prim.cone(0.06, 0.18, 5), c, -0.1, 1.2, 0.72, -0.2],
-        [prim.cone(0.09, 0.6, 7), c, 0, 0.82, -0.82, -2.0]
+        [blob(0.36, 0.32, 0.42, { detail: 2, lump: 0.05, seed: 11 }), c, 0, 0.82, 0],
+        [blob(0.26, 0.24, 0.24, { detail: 1, lump: 0.04, seed: 12 }), lighter, 0, 1.0, 0.38],
+        [blob(0.2, 0.18, 0.2, { detail: 1, lump: 0.04, seed: 13 }), c, 0, 1.15, 0.58],
+        [scaled(prim.cone(0.1, 0.32, 8), 1, 0.85, 1), lighter, 0, 1.08, 0.88, Math.PI / 2],
+        [prim.sphere(0.04, 6, 4), 0x1a1a1a, 0, 1.05, 1.12, 0, 0, 0, 0],
+        [prim.sphere(0.04, 6, 4), 0xe8c040, 0.1, 1.22, 0.68, 0, 0, 0, 0],
+        [prim.sphere(0.04, 6, 4), 0xe8c040, -0.1, 1.22, 0.68, 0, 0, 0, 0],
+        [prim.cone(0.07, 0.22, 5), c, 0.11, 1.38, 0.52, -0.1],
+        [prim.cone(0.07, 0.22, 5), c, -0.11, 1.38, 0.52, -0.1],
+        [prim.cone(0.035, 0.1, 4), 0xe8c0b0, 0.11, 1.44, 0.52, -0.1],
+        [prim.cone(0.035, 0.1, 4), 0xe8c0b0, -0.11, 1.44, 0.52, -0.1],
+        [blob(0.1, 0.09, 0.32, { detail: 1, lump: 0.03, seed: 14 }), c, 0, 0.95, -0.55],
+        [prim.sphere(0.12, 8, 6), lighter, 0, 1.02, -0.82]
       ],
-      legs: [[0.17, 0.4], [-0.17, 0.4], [0.17, -0.42], [-0.17, -0.42]].map(([x, z]) => ({ x, y: 0.62, z, parts: [[prim.capsule(0.07, 0.42, 3, 8), c, 0, -0.3, 0], [scaled(prim.sphere(0.07, 8, 6), 1, 0.6, 1.3), darker, 0, -0.58, 0.03]] }))
+      legs: [[0.17, 0.28], [-0.17, 0.28], [0.17, -0.3], [-0.17, -0.3]].map(([x, z]) => ({
+        x, y: 0.55, z,
+        parts: [[prim.capsule(0.05, 0.42, 3, 7), c, 0, -0.28, 0], [scaled(prim.sphere(0.055, 7, 5), 1, 0.5, 1.3), darker, 0, -0.55, 0.03]]
+      }))
+    };
+  }
+  if (shape === 'quad') {
+    // Generic quadruped: shorter body so it doesn't look like a stretched blob.
+    return {
+      top: [
+        [blob(0.32, 0.28, 0.5, { detail: 2, lump: 0.08, seed: 1 }), c, 0, 0.72, 0],
+        [blob(0.26, 0.26, 0.28, { detail: 1, lump: 0.08, seed: 2 }), lighter, 0, 0.85, 0.4],
+        [blob(0.2, 0.18, 0.22, { detail: 1, lump: 0.06, seed: 3 }), c, 0, 0.98, 0.68],
+        [scaled(prim.sphere(0.1, 8, 6), 0.95, 0.8, 1.3), lighter, 0, 0.92, 0.9],
+        [prim.sphere(0.035, 6, 4), 0x111111, 0, 0.9, 1.08, 0, 0, 0, 0],
+        [prim.sphere(0.03, 6, 4), 0xe0c020, 0.09, 1.04, 0.82, 0, 0, 0, 0],
+        [prim.sphere(0.03, 6, 4), 0xe0c020, -0.09, 1.04, 0.82, 0, 0, 0, 0],
+        [prim.cone(0.055, 0.16, 5), c, 0.1, 1.18, 0.62, -0.2],
+        [prim.cone(0.055, 0.16, 5), c, -0.1, 1.18, 0.62, -0.2],
+        [blob(0.1, 0.08, 0.22, { detail: 1, lump: 0.04, seed: 4 }), c, 0, 0.8, -0.55],
+        [prim.sphere(0.09, 7, 5), lighter, 0, 0.86, -0.75]
+      ],
+      legs: [[0.16, 0.32], [-0.16, 0.32], [0.16, -0.35], [-0.16, -0.35]].map(([x, z]) => ({
+        x, y: 0.58, z,
+        parts: [[prim.capsule(0.06, 0.4, 3, 8), c, 0, -0.28, 0], [scaled(prim.sphere(0.065, 8, 6), 1, 0.55, 1.25), darker, 0, -0.55, 0.03]]
+      }))
     };
   }
   if (shape === 'spider') {

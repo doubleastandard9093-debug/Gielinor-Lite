@@ -25,6 +25,7 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>Better wolves.</b> Wolves have a proper head, pointed snout, upright ears, slimmer legs and a bushy tail instead of a stretched blob.</p>
 <p><b>World streaming (RuneScape-style chunks)</b></p>
 <p>The map is now split into 32×32 chunks. Buildings, stalls, props and monsters only load in the chunks around you (5×5 on Low, 7×7 on High) and unload as you walk away, so the world can keep growing without slowing your phone. Monsters keep their health and respawn timers while unloaded.</p>
 <p><b>Bigger world, smoother graphics</b></p>
