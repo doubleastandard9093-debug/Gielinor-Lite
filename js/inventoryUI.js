@@ -25,6 +25,7 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>Walk-in buildings.</b> Every building now has an open doorway facing its town square, and the roof lifts away when you step inside. Smithies have a glowing forge and an anvil, with the smith walking between them. Shops have a counter and stocked shelves, with the shopkeeper pacing behind it (Brightwater's General Store has a new Shopkeeper). Banks have a long counter with two or three teller windows and a Banker you can bank with. Tap anywhere inside and you'll walk round to the door. Doorways show on the minimap.</p>
 <p><b>Better wolves.</b> Wolves have a proper head, pointed snout, upright ears, slimmer legs and a bushy tail instead of a stretched blob.</p>
 <p><b>World streaming (RuneScape-style chunks)</b></p>
 <p>The map is now split into 32×32 chunks. Buildings, stalls, props and monsters only load in the chunks around you (5×5 on Low, 7×7 on High) and unload as you walk away, so the world can keep growing without slowing your phone. Monsters keep their health and respawn timers while unloaded.</p>

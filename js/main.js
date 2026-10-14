@@ -538,7 +538,8 @@ function stunned() {
 }
 function walkTo(x, z) {
   if (crossing || stunned()) return;
-  pm.target = { x, z };
+  pm.goal = null;
+  pm.target = { x, z, walk: true };
   pm.stopDist = 0.1;
 }
 // ---- Magic ----
@@ -659,12 +660,14 @@ function doRunecraft(a) {
 
 function stopAction() {
   action = null;
+  pm.goal = null;
   pm.actionAnim = 0;
 }
 function startAction(a) {
   if (crossing || stunned()) return;
   action = a;
   pm.target = null;
+  pm.goal = null;
 }
 
 function levelColor(lvl) {
@@ -729,7 +732,7 @@ function optionsFor(ent) {
       { ...ex, color: '#ffff00' }];
     case 'herb': return [{ action: 'Pick', target: ent.name, color: cy, fn: () => startAction({ kind: 'gather', node: ent }) }, ex];
     case 'well': return [{ action: 'Fill vials', target: 'Well', color: cy, fn: () => startAction({ kind: 'well', node: ent }) }, ex];
-    case 'bank': return [{ action: 'Bank', target: 'Bank booth', color: cy, fn: () => startAction({ kind: 'bank', node: ent }) }, ex];
+    case 'bank': return [{ action: 'Bank', target: ent.name || 'Bank booth', color: cy, fn: () => startAction({ kind: 'bank', node: ent }) }, ex];
     case 'npc': {
       const o = [{ action: 'Talk-to', target: ent.name, color: '#ffff00', fn: () => startAction({ kind: 'talk', node: ent }) }];
       if (ent.npc === 'bob') o.push({ action: 'Trade', target: ent.name, color: '#ffff00', fn: () => startAction({ kind: 'shop', node: ent, shop: 'tools' }) });
@@ -1572,6 +1575,51 @@ let last = performance.now();
 let frame = 0;
 // ---- Distance culling: the world is big, so only draw what is near (fog hides the edge) ----
 const cullList = [...nodes, ...buildings].filter(e => e && e.mesh);
+// ---- Building interiors: walk through doorways and lift the roof when inside ----
+const interiorBuildings = buildings.filter(b => b && b.inner && b.door);
+const insideOf = (x, z) => interiorBuildings.find(b => x > b.inner.minX && x < b.inner.maxX && z > b.inner.minZ && z < b.inner.maxZ) || null;
+function doorWaypoint(b, px, pz, leaving) {
+  const d = b.door, lat = Math.abs((px - d.x) * d.nz) + Math.abs((pz - d.z) * d.nx);
+  const out = (px - d.x) * d.nx + (pz - d.z) * d.nz; // >0 outside
+  const inLane = lat < 0.42 && out > -1.0 && out < 1.2;
+  const o = { x: d.x + d.nx * 1.0, z: d.z + d.nz * 1.0 }, i = { x: d.x - d.nx * 0.9, z: d.z - d.nz * 0.9 };
+  if (leaving) return inLane ? { x: d.x + d.nx * 1.3, z: d.z + d.nz * 1.3 } : i;
+  return inLane ? { x: d.x - d.nx * 1.1, z: d.z - d.nz * 1.1 } : o;
+}
+function routeThroughDoors() {
+  const p = pm.mesh.position;
+  if (pm.target && !pm.target.wp) {
+    const t = pm.target;
+    if (insideOf(p.x, p.z) === insideOf(t.x, t.z)) { pm.goal = null; return; }
+    pm.goal = { x: t.x, z: t.z, stop: pm.stopDist, walk: !!t.walk };
+  } else if (!pm.goal) return;
+  else if (!pm.goal.walk && !pm.target) { pm.goal = null; return; }
+  const g = pm.goal, from = insideOf(p.x, p.z), to = insideOf(g.x, g.z);
+  if (from === to) { pm.target = { x: g.x, z: g.z, wp: true }; pm.stopDist = g.stop; pm.goal = null; return; }
+  const w = from ? doorWaypoint(from, p.x, p.z, true) : doorWaypoint(to, p.x, p.z, false);
+  pm.target = { ...w, wp: true }; pm.stopDist = 0.05;
+}
+// Staff walk a short loop between their work spots (forge/anvil, counter/shelves).
+const patrollers = nodes.filter(n => n.patrol);
+function updatePatrols(dt, now) {
+  for (const n of patrollers) {
+    const o = n.mesh;
+    if (!o.parent) continue;
+    if (action && (action.node === n)) continue;
+    if (n.waitUntil && now < n.waitUntil) continue;
+    n.pi = n.pi || 0;
+    const [tx, tz] = n.patrol[n.pi], dx = tx - o.position.x, dz = tz - o.position.z, d = Math.hypot(dx, dz);
+    if (d < 0.05) { n.pi = (n.pi + 1) % n.patrol.length; n.waitUntil = now + 2500 + Math.random() * 3000; continue; }
+    const st = Math.min(d, dt * 0.9);
+    o.position.x += dx / d * st; o.position.z += dz / d * st; n.x = o.position.x; n.z = o.position.z;
+    o.rotation.y = Math.atan2(dx, dz);
+  }
+}
+function updateRoofs() {
+  const p = pm.mesh.position, inB = insideOf(p.x, p.z);
+  for (const b of interiorBuildings) { const r = b.mesh.userData.roof; if (r) r.visible = b !== inB; }
+}
+window.insideOf = insideOf;
 function cullWorld() {
   const R = gfx.quality === 'low' ? 70 : 100, R2 = R * R;
   const px = pm.mesh.position.x, pz = pm.mesh.position.z;
@@ -1608,6 +1656,7 @@ function animate(now) {
 
   updateAction();
   const running = player.settings.run && player.runEnergy > 0;
+  routeThroughDoors();
   const moved = crossing ? 0 : updatePlayer(pm, keys, dt, running, rig.yaw);
   updateCrossing(dt);
   if (running && moved > 0) {
@@ -1622,9 +1671,11 @@ function animate(now) {
   }
 
   if (frame % 15 === 0) cullWorld();
+  if (frame % 5 === 2) updateRoofs();
   if (frame % 10 === 3) { setLoadRadius(gfx.quality === 'low' ? 2 : 3); updateChunks(pm.mesh.position.x, pm.mesh.position.z, scene); }
   if (frame % 30 === 7) { const vm = onVisit(player, pm.mesh.position.x, pm.mesh.position.z); for (const m of vm) log(m, 'game'); if (vm.length) markDirty(); }
   updateMonsters(dt, now);
+  updatePatrols(dt, now);
   updateFish(dt);
   updateFires(now);
   updateArrow(dt);
@@ -1655,7 +1706,7 @@ window.addEventListener('keydown', e => {
 
 window.gielinor = {
   gfx, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
-  renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, giveXP, setAutocast, get crossing() { return crossing; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor,
+  renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, giveXP, setAutocast, get crossing() { return crossing; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }

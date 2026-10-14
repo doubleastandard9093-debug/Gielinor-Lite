@@ -445,40 +445,86 @@ export function createWorld(scene) {
   function createBuilding([x, z, w, d, wall, roof, name, examine]) {
     const g = new THREE.Group();
     const parts = [];
-    const h = 2.7, base = 0.55;
+    const h = 2.7, base = 0.55, T = 0.18, DOOR = 1.15;
     const TIMBER = 0x4a3020, STONE = 0x7d776c;
     const add = (geo, hex, amt, px, py, pz, rx = 0, ry = 0, rz = 0) => parts.push(put(col(geo, hex, amt), px, py, pz, rx, ry, rz));
-    const big = w * d > 22 || /Bank|Church|Smithy|Palace|Castle|Armoury|Emporium|Rune Shop/.test(name);
-    // stone footing with block texture painted on
+    const big = w * d > 22 || /Bank|Church|Smithy|Palace|Castle|Armoury|Emporium|Rune Shop|Store|Inn|Tavern|Weaponsmith/.test(name);
+    const wallC = new THREE.Color(wall), wc = new THREE.Color();
+    const paintWall = (geo) => paint(geo, (px, py, pz) => wc.copy(wallC).multiplyScalar(0.88 + 0.12 * snoise(px * 3, py * 3, pz * 3, 7)));
+    // Door faces the town square
+    const tc = nearestTown(x, z), rx = x - tc.x, rz = z - tc.z;
+    const toCentre = Math.abs(rx) > Math.abs(rz) ? [Math.sign(-rx) || 1, 0] : [0, Math.sign(-rz) || 1];
+    const doorOnX = !!toCentre[0]; // door on +/- X face
+    const doorSign = doorOnX ? toCentre[0] : toCentre[1];
+    // Footing + interior floor
     const footC = new THREE.Color(STONE), fc = new THREE.Color();
     const foot = paint(prim.box(w + 0.16, base, d + 0.16), (px, py, pz) => fc.copy(footC).multiplyScalar(0.8 + 0.25 * (0.5 + 0.5 * snoise(Math.floor(px * 2.2 + pz * 2.2), Math.floor(py * 4), 0, 3))));
-    parts.push(put(foot, 0, base / 2, 0));
-    // walls: stone for big buildings, plaster for houses
-    const wallC = new THREE.Color(wall), wc = new THREE.Color();
-    const walls = paint(prim.box(w, h - base, d), (px, py, pz) => wc.copy(wallC).multiplyScalar(0.88 + 0.12 * snoise(px * 3, py * 3, pz * 3, 7)));
-    parts.push(put(walls, 0, base + (h - base) / 2, 0));
+    void foot;
+    const fl = 0.04;
+    add(prim.box(w - T * 2, 0.06, d - T * 2), 0x6a5040, 0.2, 0, 0.03, 0);
+    // Hollow walls with a doorway gap on the town-facing side
+    const wh = h, wy = wh / 2;
+    const wallSeg = (alongX, side, a0, a1) => {
+      const len = a1 - a0, mid = (a0 + a1) / 2;
+      if (len < 0.12) return;
+      const geo = alongX ? prim.box(len, wh, T) : prim.box(T, wh, len);
+      const mesh = paintWall(geo);
+      if (alongX) put(mesh, mid, wy, side * (d / 2 - T / 2)); else put(mesh, side * (w / 2 - T / 2), wy, mid);
+      parts.push(mesh);
+      // stone plinth along the outside of the segment
+      const pl = alongX ? prim.box(len + 0.08, base, T + 0.12) : prim.box(T + 0.12, base, len + 0.08);
+      const plm = paint(pl, (px, py, pz) => fc.copy(footC).multiplyScalar(0.8 + 0.25 * (0.5 + 0.5 * snoise(Math.floor(px * 2.2 + pz * 2.2), Math.floor(py * 4), 0, 3))));
+      if (alongX) put(plm, mid, base / 2, side * (d / 2 - T / 2)); else put(plm, side * (w / 2 - T / 2), base / 2, mid);
+      parts.push(plm);
+      if (alongX) colliders.push({ minX: x + a0, maxX: x + a1, minZ: z + side * (d / 2) - T, maxZ: z + side * (d / 2) + T * 0.2 });
+      else colliders.push({ minX: x + side * (w / 2) - T, maxX: x + side * (w / 2) + T * 0.2, minZ: z + a0, maxZ: z + a1 });
+    };
+    const splitDoor = (fullHalf, doorHalf) => {
+      // returns [[-full, -door], [door, full]] segments leaving the gap
+      return [[-fullHalf, -doorHalf], [doorHalf, fullHalf]];
+    };
+    for (const side of [-1, 1]) {
+      const isDoorFace = doorOnX ? false : side === doorSign;
+      if (isDoorFace) for (const [a0, a1] of splitDoor(w / 2, DOOR / 2)) wallSeg(true, side, a0, a1);
+      else wallSeg(true, side, -w / 2, w / 2);
+    }
+    for (const side of [-1, 1]) {
+      const isDoorFace = doorOnX ? side === doorSign : false;
+      if (isDoorFace) for (const [a0, a1] of splitDoor(d / 2, DOOR / 2)) wallSeg(false, side, a0, a1);
+      else wallSeg(false, side, -d / 2, d / 2);
+    }
+    // Lintel over the door + open doorway (no solid door panel) + step
+    const fx = toCentre[0] * (w / 2 - T / 2), fz = toCentre[1] * (d / 2 - T / 2);
+    const alongXdoor = !doorOnX;
+    add(alongXdoor ? prim.box(DOOR + 0.2, 0.14, T + 0.04) : prim.box(T + 0.04, 0.14, DOOR + 0.2), TIMBER, 0.1, fx, 1.95, fz);
+    add(alongXdoor ? prim.box(0.1, 1.7, T + 0.02) : prim.box(T + 0.02, 1.9, 0.1), TIMBER, 0.1, fx + (alongXdoor ? -DOOR / 2 : 0), 0.95, fz + (alongXdoor ? 0 : -DOOR / 2));
+    add(alongXdoor ? prim.box(0.1, 1.7, T + 0.02) : prim.box(T + 0.02, 1.9, 0.1), TIMBER, 0.1, fx + (alongXdoor ? DOOR / 2 : 0), 0.95, fz + (alongXdoor ? 0 : DOOR / 2));
+    add(alongXdoor ? prim.box(DOOR + 0.15, 0.06, 0.55) : prim.box(0.55, 0.06, DOOR + 0.15), 0x8a8478, 0.2, fx + toCentre[0] * 0.35, 0.03, fz + toCentre[1] * 0.35);
     if (!big) {
-      // timber frame: corner posts, a mid rail and a top plate
-      for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(prim.box(0.2, h - base, 0.2), TIMBER, 0.2, sx * (w / 2), base + (h - base) / 2, sz * (d / 2));
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(prim.box(0.2, wh, 0.2), TIMBER, 0.2, sx * (w / 2), wy, sz * (d / 2));
       for (const yy of [base + 0.05, 1.65, h - 0.06]) {
         add(prim.box(w + 0.12, 0.12, 0.1), TIMBER, 0.1, 0, yy, d / 2 + 0.02); add(prim.box(w + 0.12, 0.12, 0.1), TIMBER, 0.1, 0, yy, -d / 2 - 0.02);
         add(prim.box(0.1, 0.12, d + 0.12), TIMBER, 0.1, w / 2 + 0.02, yy, 0); add(prim.box(0.1, 0.12, d + 0.12), TIMBER, 0.1, -w / 2 - 0.02, yy, 0);
       }
     } else {
-      // stone quoins on the corners
       for (const sx of [-1, 1]) for (const sz of [-1, 1]) for (let yy = base + 0.2; yy < h; yy += 0.42) add(prim.box(0.32, 0.34, 0.32), 0x8e877a, 0.15, sx * (w / 2), yy, sz * (d / 2));
     }
-    // windows on every side (glass, frame, sill)
     const win = (px, pz, alongX) => {
-      const ww = 0.6, wh = 0.62, wy = 1.75;
-      add(alongX ? prim.box(ww, wh, 0.06) : prim.box(0.06, wh, ww), 0x23384a, 0.0, px, wy, pz);
-      add(alongX ? prim.box(ww + 0.14, 0.08, 0.12) : prim.box(0.12, 0.08, ww + 0.14), 0xd8cfb8, 0.0, px, wy - wh / 2 - 0.02, pz);
-      add(alongX ? prim.box(0.05, wh, 0.08) : prim.box(0.08, wh, 0.05), 0xd8cfb8, 0.0, px, wy, pz);
-      add(alongX ? prim.box(ww, 0.05, 0.08) : prim.box(0.08, 0.05, ww), 0xd8cfb8, 0.0, px, wy, pz);
+      const ww = 0.55, whh = 0.55, wy2 = 1.75;
+      add(alongX ? prim.box(ww, whh, 0.06) : prim.box(0.06, whh, ww), 0x23384a, 0.0, px, wy2, pz);
+      add(alongX ? prim.box(ww + 0.12, 0.07, 0.1) : prim.box(0.1, 0.07, ww + 0.12), 0xd8cfb8, 0.0, px, wy2 - whh / 2 - 0.02, pz);
+      add(alongX ? prim.box(0.04, whh, 0.07) : prim.box(0.07, whh, 0.04), 0xd8cfb8, 0.0, px, wy2, pz);
+      add(alongX ? prim.box(ww, 0.04, 0.07) : prim.box(0.07, 0.04, ww), 0xd8cfb8, 0.0, px, wy2, pz);
     };
-    for (const sz of [-1, 1]) for (let i = 0; i < Math.max(1, Math.floor(w / 2)); i++) { const px = (i + 0.5) * w / Math.max(1, Math.floor(w / 2)) - w / 2; win(px, sz * (d / 2 + 0.03), true); }
-    for (const sx of [-1, 1]) for (let i = 0; i < Math.max(1, Math.floor(d / 2)); i++) { const pz = (i + 0.5) * d / Math.max(1, Math.floor(d / 2)) - d / 2; win(sx * (w / 2 + 0.03), pz, false); }
-    // gable roof along the longer side, built from overlapping tile rows
+    for (const sz of [-1, 1]) {
+      if (!doorOnX && sz === doorSign) continue;
+      for (let i = 0; i < Math.max(1, Math.floor(w / 2)); i++) { const px = (i + 0.5) * w / Math.max(1, Math.floor(w / 2)) - w / 2; win(px, sz * (d / 2 + 0.03), true); }
+    }
+    for (const sx of [-1, 1]) {
+      if (doorOnX && sx === doorSign) continue;
+      for (let i = 0; i < Math.max(1, Math.floor(d / 2)); i++) { const pz = (i + 0.5) * d / Math.max(1, Math.floor(d / 2)) - d / 2; win(sx * (w / 2 + 0.03), pz, false); }
+    }
+    const roofStart = parts.length;
     const alongZ = d >= w;
     const span = (alongZ ? w : d) + 0.5, len = (alongZ ? d : w) + 0.5;
     const rise = Math.min(1.9, span * 0.42);
@@ -496,7 +542,6 @@ export function createWorld(scene) {
       else put(tile, 0, yy, side * off, side * slope, 0, 0);
       parts.push(tile);
     }
-    // ridge cap and gable ends
     add(alongZ ? prim.box(0.22, 0.14, len + 0.04) : prim.box(len + 0.04, 0.14, 0.22), rc.clone().multiplyScalar(0.7).getHex(), 0, 0, h + rise + 0.07, 0);
     for (const e of [-1, 1]) {
       const gable = paint(prim.prism(span - 0.5, rise - 0.05, 0.1), () => wallC.clone().multiplyScalar(0.92));
@@ -504,33 +549,66 @@ export function createWorld(scene) {
       parts.push(gable);
       if (!big) add(prim.box(0.1, rise * 0.8, 0.1), TIMBER, 0.1, alongZ ? 0 : e * (w / 2 + 0.06), h + rise * 0.4, alongZ ? e * (d / 2 + 0.06) : 0);
     }
-    // chimney on cottages and kitchens
     if (!big || /Smithy|Cookhouse/.test(name)) {
       const cx = alongZ ? span * 0.22 : len * 0.3, cz = alongZ ? len * 0.3 : span * 0.22;
       add(prim.box(0.45, rise + 0.9, 0.45), 0x6e665c, 0.25, cx, h + (rise + 0.9) / 2, cz);
       add(prim.box(0.55, 0.12, 0.55), 0x56504a, 0, cx, h + rise + 0.95, cz);
     }
-    // door with frame and a stone step on the side facing the town square
-    const tc = nearestTown(x, z), rx = x - tc.x, rz = z - tc.z;
-    const toCentre = Math.abs(rx) > Math.abs(rz) ? [Math.sign(-rx), 0] : [0, Math.sign(-rz) || 1];
-    const fx = toCentre[0] * (w / 2 + 0.04), fz = toCentre[1] * (d / 2 + 0.04);
-    const alongXdoor = !toCentre[0];
-    add(alongXdoor ? prim.box(0.85, 1.55, 0.06) : prim.box(0.06, 1.55, 0.85), 0x5a3a1e, 0.25, fx, base + 0.75, fz);
-    add(alongXdoor ? prim.box(1.05, 0.12, 0.1) : prim.box(0.1, 0.12, 1.05), TIMBER, 0, fx, base + 1.58, fz);
-    add(alongXdoor ? prim.box(0.06, 0.06, 0.08) : prim.box(0.08, 0.06, 0.06), 0xd4af37, 0, fx + (alongXdoor ? 0.28 : toCentre[0] * 0.02), base + 0.75, fz + (alongXdoor ? toCentre[1] * 0.02 : 0.28));
-    add(alongXdoor ? prim.box(1.1, 0.18, 0.5) : prim.box(0.5, 0.18, 1.1), 0x8a8478, 0.2, fx + toCentre[0] * 0.25, 0.09, fz + toCentre[1] * 0.25);
     if (name === 'Church of Saradomin') {
       add(prim.box(1.3, 2.4, 1.3), wall, 0.15, 0, h + 1.2, d / 2 - 0.9);
       add(prim.cone(1.05, 2.6, 4), roof, 0.3, 0, h + 3.7, d / 2 - 0.9, 0, Math.PI / 4, 0);
       add(prim.box(0.08, 0.6, 0.08), 0xd4af37, 0, 0, h + 5.3, d / 2 - 0.9); add(prim.box(0.36, 0.08, 0.08), 0xd4af37, 0, 0, h + 5.4, d / 2 - 0.9);
     }
+    const roofParts = parts.splice(roofStart);
+    // Role-specific interior props, laid out in a door-relative frame:
+    // u runs along the back wall, v is the distance in from the back wall.
+    const halfDepth = (doorOnX ? w : d) / 2 - T, halfWide = (doorOnX ? d : w) / 2 - T;
+    const P = (geo, hex, amt, u, y, v, rz = 0) => {
+      const lx = doorOnX ? -doorSign * (halfDepth - v) : u, lz = doorOnX ? u : -doorSign * (halfDepth - v);
+      add(geo, hex, amt, lx, y, lz, 0, doorOnX ? Math.PI / 2 : 0, rz);
+    };
+    const toWorld = (u, v) => { const lx = doorOnX ? -doorSign * (halfDepth - v) : u, lz = doorOnX ? u : -doorSign * (halfDepth - v); return [x + lx, z + lz]; };
+    const spots = {};
+    if (/Bank/.test(name)) {
+      const cw = Math.min(halfWide * 2 - 0.4, 3.4), nWin = Math.min(3, Math.max(2, Math.floor(cw / 1.05)));
+      P(prim.box(cw, 1.0, 0.6), 0x8a8478, 0.15, 0, 0.5, 1.2);
+      P(prim.box(cw + 0.1, 0.08, 0.75), 0x5a3a20, 0.1, 0, 1.04, 1.2);
+      for (let i = 0; i < nWin; i++) {
+        const ou = (i - (nWin - 1) / 2) * (cw / nWin);
+        P(prim.box(0.08, 0.7, 0.08), 0xd4af37, 0, ou - cw / nWin / 2 + 0.04, 1.4, 1.2);
+        P(prim.box(0.6, 0.06, 0.06), 0xd4af37, 0, ou, 1.76, 1.2);
+      }
+      P(prim.cyl(0.12, 0.14, 0.12, 10), 0xd4af37, 0, cw / 2 - 0.3, 1.14, 1.2);
+      P(prim.box(Math.min(1.2, cw), 0.9, 0.5), 0x5a5a62, 0.15, 0, 0.45, 0.3);
+      spots.staff = [toWorld(0, 0.6)];
+    } else if (/Store|Shop|Emporium|Armoury|Weaponsmith|Tools/.test(name)) {
+      const cw = Math.min(halfWide * 2 - 0.6, 2.4);
+      P(prim.box(cw, 0.9, 0.6), 0x7a5430, 0.15, -0.2, 0.45, 1.3);
+      P(prim.box(cw + 0.1, 0.08, 0.72), 0x5a3a1e, 0.1, -0.2, 0.92, 1.3);
+      for (let i = 0; i < 3; i++) P(prim.box(Math.min(halfWide * 2 - 0.3, 2.6), 0.07, 0.32), 0x8a6a3a, 0.15, 0, 0.6 + i * 0.5, 0.18);
+      for (let i = 0; i < 5; i++) P(prim.box(0.22, 0.26, 0.2), [0xc04a30, 0x3a6a9a, 0xe0c040, 0x6a9a4a, 0x8a5a3a][i], 0.1, -1 + i * 0.5, 1.28, 0.18);
+      P(prim.sphere(0.1, 8, 6), 0xd04030, 0, -0.5, 1.05, 1.3); P(prim.sphere(0.1, 8, 6), 0xe0c040, 0, -0.25, 1.05, 1.3);
+      P(prim.box(0.45, 0.4, 0.4), 0x8a6a3a, 0.15, halfWide - 0.35, 0.2, 1.9);
+      spots.staff = [toWorld(-0.6, 0.75), toWorld(0.5, 0.75)];
+    } else if (/Smithy/.test(name)) {
+      P(prim.box(1.1, 0.85, 0.8), 0x4a3a3a, 0.2, -0.8, 0.42, 0.5);
+      P(prim.box(0.8, 0.12, 0.6), 0xff6a20, 0, -0.8, 0.9, 0.5);
+      P(prim.box(0.5, 1.6, 0.5), 0x5a524a, 0.2, -0.8, 1.7, 0.35);
+      P(prim.box(0.7, 0.18, 0.32), 0x6a6a72, 0.1, 0.8, 0.7, 0.7);
+      P(prim.box(0.26, 0.5, 0.26), 0x5a5a62, 0.1, 0.8, 0.3, 0.7);
+      P(prim.box(0.5, 0.5, 0.5), 0x5a3a20, 0.15, halfWide - 0.35, 0.25, 0.3);
+      spots.staff = [toWorld(-0.8, 1.15), toWorld(0.8, 1.25)];
+    }
     g.add(bakedMesh(parts));
+    const roofMesh = bakedMesh(roofParts);
+    g.add(roofMesh);
+    g.userData.roof = roofMesh;
+    g.userData.inner = { minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 };
     g.position.set(x, 0, z);
     scene.add(g);
     pickables.push(g);
-    colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
     occupied.push({ x, z, r: Math.max(w, d) * 0.75 + 1 });
-    return tag(g, { mesh: g, type: 'building', name, examine, alive: true, x, z, radius: Math.max(w, d) / 2 });
+    return tag(g, { mesh: g, type: 'building', name, examine, alive: true, x, z, radius: Math.max(w, d) / 2, door: { x: x + toCentre[0] * (w / 2), z: z + toCentre[1] * (d / 2), nx: toCentre[0], nz: toCentre[1] }, inner: g.userData.inner, spots });
   }
 
   // Generic rounded townsperson NPC (one baked mesh). look: { body, legs, hat, skin, beard, apron }
@@ -779,7 +857,7 @@ export function createWorld(scene) {
   const buildings = BUILDINGS.map(createBuilding);
   buildings.push(createWell(3, 3.2));
   nodes.push(createMerchant(8, 0));
-  nodes.push(createBank(-6, -2));
+  nodes.push(createBank(-6, -5.6));
   nodes.push(createNpc(5, -7.4, 'bob', 'Bob', { body: 0x3a6a3a, hat: 0x5a3a1a, beard: 0x8a6a4a, apron: 0x6a4a2a }, 0, 0));
   nodes.push(createStation(5.3, 8.6, 'furnace'));
   nodes.push(createStation(8, 8.6, 'anvil'));
@@ -899,6 +977,33 @@ export function createWorld(scene) {
   }
   createTower(0, 29);
   fence(-18, -16, 12, 10);
+
+  // ---- Staff inside buildings: smiths, shopkeepers and bankers walk between their spots ----
+  const BANKER = { body: 0x2a3a7a, legs: 0x2a2a3a, apron: 0xd4af37 };
+  for (const b of buildings) {
+    if (!b || !b.spots || !b.spots.staff) continue;
+    const pts = b.spots.staff, near = n => Math.hypot(n.x - b.x, n.z - b.z);
+    let who = null;
+    if (/Bank/.test(b.name)) {
+      who = createNpc(pts[0][0], pts[0][1], 'banker', 'Banker', BANKER, b.door.x + b.door.nx * 3, b.door.z + b.door.nz * 3);
+      Object.assign(who, { type: 'bank', examine: 'He can look after your money.' });
+      nodes.push(who);
+      who.patrol = [pts[0], [pts[0][0] + (b.door.nz ? 0.9 : 0), pts[0][1] + (b.door.nx ? 0.9 : 0)]];
+      continue;
+    }
+    const smith = /Smithy/.test(b.name);
+    const cands = nodes.filter(n => n.type === 'npc' && !n.patrol && near(n) < 9 && (smith ? /smith|doric/.test(n.npc) : /Tools/.test(b.name) ? n.npc === 'bob' : !!n.shop));
+    cands.sort((a, c) => near(a) - near(c));
+    who = cands[0];
+    if (!who && /General Store/.test(b.name)) {
+      who = createNpc(pts[0][0], pts[0][1], 'storekeep', 'Shopkeeper', { body: 0xc8b48a, legs: 0x5a4a3a, apron: 0xe0d8c8 }, b.door.x, b.door.z);
+      Object.assign(who, { shop: 'shop' });
+      nodes.push(who);
+    }
+    if (!who) continue;
+    who.mesh.position.set(pts[0][0], 0, pts[0][1]); who.x = pts[0][0]; who.z = pts[0][1];
+    who.patrol = pts.length > 1 ? pts : [pts[0], [pts[0][0] + 0.6, pts[0][1]]];
+  }
 
   for (let i = 0; i < 4; i++) monsters.push(createMonster('Goblin', 13 + (rng() - 0.5) * 8, -13 + (rng() - 0.5) * 8, 4));
   const field = { minX: -23, maxX: -13, minZ: -20, maxZ: -12 }; // inside the fence
