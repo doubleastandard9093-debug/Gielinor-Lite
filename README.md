@@ -17,6 +17,8 @@ Modern, RuneScape 3-inspired look made entirely in code (no image files or third
 
 **Creature detail** (`js/creatures.js`): close monsters get a detailed rig per type (wolf, cow, spider, dragon, plus muscled humanoids for goblins, giants, ogres, demons, skeletons and zombies). Fur, hide, chitin and scales are painted into vertex colours, and legs have knees, hocks or three spider joints. `rollVariant` seeds size, tint, markings and part differences per spawn. `namedVariant` gives about 1 in 8 spawns a name (display only; quests still count the base type).
 
+**Character shading** (`makeCharMat` in anatomy.js): a triplanar noise bump (skin pores, weave, fur), a Fresnel rim and sheen, and a warm subsurface term on skin-toned vertex colours. There are presets for skin and cloth, fur, hide, scales and chitin. The extra terms switch off on Low. Contact-shadow blobs sit under every character. Shadows are 4096 with a 16-sample soft filter on High and 1024 on Low (`setShadows` / `tuneLights` in scene.js).
+
 **Guilds** (`GUILDS` in world.js): Mining Guild (Mining 60: high-level rocks, furnace, anvil, bank), Cooking Guild (Cooking 32: two ranges, bank) and Crafting Guild (Crafting 40: furnace, anvil, bank). Entry is level-checked at the door.
 
 **Skill content:** Fletching has bows, arrows, crossbows and bolts. Smithing adds thrown daggers and throwing axes (thrown weapons need no ammo) and a Battlestaff. Crafting adds cloth, Wizard and Mystic robes and staves. Fishing adds anchovies, tuna and monkfish. Cooking adds buff dishes (Hearty stew: Strength; Monk's broth: prayer restore; Fisherman's pie: Defence; Warrior's feast: Attack and Strength).

@@ -61,6 +61,23 @@ export function followLight(dirLight, x, z) {
   dirLight.target.position.set(x, 0, z);
 }
 
-export function setShadows(renderer, dirLight, on) {
+export function setShadows(renderer, dirLight, on, quality = 'high') {
   dirLight.castShadow = on;
+  // High: 4096 map, tighter bias and wider soft filter. Low keeps a small map.
+  const size = quality === 'low' ? 1024 : 4096;
+  if (dirLight.shadow.mapSize.x !== size) {
+    dirLight.shadow.mapSize.set(size, size);
+    if (dirLight.shadow.map) { dirLight.shadow.map.dispose(); dirLight.shadow.map = null; }
+  }
+  dirLight.shadow.normalBias = quality === 'low' ? 0.04 : 0.018;
+  dirLight.shadow.bias = quality === 'low' ? -0.0004 : -0.00015;
+  dirLight.shadow.radius = quality === 'low' ? 2 : 4;
+  dirLight.shadow.blurSamples = quality === 'low' ? 8 : 16;
+}
+// Light balance: slightly less flat sky fill, a touch more sun for form-revealing shading.
+export function tuneLights(lights, quality) {
+  lights.hemi.intensity = quality === 'low' ? 1.2 : 0.95;
+  lights.hemi.groundColor.setHex(0x5a4a2c);
+  lights.dirLight.intensity = quality === 'low' ? 2.6 : 3.0;
+  lights.fill.intensity = quality === 'low' ? 0.4 : 0.55;
 }

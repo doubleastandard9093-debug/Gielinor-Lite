@@ -2,10 +2,58 @@
 // fingers, hip > knee > foot), muscle-shaped limbs, faces, per-character variety,
 // and a distance LOD (cheap baked mesh far away, detailed rig built on demand up close).
 import * as THREE from 'three';
+import { getNoiseTexture } from './gfx.js';
 import { prim, place, paint, col, kit, snoise, blob, vcMat, humanoidParts, npcExtras } from './models.js';
 
 // Character skin/cloth material (no world-xz bump: it flattens vertical surfaces).
-export const charMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.68, metalness: 0.02 });
+// Characters get: a triplanar fine-noise bump (pores, weave, fur), a rim/sheen term,
+// and a warm subsurface-style glow on skin-coloured vertices. The extra terms are
+// switched off on Low via CHAR.q.
+export const CHAR = { q: { value: 1 } };
+export function makeCharMat({ rough = 0.68, metal = 0.02, bump = 0.35, freq = 9, rim = 0.35, sss = 1, sheen = 0 } = {}) {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: metal });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.tCharNoise = { value: getNoiseTexture() }; sh.uniforms.charQ = CHAR.q;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vCW; varying vec3 vCN;')
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        vec4 cwp = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          cwp = instanceMatrix * cwp;
+        #endif
+        vCW = (modelMatrix * cwp).xyz; vCN = normalize(mat3(modelMatrix) * objectNormal);`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vCW; varying vec3 vCN; uniform sampler2D tCharNoise; uniform float charQ;`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        float cfade = charQ * (1.0 - smoothstep(10.0, 28.0, length(cameraPosition - vCW)));
+        if (cfade > 0.01) {
+          vec3 bw = abs(vCN); bw /= (bw.x + bw.y + bw.z);
+          vec3 P = vCW * ${freq.toFixed(1)};
+          float hx = texture2D(tCharNoise, P.yz).r * bw.x + texture2D(tCharNoise, P.xz).r * bw.y + texture2D(tCharNoise, P.xy).r * bw.z;
+          float hy = texture2D(tCharNoise, P.yz + 0.37).g * bw.x + texture2D(tCharNoise, P.xz + 0.37).g * bw.y + texture2D(tCharNoise, P.xy + 0.37).g * bw.z;
+          vec3 wn = normalize(vCN + (vec3(hx, hy, 1.0 - hx) - 0.5) * ${bump.toFixed(2)} * cfade);
+          normal = normalize(mix(normal, normalize((viewMatrix * vec4(wn, 0.0)).xyz), 0.6 * cfade));
+        }`)
+      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+        if (charQ > 0.5) {
+          vec3 vv = normalize(vViewPosition);
+          float fr = pow(1.0 - clamp(dot(normal, vv), 0.0, 1.0), 3.0);
+          // sky-tinted rim (sheen on fur, edge light on everything)
+          reflectedLight.indirectSpecular += vec3(0.85, 0.92, 1.0) * fr * ${rim.toFixed(2)} * (0.4 + diffuseColor.rgb * ${sheen ? '1.6' : '0.6'});
+          // warm light scattering through skin (reddish-tan vertex colours)
+          float skinK = smoothstep(0.06, 0.2, vColor.r - vColor.b) * smoothstep(0.02, 0.12, vColor.g - vColor.b) * ${sss.toFixed(2)};
+          reflectedLight.indirectDiffuse += diffuseColor.rgb * vec3(1.0, 0.42, 0.28) * skinK * (0.18 + 0.25 * fr);
+        }`);
+  };
+  m.customProgramCacheKey = () => 'char-' + [rough, metal, bump, freq, rim, sss, sheen].join(',');
+  return m;
+}
+export const charMat = makeCharMat();
+export const furMat = makeCharMat({ rough: 0.92, bump: 0.6, freq: 26, rim: 0.5, sss: 0, sheen: 1 });
+export const scaleMat = makeCharMat({ rough: 0.42, metal: 0.12, bump: 0.45, freq: 14, rim: 0.3, sss: 0 });
+export const chitinMat = makeCharMat({ rough: 0.3, metal: 0.05, bump: 0.25, freq: 20, rim: 0.45, sss: 0 });
+export const hideMat = makeCharMat({ rough: 0.85, bump: 0.4, freq: 18, rim: 0.3, sss: 0.3, sheen: 1 });
 
 // ---- small helpers ----------------------------------------------------------
 const V2 = THREE.Vector2;
@@ -298,7 +346,8 @@ export function poseHumanoid(rig, t, move, atk = 0, work = 0) {
 // ---- distance LOD ------------------------------------------------------------
 // ent.lod = { lo: Object3D, buildHi: () => Object3D, hi: null, parent }
 export const LOD = { near: 26, far: 34, seg: 1.3 };
-export function setLodRange(quality) { if (quality === 'low') { LOD.near = 10; LOD.far = 14; LOD.seg = 0.8; } else { LOD.near = 30; LOD.far = 40; LOD.seg = 1.3; } }
+export function setLodRange(quality) { CHAR.q.value = quality === 'low' ? 0 : 1;
+  if (quality === 'low') { LOD.near = 10; LOD.far = 14; LOD.seg = 0.8; } else { LOD.near = 30; LOD.far = 40; LOD.seg = 1.3; } }
 export function updateLod(ent, cx, cz) {
   const L = ent.lod; if (!L) return false;
   const p = ent.mesh.position, d = Math.hypot(p.x - cx, p.z - cz);
@@ -308,4 +357,21 @@ export function updateLod(ent, cx, cz) {
     L.parent.remove(L.hi); L.hi.traverse(o => { if (o.geometry) o.geometry.dispose(); }); L.hi = null; L.lo.visible = true; return true;
   }
   return false;
+}
+
+// Soft contact shadow / ambient occlusion blob under a character (one shared texture).
+let blobTex = null, blobMat = null;
+export function contactShadow(r = 0.5, k = 1) {
+  if (!blobTex) {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+    const g = cv.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(0,0,0,0.55)'); gr.addColorStop(0.5, 'rgba(0,0,0,0.32)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    blobTex = new THREE.CanvasTexture(cv);
+    blobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, fog: true });
+  }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(r * 2, r * 2 * k), blobMat);
+  m.rotation.x = -Math.PI / 2; m.position.y = 0.02; m.renderOrder = 1;
+  m.userData.contact = true;
+  return m;
 }

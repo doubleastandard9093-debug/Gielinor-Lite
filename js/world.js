@@ -3,7 +3,7 @@ import { makeRng } from './rng.js';
 import { MONSTER_TYPES, AGILITY_COURSES, RUNE_ALTARS } from './gameplay.js';
 import { QUEST_NPCS } from './questnpcs.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
-import { buildHumanoidRig, varyLook, hashStr } from './anatomy.js';
+import { buildHumanoidRig, varyLook, hashStr, contactShadow } from './anatomy.js';
 import { buildCreatureRig, rollVariant, namedVariant } from './creatures.js';
 import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap } from './models.js';
 
@@ -632,6 +632,7 @@ export function createWorld(scene) {
     const lo = kit(parts);
     lo.scale.set(L.build, L.height, L.build);
     g.add(lo);
+    g.add(contactShadow(0.55));
     g.position.set(x, 0, z);
     g.rotation.y = Math.atan2(faceX - x, faceZ - z);
     scene.add(g);
@@ -783,6 +784,7 @@ export function createWorld(scene) {
       for (const lx of [-0.13, 0.13]) { const p = legPivot(h.leg.map(q => [q[0].clone(), ...q.slice(1)]), lx, h.hipY, 0); lo.add(p); legs.push(p); }
     }
     root.add(body);
+    root.add(t.shape === 'spider' ? contactShadow(0.9, 1.2) : t.shape === 'dragon' ? contactShadow(1.1, 2.2) : typeName === 'Wolf' || typeName === 'Cow' ? contactShadow(0.55, 1.9) : contactShadow(0.5));
     const sc = t.scale * (variant ? 1.15 : v.k);
     root.scale.setScalar(sc);
     root.position.set(x, 0, z);

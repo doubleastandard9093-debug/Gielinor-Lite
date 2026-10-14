@@ -3,7 +3,8 @@
 // and per-spawn variety (size, tint, markings, small part differences).
 import * as THREE from 'three';
 import { prim, place, paint, snoise, blob } from './models.js';
-import { lathe, seeded, skinPaint, buildHumanoidRig, bakeList, charMat } from './anatomy.js';
+import { lathe, seeded, skinPaint, buildHumanoidRig, bakeList, charMat, furMat, scaleMat, chitinMat, hideMat } from './anatomy.js';
+let MAT = null;
 
 const C = h => new THREE.Color(h);
 const sq = (g, x, y, z) => { g.scale(x, y, z); return g; };
@@ -65,7 +66,7 @@ const eye = (r, iris, out, x, y, z, slit = false) => {
   out.push(place(paint(sq(prim.sphere(r * 0.5, 8, 6), slit ? 0.3 : 1, 1, 0.6), () => 0x050505), x, y, z + r * 0.75));
   out.push(place(paint(prim.sphere(r * 0.18, 6, 4), () => 0xffffff), x + r * 0.3, y + r * 0.35, z + r * 0.85));
 };
-function meshOf(geos, parent, x = 0, y = 0, z = 0) { const m = new THREE.Mesh(bakeList(geos), charMat); m.castShadow = true; m.receiveShadow = true; m.position.set(x, y, z); parent.add(m); return m; }
+function meshOf(geos, parent, x = 0, y = 0, z = 0) { const m = new THREE.Mesh(bakeList(geos), MAT || charMat); m.castShadow = true; m.receiveShadow = true; m.position.set(x, y, z); parent.add(m); return m; }
 
 // A two-joint leg: pivot (hip/shoulder) > knee > paw. Returns pivot with userData.knee.
 function jointLeg(parent, x, y, z, upper, lower, paw, kneeY, rest = 0, kneeRest = 0) {
@@ -231,7 +232,7 @@ function dragon(v) {
     const mg = new THREE.BufferGeometry(); mg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); mg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); mg.computeVertexNormals();
     wg.push(mg);
     wg.push(place(paint(prim.cone(0.03, 0.12, 5), () => v.horn), ...wrist, 0, 0, sx * -1.2));
-    meshOf(wg, w).material = charMat;
+    meshOf(wg, w).material = hideMat;
     w.rotation.z = sx * 0.25;
     wings.push(w);
   }
@@ -291,10 +292,10 @@ export function namedVariant(typeName, seed) {
 // Build a detailed rig for one monster. extras: kit-format body extras (weapons).
 export function buildCreatureRig(typeName, t, v, extras = [], headExtras = []) {
   let out;
-  if (typeName === 'Wolf') out = wolf(v);
-  else if (typeName === 'Cow') out = cow(v);
-  else if (t.shape === 'spider') out = spider(v);
-  else if (t.shape === 'dragon') out = dragon(v);
+  if (typeName === 'Wolf') { MAT = furMat; out = wolf(v); }
+  else if (typeName === 'Cow') { MAT = hideMat; out = cow(v); }
+  else if (t.shape === 'spider') { MAT = chitinMat; out = spider(v); }
+  else if (t.shape === 'dragon') { MAT = scaleMat; out = dragon(v); }
   else {
     const look = (HUMANOID_LOOK[typeName] || (vv => ({ body: vv.tint, build: vv.k, hair: null })))(v);
     if (look.hair === undefined) look.hair = [0x1a1410, 0x3a2a1a, 0x6a4a2a][Math.floor(v.r() * 3)];
@@ -304,6 +305,7 @@ export function buildCreatureRig(typeName, t, v, extras = [], headExtras = []) {
     rig.userData.id = v.seed;
     return rig;
   }
+  MAT = null;
   out.root.userData = { legs: out.legs, head: out.head, wings: out.wings, quad: true, id: v.seed };
   return out.root;
 }

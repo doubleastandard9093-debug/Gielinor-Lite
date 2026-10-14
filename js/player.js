@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { shapes } from './anatomy.js';
+import { shapes, contactShadow } from './anatomy.js';
 import { WORLD_HALF, insideLake, LAKE, colliders } from './world.js';
 
 export const WALK_SPEED = 3.3;  // world units per second
@@ -124,6 +124,7 @@ export function createPlayer(scene) {
   const neck = mesh(new THREE.OctahedronGeometry(0.06, 0), neckMat, 0, 1.33, 0.2, body);
   neck.visible = false;
 
+  playerGroup.add(contactShadow(0.55));
   playerGroup.position.set(0, 0, 0);
   scene.add(playerGroup);
 

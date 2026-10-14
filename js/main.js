@@ -5,7 +5,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY } from './gfx.js';
-import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, IS_TOUCH } from './scene.js';
+import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
 import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from './chunk.js';
 import { createWorld, createPileMesh, SPAWN, setDecorQuality, updateDecorChunks } from './world.js';
 import { updateLod, setLodRange, poseHumanoid } from './anatomy.js';
@@ -53,7 +53,8 @@ const gradePass = new ShaderPass({
 });
 composer.addPass(gradePass);
 document.body.prepend(renderer.domElement);
-const { dirLight } = createLights(scene);
+const lightsRef = createLights(scene);
+const { dirLight } = lightsRef;
 const sky = createSky(scene);
 const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);
 const pm = createPlayer(scene);
@@ -132,7 +133,8 @@ function applyGfx() {
   setDecorQuality(gfx.quality);
   SWAY.value = gfx.quality === 'low' ? 0 : 1;
   setLodRange(gfx.quality);
-  setShadows(renderer, dirLight, shadowsOn());
+  setShadows(renderer, dirLight, shadowsOn(), gfx.quality);
+  if (lightsRef) tuneLights(lightsRef, gfx.quality);
 }
 function gfxLabel() {
   return player.settings.gfx === 'high' ? 'High' : player.settings.gfx === 'low' ? 'Low' : `Auto (${gfx.quality === 'low' ? 'Low' : 'High'})`;
@@ -450,7 +452,7 @@ function setting(act) {
     if (text && text.trim()) finishImport(applySaveData(text.trim(), skills, player, pm));
   }
   else if (act === 'dpad') { s.showDpad = !s.showDpad; inputCtl.setDpadVisible(s.showDpad); }
-  else if (act === 'shadows') { s.shadows = !shadowsOn(); setShadows(renderer, dirLight, s.shadows); }
+  else if (act === 'shadows') { s.shadows = !shadowsOn(); setShadows(renderer, dirLight, s.shadows, gfx.quality); }
   else if (act === 'gfx') { s.gfx = s.gfx === 'high' ? 'low' : s.gfx === 'low' ? null : 'high'; gfx.autoLow = false; applyGfx(); log(`Graphics: ${gfxLabel()}.`, 'game'); }
   else if (act === 'retaliate') s.autoRetaliate = !s.autoRetaliate;
   else if (act === 'run') toggleRun();
