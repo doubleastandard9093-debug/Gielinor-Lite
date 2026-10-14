@@ -19,6 +19,8 @@ Modern, RuneScape 3-inspired look made entirely in code (no image files or third
 
 **Building interiors:** buildings are hollow with a doorway facing the town square (wall colliders leave a gap); the roof hides while you're inside. Smithies have a forge and anvil with the smith patrolling between them, shops have a counter and shelves with a pacing shopkeeper, banks have a 2–3 window counter and a Banker. Taps inside or outside a building route you through the door.
 
+**Map size:** `WORLD_HALF = 300` (600 × 600). The terrain mesh resolution scales with it.
+
 **Chunk streaming** (`js/chunk.js`): the world is cut into 32×32 chunks. Buildings, NPC stalls, props and monsters are attached to the scene only in chunks within `LOAD_RADIUS` of the player (2 on Low = 5×5, 3 on High = 7×7) and detached when far; gameplay data (HP, respawns, colliders) is kept. Trees, rocks and ground clutter use instancing and their own decor chunks.
 
 **Settings → Graphics quality** cycles Auto / High / Low. Low skips bloom, colour grade, clouds, sway, grass and shadows and renders at a lower resolution. Auto starts on High and drops to Low once if a phone averages under ~26 fps.
@@ -93,4 +95,4 @@ The game saves itself every 15 seconds and whenever you leave the app. Old saves
 - **Port Sarim** (south-west): bank, general store, Betty's Magic Emporium, the docks agility course, sailors to pickpocket; bandits and the Chaos altar to the south-east
 - **Varrock** (far east): palace, bank, weaponsmith, general store, Aubury's Rune Shop, essence mine, agility course; the scorched wilderness with demons and dragons to the north
 - **Falador** (north-west): White Knights' Castle, bank, armoury, inn, Nessa's herb stall, agility course; ogres and Grumsh to the north-west
-- Signposts at the town roads point the way. The world is about 440 x 440 (WORLD_HALF = 220); trees/rocks are instanced, decor streams in 64×64 chunks, and distant objects are hidden in the fog to keep phones fast.
+- Signposts at the town roads point the way. The world is about 600 x 600 (WORLD_HALF = 300); trees/rocks are instanced, decor streams in 64×64 chunks, and distant objects are hidden in the fog to keep phones fast.

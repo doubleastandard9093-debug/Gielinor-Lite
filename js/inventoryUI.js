@@ -30,6 +30,7 @@ export const WHATS_NEW = `
 <p><b>Walk-in buildings.</b> Every building now has an open doorway facing its town square, and the roof lifts away when you step inside. Smithies have a glowing forge and an anvil, with the smith walking between them. Shops have a counter and stocked shelves, with the shopkeeper pacing behind it (Brightwater's General Store has a new Shopkeeper). Banks have a long counter with two or three teller windows and a Banker you can bank with. Tap anywhere inside and you'll walk round to the door. Doorways show on the minimap.</p>
 <p><b>Better wolves.</b> Wolves have a proper head, pointed snout, upright ears, slimmer legs and a bushy tail instead of a stretched blob.</p>
 <p><b>World streaming (RuneScape-style chunks)</b></p>
+<p>The map is now <b>600 × 600</b> (was 440). The new outer ring is open country with trees and grass, and no monsters yet.</p>
 <p>The map is now split into 32×32 chunks. Buildings, stalls, props and monsters only load in the chunks around you (5×5 on Low, 7×7 on High) and unload as you walk away, so the world can keep growing without slowing your phone. Monsters keep their health and respawn timers while unloaded.</p>
 <p><b>Bigger world, smoother graphics</b></p>
 <p>The map is now about <b>440 × 440</b>. Grass and flowers load in nearby chunks only, and trees and rocks share draw calls so your phone stays smooth. Materials catch the light better, and distant trees stop swaying past about 50 steps. Graphics quality (Auto / High / Low) still controls the glow, clouds and shadows.</p>

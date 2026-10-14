@@ -6,7 +6,7 @@ import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
 import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap } from './models.js';
 
 // The world is about 440 x 440. Chunked decor + instance packing keep phones smooth.
-export const WORLD_HALF = 220;
+export const WORLD_HALF = 300;
 export const CHUNK_SIZE = 64; // decor / clutter streaming grid
 
 export const SPAWN = { x: 0, z: 0 };
@@ -204,7 +204,7 @@ export function createWorld(scene) {
   // The play area is flat (feet stay on the ground); rolling hills rise beyond it.
   const MASK = WORLD_HALF * 2 + 10;
   const mask = paintGroundMask(MASK);
-  const GSIZE = WORLD_HALF * 2 + 140, GSEG = 110;
+  const GSIZE = WORLD_HALF * 2 + 140, GSEG = Math.round(110 * (WORLD_HALF * 2 + 140) / 580);
   const groundGeo = new THREE.PlaneGeometry(GSIZE, GSIZE, GSEG, GSEG);
   const pos = groundGeo.attributes.position;
   for (let i = 0; i < pos.count; i++) pos.setZ(i, terrainHeight(pos.getX(i), -pos.getY(i)));
