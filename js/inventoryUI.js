@@ -2,7 +2,7 @@
 import { ITEMS, RECIPES, iconFor, CRAFT_TABS, METALS, TOOL_TYPES, statLine, setDesc, rarityColor } from './items.js';
 import { SKILLS, SKILL_ICONS, xpToNext, levelProgress, nextLevelXp, combatLevel, totalLevel, PERKS, maxPrayer, perkTotals, CAPS_TEXT } from './skills.js';
 import { INV_SIZE, slotsUsed } from './playerState.js';
-import { stylesFor, currentStyle, equipmentBonuses, playerMaxHit, playerAccuracy, monsterAccuracy, MONSTER_TYPES, SHOP_STOCK, TOOL_STOCK, sellPrice, buyPrice, stockVisible, bestTool, SHOPS, SPELLS, canCast, castsLeft, runeCost, magicMaxHit, staffRune } from './gameplay.js';
+import { stylesFor, currentStyle, equipmentBonuses, playerMaxHit, playerAccuracy, monsterAccuracy, MONSTER_TYPES, SHOP_STOCK, TOOL_STOCK, sellPrice, buyPrice, stockVisible, bestTool, SHOPS, SPELLS, canCast, castsLeft, runeCost, magicMaxHit, staffRune, BOUNTIES } from './gameplay.js';
 import { boostOf, POTIONS } from './potions.js';
 import { PRAYERS, isActive, drainPerTick, prayerBonus } from './prayer.js';
 import { ABILITIES, unlocked } from './abilities.js';
@@ -25,6 +25,17 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>Rough edges smoothed.</b></p>
+<ul>
+<li><b>The Mountain cave is open.</b> Enter it from the cave mouth in the northern foothills (torches mark the way) and climb down into a cavern lit by torches and glowing crystals. Inside are stalactites and stalagmites, webs, coal, iron and mithril seams and four giant spiders. The <b>Brood Mother</b> guards a hoard at the back: defeat her and search it once for 2,500 coins, an uncut ruby, an uncut diamond, mithril bars and coal. Climb the rope to leave.</li>
+<li><b>Monster weapons swing with the arm.</b> Swords, daggers, spears, clubs, bows and shields are held in the hand and move with every attack. Metal blades have a proper metallic shine.</li>
+<li><b>Skeletons are made of bones:</b> a skull with eye sockets, jaw and teeth, a spine of vertebrae, a curved ribcage with sternum, collarbones and shoulder blades, a pelvis, and jointed arm, hand, finger, leg and foot bones.</li>
+<li><b>Aprons and hats fit.</b> Aprons wrap the body with a bib, waist tie and draped skirt. Chef's hats, straw hats and caps sit on the head and turn with it.</li>
+<li><b>Bounties in the quest tab.</b> All three repeatable bounties show at the top of the Quests tab, with where to find the giver, your progress bar and the reward.</li>
+<li><b>Solid furniture.</b> Counters, shelves, crates, bank windows, forges and anvils inside buildings are solid now. Doorways stay open, and you can still talk, bank and trade across the counter.</li>
+<li><b>Ammo matters.</b> Crossbows need bolts and bows need arrows. If the wrong ammo is equipped, the chat tells you what you need. Thrown weapons still need no ammo.</li>
+<li><b>Clearer mountains.</b> On High, the fog is lighter and the view distance is longer, so the snow-capped northern range reads clearly from town. Low keeps the shorter, foggier view for phones.</li>
+</ul>
 <p><b>The wilds come alive.</b> The outer ring of the map now has places to find, each with a signpost pointing the way and a white dot on the minimap:</p>
 <ul>
 <li><b>Travellers' camp</b> (far north-west): tents, a campfire you can cook on, a traveller, a bard, and a <b>Wandering Pedlar</b> who trades on the road.</li>
@@ -293,6 +304,14 @@ export function createInventoryUI(api) {
         <div class="rewards">Rewards: ${qd.points} quest point${qd.points > 1 ? 's' : ''}, ${qd.rewards.map(esc).join(', ')}</div>
         <div class="qbonus ${st === 'complete' ? 'on' : ''}">★ Lasting bonus: ${esc(qd.bonus.desc)}${st === 'complete' ? ' (active)' : ''}</div></div>`;
     }
+    // repeatable bounties: status and progress
+    const bs = player.bounties || {}, plural = m => /f$/.test(m) ? m.slice(0, -1) + 'ves' : m + 's';
+    html += `<div class="craftskill">Bounties <small>(repeatable · ${player.bountiesDone || 0} completed)</small></div><div class="questlist">` + BOUNTIES.map(B => {
+      const cur = bs[B.id], st = !cur ? 'not started' : cur.got >= cur.n ? 'complete' : 'in progress';
+      const prog = !cur ? `Talk to ${esc(B.giver)}` : cur.got >= cur.n ? `Done! Return to ${esc(B.giver)} for ${B.gp} coins` : `${cur.got}/${cur.n} ${esc(plural(B.mon).toLowerCase())} defeated`;
+      const pct = cur ? Math.round(100 * Math.min(1, cur.got / cur.n)) : 0;
+      return `<div class="quest q-${st.replace(' ', '-')} bounty">Bounty: ${B.n} ${esc(plural(B.mon))}<small>${esc(B.where)} · ${prog} · reward ${B.gp} coins</small><div style="height:4px;background:#0006;border-radius:2px;margin-top:3px"><div style="height:4px;width:${pct}%;background:${st === 'complete' ? '#4c4' : '#dc4'};border-radius:2px"></div></div></div>`;
+    }).join('') + '</div>';
     html += '<div class="questlist">';
     let shown = 0;
     QUESTS.forEach((qd, i) => {

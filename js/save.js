@@ -36,7 +36,8 @@ export function getSaveData(skills, player, playerMesh) {
       skillTrees: player.skillTrees,
       bank: player.bank || {},
       bounties: player.bounties || {},
-      bountiesDone: player.bountiesDone || 0
+      bountiesDone: player.bountiesDone || 0,
+      caveLoot: !!player.caveLoot
     },
     position: playerMesh ? { x: playerMesh.mesh.position.x, z: playerMesh.mesh.position.z } : null,
     timestamp: Date.now()
@@ -138,7 +139,7 @@ export function applySaveData(data, skills, player, playerMesh) {
     const notes = migrateSave(saved);
     Object.assign(skills, saved.skills);
     const p = saved.player;
-    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints', 'effects', 'poison', 'poisonImmune', 'questCapeLegacy', 'bounties', 'bountiesDone']) {
+    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints', 'effects', 'poison', 'poisonImmune', 'questCapeLegacy', 'bounties', 'bountiesDone', 'caveLoot']) {
       if (p[k] !== undefined) player[k] = p[k];
     }
     if (p.skillTrees) {

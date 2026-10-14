@@ -912,3 +912,10 @@ addLoot('Moss Giant', { item: 'Water rune', chance: 0.2, qty: [8, 20] }, { item:
 addLoot('Ice Giant', { item: 'Water rune', chance: 0.25, qty: [10, 25] }, { item: 'Death rune', chance: 0.08, qty: [2, 5] });
 addLoot('Lesser Demon', { item: 'Fire rune', chance: 0.3, qty: [20, 45] }, { item: 'Death rune', chance: 0.12, qty: [3, 6] }, { item: 'Blood rune', chance: 0.05, qty: [1, 3] });
 addLoot('Green Dragon', { item: 'Blood rune', chance: 0.08, qty: [2, 4] });
+
+// Repeatable bounties (the givers stand at points of interest in the wilds)
+export const BOUNTIES = [
+  Object.assign({ id: 'ruins', mon: 'Skeleton', n: 5, gp: 350, xp: { Prayer: 300, Defence: 400 }, ask: "The dead won't stay down in those ruins. Put five skeletons back in the ground and I'll pay you." }, { giver: 'Ruins Warden', where: 'Old ruins (east)' }),
+  Object.assign({ id: 'bandits', mon: 'Bandit', n: 4, gp: 400, xp: { Attack: 350, Strength: 350 }, ask: "Bandits hide out in the rocks north of my tower. Bring four of them to justice and the crown will reward you." }, { giver: 'Captain Brann', where: 'Watchtower (west highlands)' }),
+  Object.assign({ id: 'wolves', mon: 'Wolf', n: 5, gp: 300, xp: { Ranged: 400, Agility: 150 }, ask: "Wolves have been taking deer all along the dale. Thin the pack: five wolves, and I'll pay you in coin and know-how." }, { giver: 'Rhea the Hunter', where: "Hunter's camp (south-east)" }),
+];

@@ -11,6 +11,8 @@ The original 2D game lives in `/2d/`.
 
 ## Graphics
 
+- **Fog and view distance:** High uses FogExp2 density 0.0025, a 760-unit far plane and a 135-unit cull radius, so the northern mountains stay readable. Low uses 0.0064, 520 and 70.
+
 Modern, RuneScape 3-inspired look made entirely in code (no image files or third-party art): sky dome with sun and clouds, warm sunlight with soft shadows, bloom and a light colour grade, splat-textured terrain (grass, dirt paths, sand, cobbles) with hills beyond the map edge, animated water, swaying layered trees, ore-veined rocks, timber and stone buildings with tiled gable roofs, grass/flower/bush ground clutter, and rounded player, NPC and monster models. Most models are baked into one mesh each to keep draw calls low on phones.
 
 **Character detail** (`js/anatomy.js`): jointed humanoid rigs (shoulder > elbow > hand with fingers and thumb, hip > knee > foot), lathe-shaped muscled limbs and torso, faces (skull with jaw and brow, nose, nostrils, eyes with iris and pupil, eyelids, brows, lips, ears) and eight hair styles. `varyLook` seeds height, build, skin, hair, eyes and clothing per NPC. Distance LOD: a cheap baked mesh far away, and the detailed rig built on demand within 30 units (10 on Low) and freed when you walk away.
@@ -60,6 +62,10 @@ The game saves itself every 15 seconds and whenever you leave the app. Old saves
 
 ## Systems
 
+- **Ammo:** crossbows fire bolts and bows fire arrows. Thrown daggers and throwing axes need no ammo.
+- **Bounties:** three repeatable bounties (Ruins Warden, Captain Brann, Rhea the Hunter) are listed in the Quests tab with their progress. The data is `BOUNTIES` in gameplay.js.
+- **Collision:** building walls, counters, shelves, bank windows, forges and anvils are solid colliders. NPC walk spots stay clear of them.
+
 - **Toolbelt tiers:** bronze, iron, steel, mithril, adamant, rune axes and pickaxes. Each tier gathers 5% more often. Get them from Bob's Tool Shop, smithing or monster drops. New and old characters get bronze starter tools.
 - **Perks:** every skill unlocks a perk every 5 levels (5 … 95) and at 99, 20 per skill. The small ones stack (+1% gathering, +1 max hit, +2% less burning, +0.5% damage reduction and so on). The ★ milestones at 25, 50, 75 and 99 change how the skill plays:
   - Mining / Woodcutting: Rich Vein / Chain Chop (15% chance the rock or tree isn't used up), Ore Cart / Forester's Cart (5% of resources go straight to the bank), Motherlode / Heartwood (+8% double), Mastery.
@@ -93,6 +99,8 @@ The game saves itself every 15 seconds and whenever you leave the app. Old saves
 - **Death:** you keep every item and wake up in town with full hitpoints.
 
 ## Map
+
+- **Mountain cave** (north, through the cave mouth at about 60, -205): an enclosed cavern (the chamber sits in the high peaks at 0, -272). It has coal, iron and mithril, giant spiders and the Brood Mother, plus a one-time hoard (`caveLoot` in the save). The rope by the entrance takes you back out.
 
 - **Brightwater** at the centre: bank (west), General Store (east), Bob's Brilliant Tools (north-east), church and altar (north), Doric's smithy with furnace and anvil (south-east), cookhouse with range (south-west), houses and a well
 - **Ashford** far to the east: bank, store, smithy, houses, and 12 new NPCs with quests

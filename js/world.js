@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { makeRng } from './rng.js';
-import { MONSTER_TYPES, AGILITY_COURSES, RUNE_ALTARS } from './gameplay.js';
+import { MONSTER_TYPES, AGILITY_COURSES, RUNE_ALTARS, BOUNTIES } from './gameplay.js';
 import { QUEST_NPCS } from './questnpcs.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
 import { buildHumanoidRig, apronGeo, varyLook, hashStr, contactShadow } from './anatomy.js';
@@ -266,6 +266,10 @@ export const LANDMARKS = [
   { n: "Hunter's camp", x: 160, z: 205 }, { n: 'Wayside shrine', x: -20, z: 230 }, { n: 'Mountain cave', x: 60, z: -205 }, { n: 'Mountain pond', x: 130, z: -175 }
 ];
 export const PONDS = [{ x: 130, z: -175, r: 5 }];
+// Mountain cave: the entrance sits in the northern foothills; the cavern itself is a
+// sealed chamber sunk into the high peaks that you travel into through the entrance.
+export const CAVE = { x: 0, z: -272, r: 15, entrance: { x: 60, z: -205 }, inside: { x: 0, z: -259 }, outside: { x: 60, z: -201.5 } };
+export function inCave(x, z) { return Math.hypot(x - CAVE.x, z - CAVE.z) < CAVE.r + 0.5; }
 export function waterAt(x, z, pad = 0) {
   if (Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r + pad) return LAKE;
   for (const p of PONDS) if (Math.hypot(x - p.x, z - p.z) < p.r + pad) return p;
@@ -656,6 +660,8 @@ export function createWorld(scene) {
       add(geo, hex, amt, lx, y, lz, 0, doorOnX ? Math.PI / 2 : 0, rz);
     };
     const toWorld = (u, v) => { const lx = doorOnX ? -doorSign * (halfDepth - v) : u, lz = doorOnX ? u : -doorSign * (halfDepth - v); return [x + lx, z + lz]; };
+    // solid props: u/v centre and half-sizes in the door-relative frame
+    const solidUV = (u, v, hu, hv) => { const [ax, az] = toWorld(u - hu, v - hv), [bx, bz] = toWorld(u + hu, v + hv); colliders.push({ minX: Math.min(ax, bx), maxX: Math.max(ax, bx), minZ: Math.min(az, bz), maxZ: Math.max(az, bz), prop: name }); };
     const spots = {};
     if (/Bank/.test(name)) {
       const cw = Math.min(halfWide * 2 - 0.4, 3.4), nWin = Math.min(3, Math.max(2, Math.floor(cw / 1.05)));
@@ -668,6 +674,7 @@ export function createWorld(scene) {
       }
       P(prim.cyl(0.12, 0.14, 0.12, 10), 0xd4af37, 0, cw / 2 - 0.3, 1.14, 1.2);
       P(prim.box(Math.min(1.2, cw), 0.9, 0.5), 0x5a5a62, 0.15, 0, 0.45, 0.3);
+      solidUV(0, 1.2, cw / 2, 0.3); solidUV(0, 0.3, Math.min(1.2, cw) / 2, 0.25);
       spots.staff = [toWorld(0, 0.6)];
     } else if (/Store|Shop|Emporium|Armoury|Weaponsmith|Tools/.test(name)) {
       const cw = Math.min(halfWide * 2 - 0.6, 2.4);
@@ -677,6 +684,7 @@ export function createWorld(scene) {
       for (let i = 0; i < 5; i++) P(prim.box(0.22, 0.26, 0.2), [0xc04a30, 0x3a6a9a, 0xe0c040, 0x6a9a4a, 0x8a5a3a][i], 0.1, -1 + i * 0.5, 1.28, 0.18);
       P(prim.sphere(0.1, 8, 6), 0xd04030, 0, -0.5, 1.05, 1.3); P(prim.sphere(0.1, 8, 6), 0xe0c040, 0, -0.25, 1.05, 1.3);
       P(prim.box(0.45, 0.4, 0.4), 0x8a6a3a, 0.15, halfWide - 0.35, 0.2, 1.9);
+      solidUV(-0.2, 1.3, cw / 2, 0.3); solidUV(0, 0.18, Math.min(halfWide * 2 - 0.3, 2.6) / 2, 0.16); solidUV(halfWide - 0.35, 1.9, 0.22, 0.2);
       spots.staff = [toWorld(-0.6, 0.75), toWorld(0.5, 0.75)];
     } else if (/Smithy/.test(name)) {
       P(prim.box(1.1, 0.85, 0.8), 0x4a3a3a, 0.2, -0.8, 0.42, 0.5);
@@ -685,6 +693,7 @@ export function createWorld(scene) {
       P(prim.box(0.7, 0.18, 0.32), 0x6a6a72, 0.1, 0.8, 0.7, 0.7);
       P(prim.box(0.26, 0.5, 0.26), 0x5a5a62, 0.1, 0.8, 0.3, 0.7);
       P(prim.box(0.5, 0.5, 0.5), 0x5a3a20, 0.15, halfWide - 0.35, 0.25, 0.3);
+      solidUV(-0.8, 0.5, 0.55, 0.4); solidUV(0.8, 0.7, 0.35, 0.16); solidUV(halfWide - 0.35, 0.3, 0.25, 0.25);
       spots.staff = [toWorld(-0.8, 1.15), toWorld(0.8, 1.25)];
     }
     g.add(bakedMesh(parts));
@@ -1277,7 +1286,7 @@ export function createWorld(scene) {
       solid(cx - 5, cz - 4, 3, 0.3); solid(cx - 8, cz, 0.3, 2.5); solid(cx + 7, cz + 1, 0.3, 2);
       for (const [x, z] of [[-2, 1], [3, -2], [0, 4], [-5, 3]]) monsters.push(createMonster('Skeleton', cx + x, cz + z, 3));
       for (const [x, z] of [[6, 5], [-6, -6]]) monsters.push(createMonster('Zombie', cx + x, cz + z, 3));
-      npcAt(cx - 12, cz + 2, 'warden', 'Ruins Warden', { body: 0x4a4a5a, legs: 0x2a2a3a, hat: 0x6a6a72, hatH: 0.26 }, null, { bounty: { id: 'ruins', mon: 'Skeleton', n: 5, gp: 350, xp: { Prayer: 300, Defence: 400 }, ask: "The dead won't stay down in those ruins. Put five skeletons back in the ground and I'll pay you." } });
+      npcAt(cx - 12, cz + 2, 'warden', 'Ruins Warden', { body: 0x4a4a5a, legs: 0x2a2a3a, hat: 0x6a6a72, hatH: 0.26 }, null, { bounty: BOUNTIES.find(b => b.id === 'ruins') });
     }
     // 3) Watchtower on the western plateau + bandit hideout
     { const cx = -225, cz = 40; flat(cx, cz, 7); const p = [];
@@ -1285,7 +1294,7 @@ export function createWorld(scene) {
       for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; p.push([prim.box(0.6, 0.7, 0.4), 0x8a8478, Math.cos(a) * 2.4, 7.6, Math.sin(a) * 2.4, 0, -a, 0, 0.3]); }
       p.push([prim.cone(2.9, 2.4, 16), 0x7a3a2a, 0, 9.4, 0, 0, 0, 0, 0.3], [prim.box(1.0, 1.9, 0.2), 0x3a2a1a, 0, 0.95, 2.3, 0, 0, 0, 0], [prim.box(0.4, 0.8, 0.2), 0x1a1a22, 1.3, 4.5, 1.8, 0, 0.6, 0]);
       prop(cx, cz, p, 'Watchtower', 'A stone watchtower keeping an eye on the western highlands.'); solid(cx, cz, 2.2, 2.2);
-      npcAt(cx + 2.5, cz + 3.5, 'watchman', 'Captain Brann', { body: 0x3a3a6a, legs: 0x2a2a3a, hat: 0x8a8a94, hatH: 0.26 }, null, { bounty: { id: 'bandits', mon: 'Bandit', n: 4, gp: 400, xp: { Attack: 350, Strength: 350 }, ask: "Bandits hide out in the rocks north of my tower. Bring four of them to justice and the crown will reward you." } });
+      npcAt(cx + 2.5, cz + 3.5, 'watchman', 'Captain Brann', { body: 0x3a3a6a, legs: 0x2a2a3a, hat: 0x8a8a94, hatH: 0.26 }, null, { bounty: BOUNTIES.find(b => b.id === 'bandits') });
       const bx = -205, bz = 95; flat(bx, bz, 7); tent(bx, bz - 2, 0.2, 0x4a3a2a); nodes.push(fireAt(bx + 2, bz + 2));
       for (const [x, z] of [[-3, 3], [3, -2], [4, 4], [-2, -4]]) monsters.push(createMonster('Bandit', bx + x, bz + z, 3));
       nodes.push(createSignpost(cx + 5, cz + 6));
@@ -1295,7 +1304,7 @@ export function createWorld(scene) {
       const rack = []; for (const x of [-1, 1]) rack.push([prim.box(0.1, 1.8, 0.1), 0x5a3a1e, x, 0.9, 0]); rack.push([prim.box(2.2, 0.08, 0.08), 0x5a3a1e, 0, 1.7, 0]);
       for (let i = 0; i < 3; i++) rack.push([prim.box(0.5, 0.8, 0.03), [0x8a6a4a, 0x7a7a80, 0x9a8a70][i], -0.7 + i * 0.7, 1.25, 0, 0, 0, 0, 0.2]);
       prop(cx + 3.5, cz - 2.5, rack, 'Drying rack', 'Pelts drying in the wind.', 0.5);
-      npcAt(cx + 0.5, cz + 3.4, 'hunter', 'Rhea the Hunter', { body: 0x4a5a2a, legs: 0x3a3020, hat: 0x3a4a1a, hatH: 0.16 }, null, { bounty: { id: 'wolves', mon: 'Wolf', n: 5, gp: 300, xp: { Ranged: 400, Agility: 150 }, ask: "Wolves have been taking deer all along the dale. Thin the pack: five wolves, and I'll pay you in coin and know-how." } });
+      npcAt(cx + 0.5, cz + 3.4, 'hunter', 'Rhea the Hunter', { body: 0x4a5a2a, legs: 0x3a3020, hat: 0x3a4a1a, hatH: 0.16 }, null, { bounty: BOUNTIES.find(b => b.id === 'wolves') });
       for (let i = 0; i < 6; i++) monsters.push(createMonster('Wolf', cx - 20 + (wr() - 0.5) * 16, cz - 25 + (wr() - 0.5) * 12, 4));
       nodes.push(createSignpost(cx + 6, cz + 5));
     }
@@ -1308,15 +1317,82 @@ export function createWorld(scene) {
       nodes.push(tag(g, { mesh: g, type: 'altar', name: 'Wayside shrine', alive: true, x: cx, z: cz, radius: 1.2 }));
       for (let i = 0; i < 5; i++) { const a = i * 1.3; nodes.push(bush(cx + Math.cos(a) * 7, cz + Math.sin(a) * 7, i % 2 ? 'White berries' : 'Redberries')); }
     }
-    // 6) Cave entrance in the northern mountains, guarded by giant spiders, with ore outside
-    { const cx = 60, cz = -205; flat(cx, cz, 10); const p = [];
+    // 6) Cave entrance in the northern mountains, guarded by giant spiders. Enter it to reach the cavern.
+    { const cx = CAVE.entrance.x, cz = CAVE.entrance.z; flat(cx, cz, 10); const p = [];
       for (let i = 0; i < 9; i++) { const a = Math.PI * (i / 8); p.push([blob(1.4, 1.6, 1.2, { detail: 2, lump: 0.25, seed: i }), 0x6a645c, Math.cos(a) * 3, Math.sin(a) * 3.2, -1, 0, 0, 0]); }
       p.push([blob(2.8, 2.4, 1.0, { detail: 2, lump: 0.1, seed: 9 }), 0x08080a, 0, 1.4, -1.6, 0, 0, 0, 0]);
       for (let i = 0; i < 5; i++) p.push([prim.cone(0.12, 0.6, 6), 0x5a544c, -1.6 + i * 0.8, 3.0, -0.4, Math.PI]);
-      prop(cx, cz, p, 'Cave entrance', 'A dark cave mouth breathing cold air. Webs hang across it; it looks too dangerous to enter yet.'); solid(cx, cz - 1.2, 4, 1.4);
+      for (const sx of [-1, 1]) p.push([prim.cyl(0.06, 0.07, 1.6, 6), 0x5a3a1a, sx * 2.2, 0.8, 0.4], [prim.box(0.14, 0.2, 0.14), 0x3a2a1a, sx * 2.2, 1.65, 0.4]);
+      const ent = prop(cx, cz, p, 'Cave entrance', 'A dark cave mouth breathing cold air. Torches light the way down into the mountain.', 0, { type: 'cave', dest: CAVE.inside, radius: 2.2 });
+      for (const sx of [-1, 1]) { const f = new THREE.Mesh(prim.sphere(0.12, 8, 6), glowMat(0xffa040)); f.position.set(sx * 2.2, 1.85, 0.4); ent.mesh.add(f); }
+      nodes.push(ent); solid(cx, cz - 1.6, 4, 1.0);
       for (const [x, z] of [[-4, 4], [4, 5], [0, 7]]) monsters.push(createMonster('Giant Spider', cx + x, cz + z, 3));
-      for (const [ore, x, z] of [['Coal', -7, 2], ['Coal', -8, 4], ['Mithril', 7, 2], ['Iron', 8, 4]]) nodes.push(createRock(cx + x, cz + z, ore));
+      for (const [ore, x, z] of [['Coal', -7, 2], ['Iron', 8, 4]]) nodes.push(createRock(cx + x, cz + z, ore));
       for (const [x, z] of [[-60, -230], [-20, -250], [110, -240]]) monsters.push(createMonster('Ice Giant', x, z, 4));
+    }
+    // 6b) The cavern: rock shell (inside faces only, so the camera can look in from above),
+    // a stony floor, stalactites and stalagmites, glowing crystals and torches, webs,
+    // spiders, coal / iron / mithril seams, and the spider queen's hoard at the back.
+    { const { x: cx, z: cz, r: R } = CAVE; flat(cx, cz, R + 8);
+      const rockC = new THREE.Color(0x6a6058), rc = new THREE.Color();
+      const shellGeo = () => { const g = new THREE.SphereGeometry(R, 56, 22, 0, Math.PI * 2, 0, Math.PI / 2); g.deleteAttribute('uv'); const q = g.attributes.position;
+        for (let i = 0; i < q.count; i++) { const x = q.getX(i), y = q.getY(i), z = q.getZ(i), k = 1 + 0.09 * snoise(x * 0.35, y * 0.5, z * 0.35, 21) + 0.04 * snoise(x * 1.3, y * 1.3, z * 1.3, 22); q.setXYZ(i, x * k, y * 0.58 * k, z * k); }
+        g.computeVertexNormals();
+        return paint(g, (x, y, z) => rc.copy(rockC).multiplyScalar(0.7 + 0.35 * (0.5 + 0.5 * snoise(x * 0.8, y * 1.6, z * 0.8, 3)) - Math.max(0, 0.25 - y * 0.1))); };
+      const innerMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0.02, side: THREE.BackSide });
+      const inner = new THREE.Mesh(shellGeo(), innerMat); inner.receiveShadow = true;
+      const outer = new THREE.Mesh(shellGeo(), vcMat); outer.castShadow = true; outer.receiveShadow = true; outer.scale.setScalar(1.04);
+      const cave = new THREE.Group(); cave.position.set(cx, 0, cz); cave.add(inner); cave.add(outer); scene.add(cave);
+      cave.userData = { inner, outer };
+      const parts = [];
+      parts.push([blob(R - 0.3, 0.25, R - 0.3, { detail: 3, lump: 0.05, seed: 31, flat: 0.2 }), 0x5a5048, 0, 0.0, 0, 0, 0, 0, 0.1]);
+      const wr2 = makeRng(777);
+      for (let i = 0; i < 26; i++) { const a = wr2() * Math.PI * 2, d = 2 + wr2() * (R - 4), h = 0.8 + wr2() * 1.6; parts.push([prim.cone(0.16 + wr2() * 0.2, h, 7), 0x5a5048, Math.cos(a) * d, 8.2 * Math.sqrt(Math.max(0, 1 - (d / R) ** 2)) - h / 2, Math.sin(a) * d, Math.PI]); }
+      const mites = [];
+      for (let i = 0; i < 14; i++) { const a = wr2() * Math.PI * 2, d = 6 + wr2() * (R - 8), h = 0.6 + wr2() * 1.4; const mx = Math.cos(a) * d, mz = Math.sin(a) * d; if (Math.hypot(mx, mz + 13 - R) < 3) continue; parts.push([prim.cone(0.25 + wr2() * 0.2, h, 7), 0x6a6056, mx, h / 2, mz]); mites.push([mx, mz]); }
+      for (let i = 0; i < 10; i++) { const a = wr2() * Math.PI * 2; parts.push([blob(0.9, 0.6, 0.8, { detail: 1, lump: 0.3, seed: 40 + i }), 0x524a42, Math.cos(a) * (R - 1.2), 0.3, Math.sin(a) * (R - 1.2)]); }
+      // webs: thin pale sheets strung between stalagmites and the wall
+
+      // torch brackets by the exit
+      for (const sx of [-1, 1]) parts.push([prim.cyl(0.05, 0.06, 1.2, 6), 0x5a3a1a, sx * 1.8, 1.2, R - 1.4], [prim.box(0.12, 0.16, 0.12), 0x3a2a1a, sx * 1.8, 1.85, R - 1.4]);
+      // exit: a rope up to the light
+      parts.push([prim.cyl(0.035, 0.035, 7.5, 6), 0xc8b088, 0, 3.75, R - 3], [blob(1.2, 0.3, 1.0, { detail: 1, lump: 0.2, seed: 50 }), 0x5a5048, 0, 0.1, R - 3]);
+      const deco = new THREE.Group(); deco.add(kit(parts)); cave.add(deco);
+      { // webs: radial spokes and spiral threads
+        const wm = new THREE.LineBasicMaterial({ color: 0xe8e8e0, transparent: true, opacity: 0.55 }), v = [];
+        for (let k = 0; k < 8; k++) { const t = k / 8 * Math.PI * 2; v.push(0, 0, 0, Math.cos(t) * 1.2, Math.sin(t) * 1.2, 0); }
+        for (let ring = 1; ring <= 4; ring++) for (let k = 0; k < 8; k++) { const r = ring * 0.27, t0 = k / 8 * Math.PI * 2, t1 = (k + 1) / 8 * Math.PI * 2; v.push(Math.cos(t0) * r, Math.sin(t0) * r, 0, Math.cos(t1) * r * 0.97, Math.sin(t1) * r * 0.97, 0); }
+        const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+        for (let i = 0; i < 7; i++) { const a = i * 0.9 + 0.3, w = new THREE.LineSegments(wg, wm); w.position.set(Math.cos(a) * (R - 2.4), 1.9 + (i % 3) * 0.5, Math.sin(a) * (R - 2.4)); w.rotation.y = -a + Math.PI / 2; cave.add(w); } }
+      // glowing crystal clusters (unlit, so they read in the dark)
+      const crystals = [[-9, -6, 0x6ad0ff], [8, -8, 0xb070ff], [-11, 4, 0x6ad0ff], [10, 5, 0x70ffc0], [0, -13, 0xb070ff]];
+      for (const [x, z, c] of crystals) for (let k = 0; k < 4; k++) { const m = new THREE.Mesh(prim.cone(0.12, 0.7 + k * 0.15, 5), glowMat(c)); m.position.set(x + (k - 1.5) * 0.25, 0.3, z + (k % 2) * 0.2); m.rotation.z = (k - 1.5) * 0.25; cave.add(m); }
+      for (const sx of [-1, 1]) { const f = new THREE.Mesh(prim.sphere(0.14, 8, 6), glowMat(0xffa040)); f.position.set(sx * 1.8, 2.0, R - 1.4); cave.add(f); }
+      { const hole = new THREE.Mesh(new THREE.CircleGeometry(0.9, 20), glowMat(0xfff0c8)); hole.rotation.x = Math.PI / 2; hole.position.set(0, 7.6, R - 3); cave.add(hole); }
+      const lights = [new THREE.PointLight(0xffa050, 9, 26, 1), new THREE.PointLight(0x8ac0ff, 8, 30, 1), new THREE.PointLight(0xc090ff, 5, 22, 1)];
+      lights[0].position.set(0, 2.6, R - 2.5); lights[1].position.set(-6, 4, -4); lights[2].position.set(7, 3, -6);
+      for (const L of lights) cave.add(L);
+      cave.userData.lights = lights;
+      CAVE.group = cave;
+      // the walls are solid: a ring of boxes keeps you inside (and walkers outside)
+      for (let i = 0; i < 32; i++) { const a = i / 32 * Math.PI * 2, wx = cx + Math.cos(a) * (R - 0.6), wz = cz + Math.sin(a) * (R - 0.6); colliders.push({ minX: wx - 1.6, maxX: wx + 1.6, minZ: wz - 1.6, maxZ: wz + 1.6, cave: true }); }
+      for (const [mx, mz] of mites) solid(cx + mx, cz + mz, 0.3, 0.3);
+      // exit node
+      const ex = new THREE.Group(); ex.position.set(cx, 0, cz + R - 3); scene.add(ex); pickables.push(ex);
+      ex.add(new THREE.Mesh(prim.cyl(1.0, 1.0, 0.2, 10), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 })));
+      nodes.push(tag(ex, { mesh: ex, type: 'cave', name: 'Rope (exit)', examine: 'A rope leads back up to daylight.', dest: CAVE.outside, alive: true, x: cx, z: cz + R - 3, radius: 1.2 }));
+      // seams of ore along the walls
+      for (const [ore, a] of [['Coal', 3.6], ['Coal', 3.85], ['Coal', 4.1], ['Iron', 5.0], ['Iron', 5.25], ['Mithril', 0.4], ['Mithril', 0.7]]) nodes.push(createRock(cx + Math.cos(a) * (R - 3.4), cz + Math.sin(a) * (R - 3.4), ore));
+      // spiders, with a bigger brood mother near the hoard
+      for (const [x, z] of [[-5, -3], [5, -2], [-2, 4], [6, 6]]) monsters.push(createMonster('Giant Spider', cx + x, cz + z, 2.5, { minX: cx - R + 3, maxX: cx + R - 3, minZ: cz - R + 3, maxZ: cz + R - 3 }));
+      { const q = createMonster('Giant Spider', cx, cz - 9, 1.5, { minX: cx - 4, maxX: cx + 4, minZ: cz - 12, maxZ: cz - 6 }); q.variant = 'Brood Mother'; q.mesh.scale.multiplyScalar(1.4); q.maxHp = q.hp = Math.round(q.hp * 2); q.level = (q.level || 1) + 15; monsters.push(q); }
+      // the hoard
+      const ch = new THREE.Group(); ch.position.set(cx, 0, cz - R + 2.6); scene.add(ch); pickables.push(ch);
+      ch.add(kit([[prim.box(1.1, 0.6, 0.7), 0x6a4a2a, 0, 0.3, 0, 0, 0, 0, 0.2], [prim.cyl(0.35, 0.35, 1.1, 12, 1), 0x5a3a1e, 0, 0.6, 0, 0, 0, Math.PI / 2, 0.2],
+        [prim.box(1.14, 0.06, 0.74), 0xc9a227, 0, 0.12, 0], [prim.box(1.14, 0.06, 0.74), 0xc9a227, 0, 0.5, 0], [prim.box(0.14, 0.18, 0.06), 0xd4af37, 0, 0.55, 0.37],
+        ...[0, 1, 2, 3, 4, 5].map(i => [prim.cyl(0.08, 0.08, 0.03, 10), 0xffd040, -0.8 + i * 0.3, 0.02, 0.6 + (i % 2) * 0.2, 0, 0, 0, 0])]));
+      solid(cx, cz - R + 2.6, 0.55, 0.35);
+      nodes.push(tag(ch, { mesh: ch, type: 'chest', name: "Brood Mother's hoard", examine: 'A battered chest wrapped in old webbing, half-buried in coins.', alive: true, x: cx, z: cz - R + 2.6, radius: 0.9 }));
     }
     // 7) Mountain pond with fishing spots (north-east foothills)
     { const P = PONDS[0]; flat(P.x, P.z, P.r + 5);

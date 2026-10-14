@@ -7,7 +7,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
 import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from './chunk.js';
-import { terrainHeight, insideLake, WORLD_HALF, TOWNS } from './world.js';
+import { terrainHeight, insideLake, WORLD_HALF, TOWNS, CAVE, inCave } from './world.js';
 import { createWorld, createPileMesh, SPAWN, setDecorQuality, updateDecorChunks } from './world.js';
 import { updateLod, setLodRange, poseHumanoid } from './anatomy.js';
 import { createCritters } from './critters.js';
@@ -94,6 +94,7 @@ let lastCombatTick = -100;
 const piles = [];
 let dirty = true;
 const markDirty = () => { dirty = true; };
+let caveK = 0, caveShown = null, lightBase = null; // mountain cave lighting state
 
 // Combat skill state
 const cooldowns = {};        // ability id -> tick when ready
@@ -138,8 +139,12 @@ function applyGfx() {
   setDecorQuality(gfx.quality);
   SWAY.value = gfx.quality === 'low' ? 0 : 1;
   setLodRange(gfx.quality);
+  // High: thinner fog and a longer view so the northern mountains read clearly from town
+  scene.fog.density = gfx.quality === 'low' ? 0.0064 : 0.0025;
+  camera.far = gfx.quality === 'low' ? 520 : 760; camera.updateProjectionMatrix();
   setShadows(renderer, dirLight, shadowsOn(), gfx.quality);
   if (lightsRef) tuneLights(lightsRef, gfx.quality);
+  lightBase = null;
 }
 function gfxLabel() {
   return player.settings.gfx === 'high' ? 'High' : player.settings.gfx === 'low' ? 'Low' : `Auto (${gfx.quality === 'low' ? 'Low' : 'High'})`;
@@ -699,7 +704,8 @@ const EXAMINE = {
 };
 function entExamine(ent) {
   if (ent.type === 'building') return `${ent.name}: ${ent.examine}`;
-  if (ent.type === 'poi') return ent.examine;
+  if (ent.type === 'poi' || ent.type === 'cave') return ent.examine;
+  if (ent.type === 'chest') return player.caveLoot ? 'The hoard is empty now. You already took everything.' : ent.examine;
   if (ent.type === 'forage') return ent.alive ? `A bush heavy with ${ent.item.toLowerCase()}. (Herblore ${ent.level})` : 'This bush has been picked clean. It will grow back soon.';
   if (ent.type === 'npc') return (NPC_INFO[ent.npc] || {}).examine || `It's ${ent.name}.`;
   if (ent.type === 'tree' && !ent.alive) return 'This tree has been cut down.';
@@ -763,6 +769,8 @@ function optionsFor(ent) {
     case 'agility': return [{ action: ent.verb, target: ent.name, color: cy, fn: () => startAction({ kind: 'agility', node: ent, obstacle: ent.obstacle }) }, ex];
     case 'runealtar': return [{ action: 'Craft-rune', target: ent.name, color: cy, fn: () => startAction({ kind: 'runecraft', node: ent, altar: ent.altar }) }, ex];
     case 'building': return [ex];
+    case 'cave': return [{ action: ent.dest === CAVE.inside ? 'Enter' : 'Climb-up', target: ent.name, color: cy, fn: () => startAction({ kind: 'cave', node: ent }) }, ex];
+    case 'chest': return [{ action: 'Search', target: ent.name, color: cy, fn: () => startAction({ kind: 'chest', node: ent }) }, ex];
   }
   return [ex];
 }
@@ -1094,7 +1102,7 @@ function forage(ent) {
 function bountyTalk(ent) {
   const B = ent.bounty; player.bounties = player.bounties || {};
   const cur = player.bounties[B.id];
-  if (!cur) return [['npc', B.ask], { choose: [["I'll do it.", [{ run: () => { player.bounties[B.id] = { mon: B.mon, got: 0, n: B.n }; log(`Bounty started: defeat ${B.n} ${B.mon.toLowerCase()}s for ${ent.name}.`, 'game'); markDirty(); } }, ['npc', 'Good. Come back when it is done.']]], ['Not now.', [['npc', 'The offer stands.']]]] }];
+  if (!cur) return [['npc', B.ask], { choose: [["I'll do it.", [{ run: () => { player.bounties[B.id] = { mon: B.mon, got: 0, n: B.n }; log(`Bounty started: defeat ${B.n} ${B.mon === 'Wolf' ? 'wolves' : B.mon.toLowerCase() + 's'} for ${ent.name}.`, 'game'); markDirty(); } }, ['npc', 'Good. Come back when it is done.']]], ['Not now.', [['npc', 'The offer stands.']]]] }];
   if (cur.got < cur.n) return [['npc', `${cur.got} of ${cur.n} so far. Keep at it.`]];
   return [['npc', 'Well done! Here is your reward. Come back any time; there are always more.'], { run: () => {
     player.gold += B.gp; for (const [sk, xp] of Object.entries(B.xp)) giveXP(sk, xp);
@@ -1104,7 +1112,7 @@ function bountyTalk(ent) {
 }
 function bountyKill(name) {
   if (!player.bounties) return;
-  for (const b of Object.values(player.bounties)) if (b.mon === name && b.got < b.n) { b.got++; log(b.got >= b.n ? `Bounty: all ${b.n} ${name.toLowerCase()}s defeated. Return for your reward.` : `Bounty: ${b.got}/${b.n} ${name.toLowerCase()}s.`, 'game'); }
+  for (const b of Object.values(player.bounties)) if (b.mon === name && b.got < b.n) { b.got++; log(b.got >= b.n ? `Bounty: all ${b.n} ${name === 'Wolf' ? 'wolves' : name.toLowerCase() + 's'} defeated. Return for your reward.` : `Bounty: ${b.got}/${b.n} ${name === 'Wolf' ? 'wolves' : name.toLowerCase() + 's'}.`, 'game');  markDirty(); }
 }
 function updateQuestMarks() {
   for (const n of nodes) if (n.type === 'npc') n.questMark = questsForNpc(n.npc).some(x => !isDone(player, x.id));
@@ -1125,10 +1133,50 @@ function distTo(ent) {
   return Math.hypot(ent.mesh.position.x - pm.mesh.position.x, ent.mesh.position.z - pm.mesh.position.z);
 }
 
+// ---- Mountain cave: travel in and out, and the one-time hoard ----
+function caveTravel(ent) {
+  const d = ent.dest; pm.target = null; pm.goal = null;
+  pm.mesh.position.x = d.x; pm.mesh.position.z = d.z; pm.mesh.position.y = terrainHeight(d.x, d.z);
+  if (rig.fx !== undefined) { rig.fx = d.x; rig.fz = d.z; }
+  log(d === CAVE.inside ? 'You climb down into the cave. Crystals glitter in the dark, and something skitters in the webs.' : 'You climb back up into the daylight.', 'game');
+  markDirty();
+}
+function searchHoard() {
+  if (player.caveLoot) { log('The hoard is empty. Only cobwebs remain.', 'game'); return; }
+  const mother = monsters.find(m => m.variant === 'Brood Mother');
+  if (mother && mother.alive) { log('The Brood Mother guards her hoard. Defeat her first!', 'warn'); return; }
+  player.caveLoot = true;
+  player.gold += 2500;
+  for (const [it, q] of [['Uncut ruby', 1], ['Uncut diamond', 1], ['Mithril bar', 5], ['Coal', 10]]) if (ITEMS[it]) giveItem(it, q);
+  giveXP('Mining', 800); giveXP('Thieving', 300);
+  log("You search the Brood Mother's hoard and find 2,500 coins, an uncut ruby, an uncut diamond, mithril bars and coal!", 'loot', '#ffd700');
+  markDirty();
+}
+function updateCave(dt) {
+  const p = pm.mesh.position, inside = inCave(p.x, p.z);
+  const G = CAVE.group; if (!G) return;
+  if (caveShown !== inside) { caveShown = inside; G.userData.inner.visible = inside; G.userData.outer.visible = !inside; for (const L of G.userData.lights) L.intensity = inside ? (L.userData.base ??= L.intensity) : 0; }
+  caveK += ((inside ? 1 : 0) - caveK) * Math.min(1, dt * 3);
+  if (!lightBase) lightBase = { hemi: lightsRef.hemi.intensity, dir: dirLight.intensity, fill: lightsRef.fill.intensity };
+  lightsRef.hemi.intensity = lightBase.hemi * (1 - 0.6 * caveK);
+  dirLight.intensity = lightBase.dir * (1 - 0.8 * caveK);
+  lightsRef.fill.intensity = lightBase.fill * (1 - 0.7 * caveK);
+  scene.fog.color.setHex(0xbfdcf0).lerp(_caveFog, caveK);
+  scene.background.copy(scene.fog.color);
+}
+const _caveFog = new THREE.Color(0x0c0a10);
+
+let ammoMsg = null;
 function useArrow() {
+  ammoMsg = null;
   const wi = ITEMS[player.equipment.weapon];
   if (wi && wi.thrown) return true; // thrown weapons are picked back up
   if (!player.equipment.ammo || player.ammoCount <= 0) return false;
+  // crossbows fire bolts, bows fire arrows
+  const am = player.equipment.ammo, xbow = /crossbow/i.test(player.equipment.weapon || '');
+  const isBolt = /bolts$/i.test(am), isArrow = /arrows?$/i.test(am);
+  if (xbow && !isBolt) { ammoMsg = `Your crossbow needs bolts, not ${am.toLowerCase()}.`; return false; }
+  if (!xbow && !isArrow) { ammoMsg = `Your bow needs arrows, not ${am.toLowerCase()}.`; return false; }
   if (Math.random() < perk(skills, 'Ranged', 'ammoSave')) return true; // perk: arrow saved
   player.ammoCount--;
   if (player.ammoCount <= 0) { player.equipment.ammo = null; player.ammoCount = 0; }
@@ -1169,7 +1217,7 @@ function playerAttack(mon, now) {
   queuedAbility = null;
   if (special) cooldowns[special] = tick + cooldownTicks(skills, abilityById(special));
   if (ranged) {
-    if (!useArrow()) { log('There is no ammo left in your quiver.', 'warn'); stopAction(); return; }
+    if (!useArrow()) { log(ammoMsg || (/crossbow/i.test(player.equipment.weapon || '') ? 'You have no bolts left. Equip bolts in your ammo slot.' : 'There is no ammo left in your quiver.'), 'warn'); stopAction(); return; }
     arrowFlight = { from: pm.mesh.position.clone().setY(1.3), mon, t: 0 };
   }
   pm.actionAnim = 1; pm.actionKind = ranged ? 'bow' : 'melee';
@@ -1424,6 +1472,8 @@ function updateAction() {
   else if (a.kind === 'bank') { invUI.open('bank'); stopAction(); }
   else if (a.kind === 'shop') { log(`${ent.name}: "Have a look at my wares."`, 'game'); invUI.open(a.shop || 'shop'); stopAction(); }
   else if (a.kind === 'talk') { stopAction(); talkTo(ent); }
+  else if (a.kind === 'cave') { stopAction(); caveTravel(ent); }
+  else if (a.kind === 'chest') { stopAction(); pm.actionAnim = 1; pm.actionKind = 'tool'; searchHoard(); }
   else if (a.kind === 'forage') { stopAction(); pm.actionAnim = 1; pm.actionKind = 'tool'; forage(ent); }
   else if (a.kind === 'well') { stopAction(); pm.actionAnim = 1; pm.actionKind = 'tool'; fillVials(); }
   else if (a.kind === 'altar') {
@@ -1539,12 +1589,13 @@ const ACTION_LABEL = {
   agility: a => `🏃 ${a.node.verb} ${a.node.name}`, thieve: a => `🦹 Pickpocketing ${a.node.name}`, runecraft: a => `💠 Going to the ${a.node.name}`,
   craft: a => `${SKILL_ICONS[a.recipe.skill]} ${a.recipe.name}${a.left !== Infinity && a.left > 1 ? ` (${a.left})` : ''}`, pickup: () => '✋ Picking up', bank: () => '🏦 Going to bank',
   shop: a => `🛒 Going to ${a.node.name}`, talk: a => `💬 Talking to ${a.node.name}`, altar: () => '🙏 Going to the altar', station: a => `Going to the ${a.node.name.toLowerCase()}`,
-  bury: () => '🦴 Burying bones', light: () => '🔥 Lighting a fire'
+  bury: () => '🦴 Burying bones', light: () => '🔥 Lighting a fire',
+  cave: a => `🕳️ Going to the ${a.node.name.toLowerCase()}`, chest: a => `🧰 Searching ${a.node.name}`, forage: a => `🫐 Picking from the ${a.node.name.toLowerCase()}`, well: () => '🪣 Going to the well'
 };
 function updateStatus() {
   let html = '';
   if (hoverText && !IS_TOUCH) html = hoverText;
-  else if (action) html = ACTION_LABEL[action.kind](action) || '';
+  else if (action) html = (ACTION_LABEL[action.kind] || (() => ''))(action) || '';
   else if (pm.target) html = 'Walking';
   ui.setStatus(html);
 }
@@ -1706,7 +1757,7 @@ function updateCharacters(dt, now) {
   }
 }
 function cullWorld() {
-  const R = gfx.quality === 'low' ? 70 : 100, R2 = R * R;
+  const R = gfx.quality === 'low' ? 70 : 135, R2 = R * R;
   const px = pm.mesh.position.x, pz = pm.mesh.position.z;
   for (const e of cullList) {
     const o = e.mesh, dx = o.position.x - px, dz = o.position.z - pz, far = dx * dx + dz * dz > R2;
@@ -1723,7 +1774,7 @@ function cullWorld() {
   const cx = camera.position.x, cz = camera.position.z;
   for (const e of lodList) if (e.mesh.parent || e.lod.hi) updateLod(e, px, pz);
   for (const m of monsters) if (m.lod && updateLod(m, px, pz)) syncMonsterRig(m);
-  updateDecorChunks(px, pz, gfx.quality === 'low' ? 45 : 60); // fine clutter fades in fog well before this
+  updateDecorChunks(px, pz, gfx.quality === 'low' ? 45 : 80); // fine clutter fades in fog well before this
 }
 
 function animate(now) {
@@ -1770,6 +1821,7 @@ function animate(now) {
   updateFires(now);
   updateArrow(dt);
   updateRig(rig, camera, pm.mesh.position.x, pm.mesh.position.z, dt, terrainHeight(pm.mesh.position.x, pm.mesh.position.z));
+  updateCave(dt);
   followLight(dirLight, rig.fx, rig.fz);
   sky.follow(camera);
   if (gfx.quality === 'low') renderer.render(scene, camera); else composer.render();
