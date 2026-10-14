@@ -383,3 +383,13 @@ kbd { font: bold 9.5px var(--f-num); color: var(--c-gold-hi); padding: 2px 5px; 
 #tabContent { max-height: calc(100vh / var(--ui-scale) - var(--chat-h) - var(--sb) - var(--st) - var(--map) - 100px); }
 @media (orientation: landscape) and (max-height: 520px) { #tabContent { max-height: none; } }
 @media (min-width: 900px) and (min-height: 600px) { #tabContent { max-height: calc(100vh / var(--ui-scale) - var(--map) - 120px); } }
+/* Portrait: the side panel never rises into the orb stack (4 orbs + bezel + frame gap), whatever the content or safe-area inset. */
+:root { --orb-stack: 162px; }
+@media not ((orientation: landscape) and (max-height: 520px)) {
+  #sidePanel { max-height: calc(100vh / var(--ui-scale) - var(--chat-h) - var(--sb) - 4px - var(--st) - max(var(--orb-stack), var(--map) + 16px)); }
+  #tabContent { flex: 1 1 auto; min-height: 0; max-height: none; }
+  #tabBar { flex: none; }
+}
+@media (min-width: 900px) and (min-height: 600px) {
+  #sidePanel { max-height: calc(100vh / var(--ui-scale) - 16px - var(--st) - max(var(--orb-stack), var(--map) + 16px)); }
+}
