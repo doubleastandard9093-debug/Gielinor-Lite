@@ -367,7 +367,10 @@ function withdraw(item, q) {
   let n = Math.min(qtyOf(have, q), roomFor(player, item, qtyOf(have, q)));
   if (!n) { log("You don't have enough inventory space.", 'warn'); return; }
   player.bank[item] -= n;
-  if (player.bank[item] <= 0) delete player.bank[item];
+  if (player.bank[item] <= 0) {
+    delete player.bank[item];
+    if (player.settings.placeholders !== false) { const ph = player.settings.bankPh || (player.settings.bankPh = []); if (!ph.includes(item)) ph.push(item); }
+  }
   addItem(player, item, n);
   markDirty();
 }

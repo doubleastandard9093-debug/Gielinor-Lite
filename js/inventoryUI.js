@@ -8,6 +8,7 @@ import { PRAYERS, isActive, drainPerTick, prayerBonus } from './prayer.js';
 import { ABILITIES, unlocked } from './abilities.js';
 import { QUESTS, questStatus, questPoints, QUEST_POINTS_TOTAL, QUEST_TOWNS, activeQuestBonuses } from './quests.js';
 import { esc } from './ui.js';
+import { iconImg } from './icons.js';
 
 const TABS = [
   { id: 'combat', icon: '⚔️', title: 'Combat options' },
@@ -106,8 +107,47 @@ function bindPress(root, selector, onTap, onLong) {
   root.addEventListener('contextmenu', e => { if (e.target.closest(selector)) e.preventDefault(); });
 }
 
+// Rich tooltip for an item: name in rarity colour, type, stats, special, requirements and value.
+const TYPE_LABEL = { weapon: 'Weapon', head: 'Head', body: 'Body', legs: 'Legs', shield: 'Shield', cape: 'Cape', neck: 'Neck', ring: 'Ring', ammo: 'Ammunition', tool: 'Tool',
+  food: 'Food', potion: 'Potion', rune: 'Rune', resource: 'Resource', processed: 'Material', bones: 'Bones', herb: 'Herb', grimy: 'Grimy herb', secondary: 'Herblore secondary', vial: 'Vial', junk: 'Junk' };
+export function itemTooltip(item, qty) {
+  const info = ITEMS[item] || {};
+  const rc = rarityColor(item);
+  const st = statLine(item);
+  const req = info.req ? Object.entries(info.req).map(([k, v]) => `${k} ${v}`).join(', ') : '';
+  return `<div class="tt-name" style="color:${rc || 'var(--c-title)'}">${esc(item)}</div>` +
+    `<div class="tt-type">${info.rarity ? `<span style="color:${rc}">${info.rarity[0].toUpperCase() + info.rarity.slice(1)}</span> · ` : ''}${TYPE_LABEL[info.type] || 'Item'}${info.metal ? ' · ' + info.metal : ''}</div>` +
+    (st ? `<div class="tt-stats">${st.split(', ').map(x => `<span>${esc(x)}</span>`).join('')}</div>` : '') +
+    (info.heal ? `<div class="tt-line">Heals ${info.heal}</div>` : '') +
+    (info.special ? `<div class="tt-special">${esc(info.special)}</div>` : '') +
+    (req ? `<div class="tt-req">Requires ${esc(req)}</div>` : '') +
+    `<div class="tt-val">${qty > 1 ? `${fmt(qty)} × ` : ''}${fmt(info.value || 1)} gp${qty > 1 ? ` = ${fmt((info.value || 1) * qty)} gp` : ''}</div>`;
+}
+let tipEl = null;
+function setupTooltips() {
+  tipEl = document.createElement('div'); tipEl.id = 'uiTip'; document.body.appendChild(tipEl);
+  let cur = null;
+  document.addEventListener('pointerover', e => {
+    if (e.pointerType !== 'mouse') return;
+    const el = e.target.closest && e.target.closest('[data-tip],[data-tiphtml]');
+    if (el === cur) return; cur = el;
+    if (!el) { tipEl.classList.remove('show'); return; }
+    const slotItem = el.dataset.item;
+    tipEl.innerHTML = el.dataset.tiphtml || (slotItem ? itemTooltip(slotItem, +(el.querySelector('.qty') ? el.dataset.qty || 1 : 1)) : esc(el.dataset.tip));
+    tipEl.classList.add('show');
+  });
+  document.addEventListener('pointermove', e => {
+    if (!tipEl.classList.contains('show')) return;
+    const w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+    tipEl.style.left = Math.max(4, Math.min(innerWidth - w - 4, e.clientX - w - 14)) + 'px';
+    tipEl.style.top = Math.max(4, Math.min(innerHeight - h - 4, e.clientY + 14)) + 'px';
+  });
+  document.addEventListener('pointerdown', () => tipEl.classList.remove('show'), true);
+}
+
 export function createInventoryUI(api) {
   const { player, skills } = api;
+  if (!tipEl) setupTooltips();
   const panel = document.createElement('div');
   panel.id = 'sidePanel';
   panel.innerHTML = `<div id="tabContent"></div><div id="tabBar">${TABS.map(t => `<button data-tab="${t.id}" title="${t.title}">${t.icon}</button>`).join('')}</div>`;
@@ -129,7 +169,8 @@ export function createInventoryUI(api) {
   let mode = null;          // null | 'bank' | 'shop' | 'tools' | 'help'
   let qtyMode = 1;          // bank / shop quantity
   let selectedSkill = null;
-  let selectedQuest = null, questTown = 'All', questState = 'all';
+  let selectedQuest = null, questTown = 'All', questState = 'all', questDiff = 'All';
+  let bankTab = 'all', bankSearch = '';
   let shopInfo = null;
   let craftTab = 'Smithing';
   let smithGroup = 'Smelting';
@@ -149,8 +190,9 @@ export function createInventoryUI(api) {
   function itemCell(item, qty, extra = '', showQty = true) {
     const [ic, tint] = iconFor(item);
     const rc = rarityColor(item);
-    return `<div class="slot item" data-item="${esc(item)}" ${extra} title="${esc(item)}" style="${tint ? `background-color:${tint};` : ''}${rc ? `box-shadow:inset 0 0 0 2px ${rc};` : ''}">` +
-      `<span class="ico">${ic}</span>${showQty && qty > 1 ? `<span class="qty">${qtyLabel(qty)}</span>` : ''}<span class="nm"${rc ? ` style="color:${rc}"` : ''}>${esc(shortName(item))}</span></div>`;
+    const rr = ITEMS[item] && ITEMS[item].rarity;
+    return `<div class="slot item${rr ? ' r-' + rr : ''}" data-item="${esc(item)}" data-qty="${qty}" ${extra} data-tip="${esc(item)}">` +
+      `<span class="ico">${iconImg(item)}</span>${showQty && qty > 1 ? `<span class="qty">${qtyLabel(qty)}</span>` : ''}<span class="nm"${rc ? ` style="color:${rc}"` : ''}>${esc(shortName(item))}</span></div>`;
   }
   function shortName(item) {
     return item.replace(' logs', '').replace('Cooked ', '').replace(' platebody', ' plate').replace(' platelegs', ' legs').replace(' full helm', ' helm').replace(' shortbow', ' bow');
@@ -179,7 +221,8 @@ export function createInventoryUI(api) {
     for (const s of SKILLS) {
       const k = skills[s];
       const bst = boostOf(player, s);
-      html += `<div class="skill ${selectedSkill === s ? 'sel' : ''}" data-skill="${s}"><span>${SKILL_ICONS[s]}</span><b${bst ? ' class="boosted"' : ''}>${bst ? `${k.level + bst}/${k.level}` : k.level}</b><i style="width:${(levelProgress(k) * 100).toFixed(0)}%"></i></div>`;
+      const tip = `<div class="tt-name">${s}</div><div class="tt-type">Level ${k.level}${bst ? ` (boosted ${k.level + bst})` : ''}</div><div class="tt-line">XP ${fmt(k.xp)}</div>` + (k.level >= 99 ? '<div class="tt-special">Maximum level</div>' : `<div class="tt-line">Next level at ${fmt(nextLevelXp(k))}</div><div class="tt-special">${fmt(xpToNext(k))} XP to level ${k.level + 1}</div>`);
+      html += `<div class="skill ${selectedSkill === s ? 'sel' : ''} ${k.level >= 99 ? 'maxed' : ''}" data-skill="${s}" data-tiphtml="${esc(tip)}"><span class="sk-ico">${SKILL_ICONS[s]}</span><b${bst ? ' class="boosted"' : ''}>${bst ? `${k.level + bst}/${k.level}` : k.level}</b><i style="width:${(levelProgress(k) * 100).toFixed(0)}%"></i></div>`;
     }
     html += '</div>';
     if (selectedSkill) {
@@ -236,15 +279,19 @@ export function createInventoryUI(api) {
     [null, 'legs', 'ring']
   ];
   const SLOT_ICON = { head: '⛑️', ammo: '➶', weapon: '🗡️', body: '👕', shield: '🛡️', legs: '👖', neck: '📿', ring: '💍', cape: '🧣' };
+  const SLOT_GHOST = { head: 'Iron full helm', ammo: 'Iron arrows', weapon: 'Iron sword', body: 'Iron platebody', shield: 'Iron shield', legs: 'Iron platelegs', neck: 'Amulet of accuracy', ring: 'Warrior ring', cape: 'Red cape' };
+  const SLOT_NAME = { head: 'Head', ammo: 'Ammo', weapon: 'Weapon', body: 'Body', shield: 'Shield', legs: 'Legs', neck: 'Neck', ring: 'Ring', cape: 'Cape' };
   const sgn = v => (v >= 0 ? '+' : '') + v;
   function renderEquip() {
-    let html = '<div class="tab-head"><b>Worn Equipment</b></div><div class="equipgrid">';
+    const worn = Object.values(player.equipment).filter(Boolean).length;
+    let html = `<div class="tab-head"><b>Worn Equipment</b><span>${worn}/9 worn</span></div><div class="paperdoll"><div class="equipgrid">`;
     for (const row of EQUIP_LAYOUT) for (const slot of row) {
       if (!slot) { html += '<div></div>'; continue; }
       const item = player.equipment[slot];
-      if (item) html += itemCell(item, slot === 'ammo' ? player.ammoCount : 1, `data-slot="${slot}"`).replace('class="slot item"', 'class="slot item worn"');
-      else html += `<div class="slot empty" title="${slot}"><span class="ico ghost">${SLOT_ICON[slot]}</span></div>`;
+      if (item) html += itemCell(item, slot === 'ammo' ? player.ammoCount : 1, `data-slot="${slot}"`).replace('class="slot item', 'class="slot item worn');
+      else html += `<div class="slot empty" data-tip="${SLOT_NAME[slot]} slot (empty)"><span class="ico ghost">${iconImg(SLOT_GHOST[slot], 'ico-img ghost')}</span></div>`;
     }
+    html += '</div>';
     const b = equipmentBonuses(player);
     const extras = [];
     if (b.regen) extras.push(`HP regen +${Math.round(b.regen * 100)}%`);
@@ -268,7 +315,7 @@ export function createInventoryUI(api) {
       <div class="craftskill">Toolbelt</div><div class="toolgrid">`;
     for (const t of TOOL_TYPES) {
       const item = bestTool(player, skills, t.id);
-      if (item) html += itemCell(item, 1, `data-tool="${t.id}"`, false).replace('class="slot item"', 'class="slot item tool"');
+      if (item) html += itemCell(item, 1, `data-tool="${t.id}"`, false).replace('class="slot item', 'class="slot item tool');
       else html += `<div class="slot empty tool" data-tool="${t.id}" title="${t.name}: none"><span class="ico ghost">${t.icon}</span></div>`;
     }
     return html + '</div><div class="hint">Tap worn items to remove · tap a tool for details</div>';
@@ -296,10 +343,13 @@ export function createInventoryUI(api) {
     html += `<div class="qcount">${count('complete')} done · ${count('in progress')} started · ${QUESTS.length} quests</div>`;
     html += '<div class="qfilters">' + ['All', ...QUEST_TOWNS].map(t => `<span class="qchip ${questTown === t ? 'on' : ''}" data-qtown="${t}">${t}</span>`).join('') + '</div>';
     html += '<div class="qfilters">' + [['all', 'Any status'], ['not started', 'Not started'], ['in progress', 'In progress'], ['complete', 'Complete']].map(([k, l]) => `<span class="qchip ${questState === k ? 'on' : ''}" data-qstate="${k}">${l}</span>`).join('') + '</div>';
+    const DIFFS = ['All', ...new Set(QUESTS.map(q => q.diff))];
+    html += '<div class="qfilters">' + DIFFS.map(d => `<span class="qchip ${questDiff === d ? 'on' : ''}" data-qdiff="${esc(d)}">${d === 'All' ? 'Any difficulty' : esc(d)}</span>`).join('') + '</div>';
     if (selectedQuest) {
       const qd = QUESTS.find(x => x.id === selectedQuest);
       const st = questStatus(player, qd.id);
-      html += `<div class="journal"><b>${esc(qd.name)}</b><div class="qmeta">${esc(qd.town)} · ${esc(qd.diff)}</div>${qd.journal(player).map(l => `<div class="${l.done ? 'done' : ''}">${esc(l.text)}</div>`).join('')}
+      const lines = qd.journal(player); const doneN = lines.filter(l => l.done).length;
+      html += `<div class="journal"><button class="jback" data-quest="${qd.id}">← All quests</button><b>${esc(qd.name)}</b><div class="jprog"><i style="width:${st === 'complete' ? 100 : Math.round(100 * doneN / Math.max(1, lines.length))}%"></i></div><div class="qmeta">${esc(qd.town)} · ${esc(qd.diff)}</div>${qd.journal(player).map(l => `<div class="${l.done ? 'done' : ''}">${esc(l.text)}</div>`).join('')}
         ${st === 'complete' ? '<div class="qdone">QUEST COMPLETE!</div>' : ''}
         <div class="rewards">Rewards: ${qd.points} quest point${qd.points > 1 ? 's' : ''}, ${qd.rewards.map(esc).join(', ')}</div>
         <div class="qbonus ${st === 'complete' ? 'on' : ''}">★ Lasting bonus: ${esc(qd.bonus.desc)}${st === 'complete' ? ' (active)' : ''}</div></div>`;
@@ -318,6 +368,7 @@ export function createInventoryUI(api) {
       const st = sts[i];
       if (questTown !== 'All' && qd.town !== questTown) return;
       if (questState !== 'all' && st !== questState) return;
+      if (questDiff !== 'All' && qd.diff !== questDiff) return;
       shown++;
       html += `<div class="quest q-${st.replace(' ', '-')} ${selectedQuest === qd.id ? 'sel' : ''}" data-quest="${qd.id}">${esc(qd.name)}<small>${esc(qd.town)} · ${esc(qd.diff)}</small></div>`;
     });
@@ -377,6 +428,16 @@ export function createInventoryUI(api) {
   }
 
   // ---------------- Windows ----------------
+  const BANK_TABS = [['all', '∞', 'All'], ['weapons', '⚔️', 'Weapons'], ['armour', '🛡️', 'Armour'], ['supplies', '🍖', 'Food & potions'], ['magic', '🔮', 'Runes'], ['skilling', '⛏️', 'Skilling'], ['misc', '📦', 'Misc']];
+  function bankCat(it) {
+    const t = (ITEMS[it] || {}).type;
+    if (t === 'weapon' || t === 'ammo') return 'weapons';
+    if (['head', 'body', 'legs', 'shield', 'cape', 'neck', 'ring'].includes(t)) return 'armour';
+    if (['food', 'potion', 'vial'].includes(t)) return 'supplies';
+    if (t === 'rune' || /essence/i.test(it)) return 'magic';
+    if (['resource', 'processed', 'herb', 'grimy', 'secondary', 'bones', 'tool'].includes(t)) return 'skilling';
+    return 'misc';
+  }
   function qtyBar(label) {
     const opts = mode === 'bank' ? [1, 5, 10, 'All'] : [1, 5, 10];
     return `<div class="qtybar">${label}${opts.map(q => `<button data-qty="${q}" class="${qtyMode === q ? 'on' : ''}">${q}</button>`).join('')}</div>`;
@@ -390,10 +451,18 @@ export function createInventoryUI(api) {
     win.style.display = 'flex';
     let html;
     if (mode === 'bank') {
-      const entries = Object.entries(player.bank).filter(([, q]) => q > 0);
-      html = `<div class="win-head"><b>Bank of Brightwater</b><span>${entries.length} items</span><button class="close" data-act="close">✕</button></div>
+      const all = Object.entries(player.bank).filter(([, q]) => q > 0);
+      const ph = (player.settings.bankPh || []).filter(it => !(player.bank[it] > 0));
+      const q = bankSearch.trim().toLowerCase();
+      const inTab = it => bankTab === 'all' || bankCat(it) === bankTab;
+      const shown = all.filter(([it]) => inTab(it) && (!q || it.toLowerCase().includes(q)));
+      const shownPh = ph.filter(it => inTab(it) && (!q || it.toLowerCase().includes(q)));
+      const worth = all.reduce((a, [it, n]) => a + ((ITEMS[it] && ITEMS[it].value) || 1) * n, 0);
+      html = `<div class="win-head"><b>Bank of Gielinor</b><span>${all.length} items · ${qtyLabel(worth)} gp</span><button class="close" data-act="close">✕</button></div>
+        <div class="banktabs">${BANK_TABS.map(([id, ic, lbl]) => `<button data-btab="${id}" class="${bankTab === id ? 'on' : ''}" data-tip="${lbl}">${ic}<small>${lbl}</small></button>`).join('')}</div>
+        <div class="banksearch"><input id="bankSearch" type="search" placeholder="Search bank…" value="${esc(bankSearch)}" autocomplete="off"><button data-act="phtoggle" class="${player.settings.placeholders !== false ? 'on' : ''}" data-tip="Leave a greyed placeholder when you withdraw the last of an item">Placeholders</button></div>
         ${qtyBar('Withdraw/deposit: ')}
-        <div class="bankgrid">${entries.map(([item, q]) => itemCell(item, q).replace('class="slot item"', 'class="slot item bankitem"')).join('') || '<div class="hint">Your bank is empty.</div>'}</div>
+        <div class="bankgrid">${shown.map(([item, n]) => itemCell(item, n).replace('class="slot item', 'class="slot item bankitem')).join('')}${shownPh.map(it => `<div class="slot placeholder" data-ph="${esc(it)}" data-tip="${esc(it)} (placeholder, tap to clear)"><span class="ico">${iconImg(it, 'ico-img ghost')}</span><span class="qty">0</span></div>`).join('') || (shown.length ? '' : `<div class="hint">${q ? 'Nothing matches your search.' : 'Nothing in this tab.'}</div>`)}</div>
         <div class="win-foot"><button data-act="depinv">Deposit inventory</button><button data-act="depworn">Deposit worn items</button></div>`;
     } else if (mode === 'help') {
       html = `<div class="win-head"><b>What's new in Gielinor</b><button class="close" data-act="close">✕</button></div><div class="helptext">${WHATS_NEW}</div>`;
@@ -404,8 +473,7 @@ export function createInventoryUI(api) {
         <div class="bankgrid">${shopStock().map(s => {
           const owned = ITEMS[s.item] && ITEMS[s.item].tool && player.tools && player.tools[s.item];
           const price = buyPrice(s.price, player);
-          const stats = statLine(s.item);
-          return itemCell(s.item, 1).replace('class="slot item"', `class="slot item shopitem ${owned ? 'owned' : ''}" data-price="${price}"`).replace(`title="${esc(s.item)}"`, `title="${esc(s.item + (stats ? ': ' + stats : ''))}"`)
+          return itemCell(s.item, 1).replace('class="slot item', `data-price="${price}" class="slot item shopitem ${owned ? 'owned' : ''}`)
             .replace(/<\/div>$/, `<span class="price">${qtyLabel(price)}</span>${owned ? '<span class="own">✔</span>' : ''}</div>`);
         }).join('')}</div>
         <div class="shopinfo">${shopInfo ? esc(shopInfo) : 'Hold an item to see its bonuses'}</div>
@@ -470,6 +538,8 @@ export function createInventoryUI(api) {
     if (qq) { selectedQuest = selectedQuest === qq.dataset.quest ? null : qq.dataset.quest; render(); if (selectedQuest) { const j = content.querySelector('.journal'); if (j) j.scrollIntoView({ block: 'nearest' }); } return; }
     const qt = e.target.closest('[data-qtown]');
     if (qt) { questTown = qt.dataset.qtown; render(); return; }
+    const qdf = e.target.closest('[data-qdiff]');
+    if (qdf) { questDiff = qdf.dataset.qdiff; render(); return; }
     const qs = e.target.closest('[data-qstate]');
     if (qs) { questState = qs.dataset.qstate; render(); return; }
     const st = e.target.closest('[data-style]');
@@ -487,12 +557,22 @@ export function createInventoryUI(api) {
     const act = e.target.closest('[data-act]');
     if (act) { if (act.dataset.act === 'help') open('help'); else api.setting(act.dataset.act); }
   });
+  win.addEventListener('input', e => {
+    if (e.target.id !== 'bankSearch') return;
+    bankSearch = e.target.value; const pos = e.target.selectionStart;
+    renderWindow(); const inp = win.querySelector('#bankSearch'); if (inp) { inp.focus(); try { inp.setSelectionRange(pos, pos); } catch (er) { /* search inputs */ } }
+  });
   win.addEventListener('click', e => {
+    const bt = e.target.closest('[data-btab]');
+    if (bt) { bankTab = bt.dataset.btab; render(); return; }
+    const phEl = e.target.closest('[data-ph]');
+    if (phEl) { player.settings.bankPh = (player.settings.bankPh || []).filter(x => x !== phEl.dataset.ph); render(); return; }
     const q = e.target.closest('[data-qty]');
     if (q) { qtyMode = q.dataset.qty === 'All' ? 'All' : +q.dataset.qty; render(); return; }
     const act = e.target.closest('[data-act]');
     if (!act) return;
     if (act.dataset.act === 'close') close();
+    else if (act.dataset.act === 'phtoggle') { player.settings.placeholders = player.settings.placeholders === false; if (player.settings.placeholders === false) player.settings.bankPh = []; render(); }
     else if (act.dataset.act === 'depinv') api.depositAll();
     else if (act.dataset.act === 'depworn') api.depositWorn();
   });

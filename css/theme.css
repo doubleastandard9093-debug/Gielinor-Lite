@@ -192,3 +192,70 @@ button.on, .style.on, .subtabs button.on, .chips button.on, .qtybar button.on, #
   #xpTracker { top: calc(var(--map) + 24px + var(--st)); left: auto; right: calc(8px + var(--sr)); width: 220px; }
   #effects { top: calc(40px + var(--st)); }
 }
+
+/* ==================== Stage 3: Panels ==================== */
+.slot .ico { margin-top: -4px; display: flex; align-items: center; justify-content: center; }
+.ico-img { width: calc(var(--cell) * .78); height: calc(var(--cell) * .78); display: block; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .7)); pointer-events: none; transition: transform .12s; }
+.ico-img.ghost { filter: grayscale(1) brightness(.55); opacity: .35; }
+.slot.item:hover .ico-img { transform: scale(1.1) translateY(-1px); }
+.slot { background: radial-gradient(circle at 50% 38%, rgba(255, 255, 255, .05), rgba(0, 0, 0, .25)); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .7), 0 1px 0 rgba(255, 220, 140, .06); border: 1px solid rgba(0, 0, 0, .55); }
+.slot.item { background: radial-gradient(circle at 50% 40%, rgba(255, 230, 170, .14), rgba(0, 0, 0, .28)); }
+.slot.r-uncommon { box-shadow: inset 0 0 0 1px var(--r-uncommon), inset 0 0 10px rgba(58, 208, 58, .45); }
+.slot.r-rare { box-shadow: inset 0 0 0 1px var(--r-rare), inset 0 0 12px rgba(58, 160, 255, .5); }
+.slot.r-epic { box-shadow: inset 0 0 0 1px var(--r-epic), inset 0 0 14px rgba(192, 96, 255, .55); }
+.slot.r-legendary { box-shadow: inset 0 0 0 1px var(--r-legendary), inset 0 0 16px rgba(255, 154, 42, .6); }
+.slot.r-legendary::after, .slot.r-epic::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .28) 50%, transparent 65%) no-repeat; background-size: 250% 100%; animation: uiShine 3.2s linear infinite; }
+.slot .qty { font: bold 10px var(--f-num); color: #ffef5a; text-shadow: 0 1px 0 #000, 0 0 2px #000; z-index: 1; }
+.slot .nm { font-size: 7.5px; color: #e8dcc0; }
+.slot.placeholder { cursor: pointer; } .slot.placeholder .qty { color: #a09070; }
+
+/* Tooltip */
+#uiTip { position: fixed; z-index: 40; max-width: 240px; padding: 7px 9px; pointer-events: none; opacity: 0; transform: translateY(4px); transition: opacity .12s, transform .12s;
+  background: linear-gradient(180deg, rgba(26, 28, 33, .97), rgba(12, 13, 16, .98)); border: 1px solid #000; border-radius: 7px; color: var(--c-text); font-size: 11px; line-height: 1.35;
+  box-shadow: 0 0 0 1px var(--c-gold-mid), 0 6px 16px rgba(0, 0, 0, .7); }
+#uiTip.show { opacity: 1; transform: none; }
+.tt-name { font-family: var(--f-title); font-weight: bold; font-size: 13px; color: var(--c-title); }
+.tt-type { color: var(--c-text-dim); font-size: 10px; margin-bottom: 3px; }
+.tt-stats { display: flex; flex-wrap: wrap; gap: 2px 8px; padding: 3px 0; border-top: 1px solid rgba(181, 134, 46, .3); border-bottom: 1px solid rgba(181, 134, 46, .3); margin: 2px 0; }
+.tt-stats span { color: #9ae07a; } .tt-special { color: #8ad0ff; } .tt-req { color: #ff9a7a; } .tt-val { color: #ffd75a; margin-top: 2px; }
+
+/* Equipment paper doll */
+.paperdoll { position: relative; margin: 4px auto 6px; padding: 8px 0; border-radius: 10px; background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20160%22%3E%3Cg%20fill%3D%22%23e0b04a%22%20opacity%3D%22.13%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2220%22%20r%3D%2214%22/%3E%3Cpath%20d%3D%22M28%2040h44l14%2046-10%203-10-30v38l6%2060H58l-8-50-8%2050H28l6-60V59L24%2089l-10-3z%22/%3E%3C/g%3E%3C/svg%3E") center / auto 96% no-repeat,
+  radial-gradient(ellipse at 50% 45%, rgba(224, 176, 74, .12), rgba(0, 0, 0, .35)); box-shadow: inset 0 0 0 1px rgba(181, 134, 46, .35), inset 0 2px 10px rgba(0, 0, 0, .7); }
+.paperdoll .equipgrid { margin: 0 auto; }
+.equipgrid .slot { border-radius: 50%; background: radial-gradient(circle at 50% 40%, #2e3138, #0d0e11); box-shadow: 0 0 0 1px #000, 0 0 0 2px var(--c-gold-lo), inset 0 2px 6px #000; }
+.equipgrid .slot.item { box-shadow: 0 0 0 1px #000, 0 0 0 2px var(--c-gold), inset 0 0 10px rgba(224, 176, 74, .35); }
+.equipgrid .slot .nm { display: none; }
+.bonuses > div { padding: 2px 4px; border-radius: 4px; background: rgba(0, 0, 0, .25); }
+
+/* Skills */
+.skillgrid { gap: 4px; }
+.skill { padding: 5px 5px 8px; min-height: 30px; }
+.skill .sk-ico { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px;
+  background: radial-gradient(circle at 35% 30%, #4a4d55, #121317); box-shadow: 0 0 0 1px #000, 0 0 0 2px var(--c-gold-lo); }
+.skill b { font: bold 13px var(--f-num); color: #ffe75a; text-shadow: 0 1px 0 #000; }
+.skill i { left: 3px; bottom: 2px; height: 3px; border-radius: 2px; max-width: calc(100% - 6px); }
+.skill.maxed { box-shadow: inset 0 0 0 1px var(--c-gold), inset 0 0 10px rgba(255, 210, 110, .35); }
+.skill.maxed .sk-ico { box-shadow: 0 0 0 1px #000, 0 0 0 2px var(--c-gold-hi), 0 0 6px var(--c-gold); }
+
+/* Quest journal */
+.jback { float: right; font-size: 10px; padding: 2px 6px; margin: -2px -2px 2px 4px; }
+.jprog { height: 5px; background: rgba(60, 30, 0, .25); border-radius: 3px; overflow: hidden; margin: 2px 0 5px; }
+.jprog i { display: block; height: 100%; background: linear-gradient(90deg, #6a8a20, #3a7a10); }
+.quest { border-left: 3px solid #5a1a10; } .quest.q-in-progress { border-left-color: #c8b020; } .quest.q-complete { border-left-color: #2aa82a; }
+
+/* Bank */
+.banktabs { display: flex; gap: 2px; margin: 2px 0 4px; }
+.banktabs button { flex: 1; padding: 3px 0; font-size: 14px; display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.banktabs button small { font-size: 7.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.banksearch { display: flex; gap: 4px; margin-bottom: 2px; }
+.banksearch input { flex: 1; min-width: 0; font: 13px var(--f-body); color: var(--c-text); padding: 5px 8px; border-radius: 6px; border: 1px solid #000;
+  background: linear-gradient(180deg, #0d0e11, #1d1f24); box-shadow: inset 0 1px 3px #000, 0 0 0 1px rgba(181, 134, 46, .35); -webkit-user-select: text; user-select: text; touch-action: manipulation; }
+.banksearch input:focus { outline: none; box-shadow: inset 0 1px 3px #000, 0 0 0 1px var(--c-gold), 0 0 6px rgba(224, 176, 74, .4); }
+.banksearch button { font-size: 10px; padding: 3px 6px; }
+@media (orientation: landscape) and (max-height: 520px) { .banktabs button small { display: none; } }
+.ico-img.ghost { filter: grayscale(1) sepia(.4) brightness(.9); opacity: .45; }
+#tabContent { max-height: calc(100vh - var(--chat-h) - var(--sb) - var(--st) - var(--map) - 100px); }
+@media (orientation: landscape) and (max-height: 520px) { #tabContent { max-height: none; } }
+@media (min-width: 900px) and (min-height: 600px) { #tabContent { max-height: calc(100vh - var(--map) - 120px); } }
