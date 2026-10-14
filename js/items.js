@@ -34,7 +34,9 @@ export const FOODS = [
   ['Raw shrimp', 'Cooked shrimp', 1, 34, 3, 30, 4], ['Raw beef', 'Cooked meat', 1, 34, 4, 30, 4],
   ['Raw trout', 'Cooked trout', 15, 50, 7, 70, 10], ['Raw salmon', 'Cooked salmon', 25, 58, 9, 90, 15],
   ['Raw lobster', 'Cooked lobster', 40, 74, 12, 120, 40], ['Raw swordfish', 'Cooked swordfish', 45, 86, 14, 140, 60],
-  ['Raw shark', 'Cooked shark', 80, 99, 20, 210, 150]
+  ['Raw shark', 'Cooked shark', 80, 99, 20, 210, 150],
+  ['Raw anchovies', 'Cooked anchovies', 15, 40, 5, 45, 6], ['Raw tuna', 'Cooked tuna', 30, 64, 10, 100, 25],
+  ['Raw monkfish', 'Cooked monkfish', 62, 92, 16, 150, 90]
 ];
 for (const [raw, cooked, , , heal, , v] of FOODS) {
   if (!ITEMS[raw]) def(raw, { type: 'resource', value: Math.max(2, Math.round(v * 1.2)) });
@@ -68,6 +70,14 @@ METALS.forEach((m, t) => {
 // ---- Bows ----
 export const BOWS = [['Shortbow', 1, 8], ['Oak shortbow', 15, 14], ['Willow shortbow', 20, 20], ['Maple shortbow', 30, 28], ['Yew shortbow', 40, 36], ['Magic shortbow', 50, 48]];
 BOWS.forEach(([n, req, r], t) => def(n, { type: 'weapon', ranged: r, speed: 4, tier: t, req: { Ranged: req }, value: [20, 40, 80, 160, 400, 1000][t] }));
+// ---- Crossbows, bolts and thrown weapons (thrown weapons need no ammo) ----
+export const XBOW_METALS = METALS.slice(0, 6);
+XBOW_METALS.forEach((m, t) => {
+  def(`${m} crossbow`, { type: 'weapon', ranged: [10, 16, 22, 30, 40, 52][t], speed: 5, tier: t, metal: m, req: { Ranged: TIER_REQ[t] }, value: [30, 70, 150, 320, 800, 2200][t] });
+  def(`${m} bolts`, { type: 'ammo', count: 10, rstr: [4, 7, 11, 17, 24, 35][t], tier: t, metal: m, value: [1, 3, 5, 10, 20, 50][t] });
+  def(`${m} thrown dagger`, { type: 'weapon', thrown: true, ranged: [4, 7, 11, 16, 22, 30][t], rstr: [2, 4, 7, 11, 16, 24][t], speed: 3, tier: t, metal: m, req: { Ranged: TIER_REQ[t] }, value: [10, 25, 60, 150, 380, 1000][t] });
+  def(`${m} throwing axe`, { type: 'weapon', thrown: true, ranged: [5, 9, 13, 19, 26, 36][t], rstr: [3, 6, 9, 14, 20, 30][t], speed: 4, tier: t, metal: m, req: { Ranged: TIER_REQ[t] }, value: [14, 35, 80, 200, 500, 1300][t] });
+});
 
 // ---- Leather and wood armour ----
 // Leather is weaker in melee but good against arrows and helps your aim.
@@ -115,6 +125,14 @@ def('Wizard robe', { type: 'body', mag: 3, value: 45 });
 def('Mystic hat', { type: 'head', mag: 4, def: 2, req: { Magic: 40 }, value: 3000 });
 def('Mystic robe top', { type: 'body', mag: 20, def: 10, req: { Magic: 40 }, value: 12000 });
 def('Mystic robe bottom', { type: 'legs', mag: 15, def: 7, req: { Magic: 40 }, value: 9000 });
+def('Wizard robe bottom', { type: 'legs', mag: 2, value: 35 });
+def('Cloth', { type: 'processed', value: 6 });
+def('Battlestaff', { type: 'weapon', atk: 8, str: 6, mag: 10, speed: 5, req: { Magic: 30, Attack: 20 }, value: 1200 });
+// ---- Cooked dishes that heal and give a short buff (buff.boost works like a potion; prayer restores points) ----
+def('Hearty stew', { type: 'food', heal: 10, value: 30, buff: { icon: '🍲', ticks: 300, boost: { Strength: [2, 0.05] } } });
+def("Monk's broth", { type: 'food', heal: 8, value: 40, buff: { icon: '🙏', prayer: 12 } });
+def('Fisherman\'s pie', { type: 'food', heal: 14, value: 70, buff: { icon: '🥧', ticks: 300, boost: { Defence: [2, 0.05] } } });
+def("Warrior's feast", { type: 'food', heal: 24, value: 400, buff: { icon: '🍖', ticks: 400, boost: { Attack: [3, 0.06], Strength: [3, 0.06] } } });
 
 export const SETS = {
   Leather: { pieces: ['head', 'body', 'legs'], fx: { racc: 0.05, dr: 0.02 } },
@@ -219,7 +237,7 @@ export function isRangedWeapon(item) { return !!(item && ITEMS[item] && ITEMS[it
 export function itemValue(item) { return ITEMS[item] ? ITEMS[item].value : 1; }
 
 // ---- Icons: [emoji, tint] ----
-const KIND_ICON = { sword: '⚔️', 'full helm': '🪖', shield: '🛡️', platelegs: '👖', platebody: '🦺', axe: '🪓', pickaxe: '⛏️', arrows: '🏹', bar: '🧱' };
+const KIND_ICON = { sword: '⚔️', 'full helm': '🪖', shield: '🛡️', platelegs: '👖', platebody: '🦺', axe: '🪓', pickaxe: '⛏️', arrows: '🏹', bar: '🧱', crossbow: '🏹', bolts: '➶', 'thrown dagger': '🔪', 'throwing axe': '🪓' };
 const FIXED_ICONS = {
   Coal: ['🪨', '#11111180'], 'Copper ore': ['🪨', '#b8733340'], 'Tin ore': ['🪨', '#c8c8c840'], 'Iron ore': ['🪨', '#8a4b3a50'],
   'Mithril ore': ['🪨', '#5a6ad060'], 'Adamantite ore': ['🪨', '#3a9a5a60'], 'Runite ore': ['🪨', '#3ab8d060'],
@@ -273,6 +291,9 @@ export function iconFor(item) {
   if (info0 && info0.type === 'rune') { const r = RUNES.find(x => x[0] === item); return ['🔶', (r ? r[2] : '#888888') + '70']; }
   if (item === 'Rune essence' || item === 'Pure essence') return ['🪨', item === 'Pure essence' ? '#f0f0ff70' : '#c0c8d070'];
   if (info0 && info0.runeSource) { const r = RUNES.find(x => x[0] === info0.runeSource); return ['🪄', r[2] + '70']; }
+  if (item === 'Battlestaff') return ['🪄', '#8a8a9a70'];
+  if (item === 'Cloth') return ['🧻', ''];
+  if (info0 && info0.buff) return [{ 'Hearty stew': '🍲', "Monk's broth": '🥣', "Fisherman's pie": '🥧', "Warrior's feast": '🍖' }[item] || '🍲', '#d4af3740'];
   if (item === 'Staff' || item === 'Mystic staff') return ['🪄', item === 'Mystic staff' ? '#6a3ad070' : ''];
   if (/^(Wizard|Mystic) /.test(item)) return [/hat$/.test(item) ? '🎩' : /bottom$/.test(item) ? '👖' : '🥻', /^Mystic/.test(item) ? '#3a5ad070' : '#2a3a9a60'];
   if (ITEMS[item] && ITEMS[item].capeSkill) return ['🧣', '#d4af3780'];
@@ -326,6 +347,8 @@ export function examineItem(item) {
   if (info.type === 'rune' && !EXAMINE[item]) text = `One of the ${item.split(' ')[0].toLowerCase()} runes used for casting spells.`;
   const bits = [];
   if (info.heal) bits.push(`heals ${info.heal * HEAL_SCALE}`);
+  if (info.buff) bits.push(info.buff.prayer ? `restores ${info.buff.prayer * 10} prayer` : 'buff ' + Object.entries(info.buff.boost).map(([k, [f, pc]]) => `${k} +${f}+${Math.round(pc * 100)}%`).join(', ') + ` for ${Math.round(info.buff.ticks * 0.6 / 60)} min`);
+  if (info.thrown) bits.push('thrown, needs no ammo');
   if (info.prayerXp) bits.push(`bury for ${info.prayerXp} Prayer xp`);
   const st = statLine(item);
   if (st) bits.push(st);
@@ -382,10 +405,31 @@ const BOW_LVL = [5, 20, 35, 50, 65, 80], BOW_XP = [5, 16.5, 33.3, 50, 67.5, 83.3
 BOWS.forEach(([n], t) => R({ name: `Fletch ${n}`, cat: 'Fletching', group: 'Bows', skill: 'Fletching', level: BOW_LVL[t], inputs: { [WOODS[t]]: 1, Bowstring: 1 }, output: n, xp: BOW_XP[t], tool: 'knife' }));
 const ARROW_LVL = [1, 15, 30, 45, 60, 75, 90], ARROW_XP = [10, 15, 25, 37.5, 50, 62.5, 75];
 METALS.forEach((m, t) => R({ name: `Fletch ${m} arrows`, cat: 'Fletching', group: 'Arrows', skill: 'Fletching', level: ARROW_LVL[t], inputs: { [`${m} bar`]: 1, [WOODS[Math.min(t, WOODS.length - 1)]]: 1 }, output: `${m} arrows`, xp: ARROW_XP[t], tool: 'knife' }));
+const XBOW_LVL = [9, 24, 39, 46, 54, 61], XBOW_XP = [12, 24, 38, 52, 68, 84];
+XBOW_METALS.forEach((m, t) => {
+  R({ name: `Fletch ${m} crossbow`, cat: 'Fletching', group: 'Crossbows', skill: 'Fletching', level: XBOW_LVL[t], inputs: { [`${m} bar`]: 1, [WOODS[t]]: 1, Bowstring: 1 }, output: `${m} crossbow`, xp: XBOW_XP[t], tool: 'knife' });
+  R({ name: `Fletch ${m} bolts`, cat: 'Fletching', group: 'Bolts', skill: 'Fletching', level: XBOW_LVL[t], inputs: { [`${m} bar`]: 1, Feather: 5 }, output: `${m} bolts`, xp: XBOW_XP[t] * 0.8, tool: 'knife' });
+  R({ name: `Smith ${m} thrown dagger`, cat: 'Smithing', group: 'Thrown weapons', skill: 'Smithing', level: Math.min(99, SMITH_BASE[t] + 3), inputs: { [`${m} bar`]: 1 }, output: `${m} thrown dagger`, xp: BAR_XP[t], station: 'anvil', tool: 'hammer' });
+  R({ name: `Smith ${m} throwing axe`, cat: 'Smithing', group: 'Thrown weapons', skill: 'Smithing', level: Math.min(99, SMITH_BASE[t] + 7), inputs: { [`${m} bar`]: 2 }, output: `${m} throwing axe`, xp: BAR_XP[t] * 2, station: 'anvil', tool: 'hammer' });
+});
+// Magic gear: weave cloth, sew robes, carve staves; a battlestaff needs the anvil
+R({ name: 'Weave Cloth', cat: 'Crafting', group: 'Magic gear', skill: 'Crafting', level: 5, inputs: { Flax: 2 }, output: 'Cloth', xp: 12 });
+R({ name: 'Sew Wizard hat', cat: 'Crafting', group: 'Magic gear', skill: 'Crafting', level: 10, inputs: { Cloth: 1 }, output: 'Wizard hat', xp: 20, tool: 'needle' });
+R({ name: 'Sew Wizard robe bottom', cat: 'Crafting', group: 'Magic gear', skill: 'Crafting', level: 16, inputs: { Cloth: 2 }, output: 'Wizard robe bottom', xp: 30, tool: 'needle' });
+R({ name: 'Sew Wizard robe', cat: 'Crafting', group: 'Magic gear', skill: 'Crafting', level: 20, inputs: { Cloth: 3 }, output: 'Wizard robe', xp: 40, tool: 'needle' });
+R({ name: 'Sew Mystic hat', cat: 'Crafting', group: 'Magic gear', skill: 'Crafting', level: 50, inputs: { Cloth: 2, 'Body rune': 10 }, output: 'Mystic hat', xp: 80, tool: 'needle' });
+R({ name: 'Sew Mystic robe bottom', cat: 'Crafting', group: 'Magic gear', skill: 'Crafting', level: 56, inputs: { Cloth: 4, 'Body rune': 20 }, output: 'Mystic robe bottom', xp: 110, tool: 'needle' });
+R({ name: 'Sew Mystic robe top', cat: 'Crafting', group: 'Magic gear', skill: 'Crafting', level: 60, inputs: { Cloth: 5, 'Body rune': 25 }, output: 'Mystic robe top', xp: 140, tool: 'needle' });
+R({ name: 'Carve Staff', cat: 'Crafting', group: 'Magic gear', skill: 'Crafting', level: 8, inputs: { 'Oak logs': 1 }, output: 'Staff', xp: 18, tool: 'knife' });
+R({ name: 'Smith Battlestaff', cat: 'Smithing', group: 'Thrown weapons', skill: 'Smithing', level: 40, inputs: { Staff: 1, 'Steel bar': 1 }, output: 'Battlestaff', xp: 60, station: 'anvil', tool: 'hammer' });
 // Cooking
 for (const [raw, cooked, lvl, stop, , xp] of FOODS) {
   R({ name: `Cook ${cooked.replace('Cooked ', '')}`, cat: 'Cooking', group: 'Range or fire', skill: 'Cooking', level: lvl, inputs: { [raw]: 1 }, output: cooked, xp, station: 'range', burnStop: stop });
 }
+R({ name: 'Cook Hearty stew', cat: 'Cooking', group: 'Dishes (buffs)', skill: 'Cooking', level: 25, inputs: { 'Cooked meat': 2 }, output: 'Hearty stew', xp: 60, station: 'range' });
+R({ name: "Cook Monk's broth", cat: 'Cooking', group: 'Dishes (buffs)', skill: 'Cooking', level: 30, inputs: { 'Cooked salmon': 1, 'Vial of water': 1 }, output: "Monk's broth", xp: 80, station: 'range' });
+R({ name: "Cook Fisherman's pie", cat: 'Cooking', group: 'Dishes (buffs)', skill: 'Cooking', level: 45, inputs: { 'Cooked tuna': 1, 'Cooked trout': 1 }, output: "Fisherman's pie", xp: 120, station: 'range' });
+R({ name: "Cook Warrior's feast", cat: 'Cooking', group: 'Dishes (buffs)', skill: 'Cooking', level: 82, inputs: { 'Cooked shark': 1, 'Cooked lobster': 1 }, output: "Warrior's feast", xp: 260, station: 'range' });
 
 
 // Dragon metal

@@ -13,6 +13,10 @@ The original 2D game lives in `/2d/`.
 
 Modern, RuneScape 3-inspired look made entirely in code (no image files or third-party art): sky dome with sun and clouds, warm sunlight with soft shadows, bloom and a light colour grade, splat-textured terrain (grass, dirt paths, sand, cobbles) with hills beyond the map edge, animated water, swaying layered trees, ore-veined rocks, timber and stone buildings with tiled gable roofs, grass/flower/bush ground clutter, and rounded player, NPC and monster models. Most models are baked into one mesh each to keep draw calls low on phones.
 
+**Guilds** (`GUILDS` in world.js): Mining Guild (Mining 60: high-level rocks, furnace, anvil, bank), Cooking Guild (Cooking 32: two ranges, bank) and Crafting Guild (Crafting 40: furnace, anvil, bank). Entry is level-checked at the door.
+
+**Skill content:** Fletching has bows, arrows, crossbows and bolts. Smithing adds thrown daggers and throwing axes (thrown weapons need no ammo) and a Battlestaff. Crafting adds cloth, Wizard and Mystic robes and staves. Fishing adds anchovies, tuna and monkfish. Cooking adds buff dishes (Hearty stew: Strength; Monk's broth: prayer restore; Fisherman's pie: Defence; Warrior's feast: Attack and Strength).
+
 **Building interiors:** buildings are hollow with a doorway facing the town square (wall colliders leave a gap); the roof hides while you're inside. Smithies have a forge and anvil with the smith patrolling between them, shops have a counter and shelves with a pacing shopkeeper, banks have a 2–3 window counter and a Banker. Taps inside or outside a building route you through the door.
 
 **Chunk streaming** (`js/chunk.js`): the world is cut into 32×32 chunks. Buildings, NPC stalls, props and monsters are attached to the scene only in chunks within `LOAD_RADIUS` of the player (2 on Low = 5×5, 3 on High = 7×7) and detached when far; gameplay data (HP, respawns, colliders) is kept. Trees, rocks and ground clutter use instancing and their own decor chunks.

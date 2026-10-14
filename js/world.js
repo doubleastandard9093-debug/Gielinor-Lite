@@ -61,6 +61,15 @@ export const BUILDINGS = [
   [-70, -72, 4, 4, 0xe0dcd0, 0x4a5a7a, 'Falador House', 'A white stone house.'],
   [-50, -72, 4, 4, 0xe0dcd0, 0x3a5a3a, 'Falador House', 'A white stone house.']
 ];
+// Guilds: walk-in halls that check your level at the door. Contents are created in createWorld.
+export const GUILDS = [
+  { name: 'Mining Guild', skill: 'Mining', level: 60, x: 20, z: -62, w: 12, d: 10, wall: 0x7a7468, roof: 0x4a4a52,
+    rocks: [['Coal', 4], ['Mithril', 2], ['Adamantite', 2], ['Runite', 1]], stations: ['furnace', 'anvil'], bank: true },
+  { name: 'Cooking Guild', skill: 'Cooking', level: 32, x: 0, z: 60, w: 9, d: 8, wall: 0xd8d0c0, roof: 0x8a3a2a, stations: ['range', 'range'], bank: true },
+  { name: 'Crafting Guild', skill: 'Crafting', level: 40, x: -22, z: 60, w: 9, d: 8, wall: 0xb89a6a, roof: 0x3a5a3a, stations: ['furnace', 'anvil'], bank: true }
+];
+for (const g of GUILDS) BUILDINGS.push([g.x, g.z, g.w, g.d, g.wall, g.roof, g.name, `Members need ${g.skill} level ${g.level} to enter.`]);
+PATHS.push([0, -27, 20, -56], [0, 29, 0, 55], [0, 55, -22, 55]);
 function nearestTown(x, z) {
   let best = TOWNS.Brightwater, bd = Infinity;
   for (const t of Object.values(TOWNS)) { const d = Math.hypot(t.x - x, t.z - z); if (d < bd) { bd = d; best = t; } }
@@ -848,13 +857,15 @@ export function createWorld(scene) {
     scene.add(g);
     pickables.push(g);
     colliders.push({ minX: x - 0.15, maxX: x + 0.15, minZ: z - 0.15, maxZ: z + 0.15 });
-    const text = 'The signpost reads: ' + away.map(t => `${t.n}, ${compass(t.dx, t.dz)} (${Math.round(t.d)} steps)`).join(' · ');
+    const guilds = GUILDS.map(G => ({ n: `${G.name} (${G.skill} ${G.level})`, dx: G.x - x, dz: G.z - z, d: Math.hypot(G.x - x, G.z - z) })).filter(t => t.d < 75);
+    const text = 'The signpost reads: ' + [...away, ...guilds].map(t => `${t.n}, ${compass(t.dx, t.dz)} (${Math.round(t.d)} steps)`).join(' · ');
     return tag(g, { mesh: g, type: 'sign', name: 'Signpost', text, alive: true, x, z, radius: 0.6 });
   }
 
   // ---- Populate ----
   // Town first so trees keep clear of it
-  const buildings = BUILDINGS.map(createBuilding);
+  const GUILD_NAMES = new Set(GUILDS.map(g => g.name));
+  const buildings = BUILDINGS.filter(b => !GUILD_NAMES.has(b[6])).map(createBuilding);
   buildings.push(createWell(3, 3.2));
   nodes.push(createMerchant(8, 0));
   nodes.push(createBank(-6, -5.6));
@@ -1068,6 +1079,30 @@ export function createWorld(scene) {
         }
         if (p) nodes.push(createTree(p.x, p.z, kind));
       }
+    }
+  }
+
+  // ---- Guild halls (built last so earlier random placement doesn't shift) ----
+  for (const G of GUILDS) {
+    const b = createBuilding(BUILDINGS.find(e => e[6] === G.name));
+    b.guild = G;
+    buildings.push(b);
+    const dn = b.door, ux = dn.nz ? 1 : 0, uz = dn.nx ? 1 : 0; // along the back wall
+    const bx = b.x - dn.nx * (G.w / 2 - 1.6), bz = b.z - dn.nz * (G.d / 2 - 1.6); // near the back wall
+    let k = 0;
+    for (const [ore, n] of G.rocks || []) for (let i = 0; i < n; i++, k++) {
+      const off = (k - 4) * 1.25; nodes.push(createRock(bx + ux * off, bz + uz * off, ore));
+    }
+    const side = (G.rocks ? 1.6 : 0), mid = [b.x - dn.nx * side * 0.2, b.z - dn.nz * side * 0.2];
+    (G.stations || []).forEach((st, i) => {
+      const off = (i ? 1 : -1) * (Math.min(G.w, G.d) / 2 - 1.3);
+      const sx = (G.rocks ? mid[0] : bx) + ux * off, sz = (G.rocks ? mid[1] : bz) + uz * off;
+      const node = createStation(sx, sz, st); node.guild = G.name; nodes.push(node);
+    });
+    if (G.bank) {
+      const half = (ux ? G.w : G.d) / 2 - 1.4;
+      const bk = createBank(b.x + ux * half + dn.nx * 0.4, b.z + uz * half + dn.nz * 0.4);
+      nodes.push(bk);
     }
   }
 

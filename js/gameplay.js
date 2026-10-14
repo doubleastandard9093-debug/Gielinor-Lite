@@ -2,7 +2,7 @@
 import { addItem, removeItem, canAdd } from './playerState.js';
 import { ITEMS, HEAL_SCALE, slotFor, isRangedWeapon, itemValue, isTool, toolType, FOODS, SETS, SKILL_CAPE_SKILLS, HERBS, grimyOf, METALS, RUNES } from './items.js';
 import { boostedLevel, effectFx } from './potions.js';
-import { perk } from './skills.js';
+import { perk, maxPrayer } from './skills.js';
 import { prayerFx } from './prayer.js';
 import { questFx, isDone, questCapeAllowed } from './quests.js';
 
@@ -33,10 +33,10 @@ export const ROCKS = {
 export const HERB_PATCHES = Object.fromEntries(HERBS.map(([h, lvl, xp]) => [h, { level: lvl, xp: Math.round(xp * 3 * 10) / 10, item: grimyOf(h) }]));
 // A fishing spot offers several catches; the best one you can catch is rolled first.
 export const FISH_SPOTS = {
-  Net:     { verb: 'Net',     tool: 'net',     catches: [{ level: 1, xp: 20, item: 'Raw shrimp' }] },
+  Net:     { verb: 'Net',     tool: 'net',     catches: [{ level: 62, xp: 120, item: 'Raw monkfish' }, { level: 15, xp: 40, item: 'Raw anchovies' }, { level: 1, xp: 20, item: 'Raw shrimp' }] },
   Lure:    { verb: 'Lure',    tool: 'rod',     catches: [{ level: 30, xp: 70, item: 'Raw salmon' }, { level: 20, xp: 50, item: 'Raw trout' }] },
   Cage:    { verb: 'Cage',    tool: 'cage',    catches: [{ level: 40, xp: 90, item: 'Raw lobster' }] },
-  Harpoon: { verb: 'Harpoon', tool: 'harpoon', catches: [{ level: 76, xp: 110, item: 'Raw shark' }, { level: 50, xp: 100, item: 'Raw swordfish' }] }
+  Harpoon: { verb: 'Harpoon', tool: 'harpoon', catches: [{ level: 76, xp: 110, item: 'Raw shark' }, { level: 50, xp: 100, item: 'Raw swordfish' }, { level: 35, xp: 80, item: 'Raw tuna' }] }
 };
 
 // ---- Toolbelt -------------------------------------------------------------
@@ -607,6 +607,17 @@ export function eat(player, item, onLog, skills = null) {
   const before = player.hp;
   player.hp = Math.min(player.maxHp, player.hp + healAmount(item, skills));
   onLog(`You eat the ${item.replace(/^Cooked /, '').toLowerCase()}. It heals ${player.hp - before} hitpoints.`, 'game');
+  const bf = info.buff;
+  if (bf && bf.prayer && skills) {
+    player.prayerPoints = Math.min(maxPrayer(skills), (player.prayerPoints || 0) + bf.prayer * 10);
+    onLog('It restores some prayer points.', 'game');
+  } else if (bf && bf.boost && skills) {
+    const boost = {};
+    for (const [sk, [flat, pct]] of Object.entries(bf.boost)) boost[sk] = flat + Math.floor(skills[sk].level * pct);
+    player.effects = (player.effects || []).filter(e => e.id !== item);
+    player.effects.push({ id: item, icon: bf.icon, left: bf.ticks, boost, fx: {} });
+    onLog(`You feel stronger: ${Object.entries(boost).map(([k, n]) => `${k} +${n}`).join(', ')}.`, 'game');
+  }
   return true;
 }
 

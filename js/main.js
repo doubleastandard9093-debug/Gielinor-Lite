@@ -1086,6 +1086,8 @@ function distTo(ent) {
 }
 
 function useArrow() {
+  const wi = ITEMS[player.equipment.weapon];
+  if (wi && wi.thrown) return true; // thrown weapons are picked back up
   if (!player.equipment.ammo || player.ammoCount <= 0) return false;
   if (Math.random() < perk(skills, 'Ranged', 'ammoSave')) return true; // perk: arrow saved
   player.ammoCount--;
@@ -1595,6 +1597,10 @@ function routeThroughDoors() {
   } else if (!pm.goal) return;
   else if (!pm.goal.walk && !pm.target) { pm.goal = null; return; }
   const g = pm.goal, from = insideOf(p.x, p.z), to = insideOf(g.x, g.z);
+  if (to && to.guild && !from && skills[to.guild.skill].level < to.guild.level) {
+    log(`You need ${to.guild.skill} level ${to.guild.level} to enter the ${to.guild.name}.`, 'warn');
+    pm.goal = null; pm.target = null; stopAction(); return;
+  }
   if (from === to) { pm.target = { x: g.x, z: g.z, wp: true }; pm.stopDist = g.stop; pm.goal = null; return; }
   const w = from ? doorWaypoint(from, p.x, p.z, true) : doorWaypoint(to, p.x, p.z, false);
   pm.target = { ...w, wp: true }; pm.stopDist = 0.05;
@@ -1617,6 +1623,14 @@ function updatePatrols(dt, now) {
 }
 function updateRoofs() {
   const p = pm.mesh.position, inB = insideOf(p.x, p.z);
+  if (inB && inB.guild && skills[inB.guild.skill].level < inB.guild.level) {
+    // Guild doorman: not high enough level, so you're shown back outside.
+    const d = inB.door;
+    pm.mesh.position.set(d.x + d.nx * 1.4, p.y, d.z + d.nz * 1.4);
+    pm.goal = null; pm.target = null;
+    if (!updateRoofs.warned || performance.now() - updateRoofs.warned > 3000) { updateRoofs.warned = performance.now(); log(`You need ${inB.guild.skill} level ${inB.guild.level} to enter the ${inB.guild.name}.`, 'warn'); }
+    return;
+  }
   for (const b of interiorBuildings) { const r = b.mesh.userData.roof; if (r) r.visible = b !== inB; }
 }
 window.insideOf = insideOf;
