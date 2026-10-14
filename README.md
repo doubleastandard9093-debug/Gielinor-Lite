@@ -9,6 +9,33 @@ The original 2D game lives in `/2d/`.
 2. Settings → Pages → Deploy from main branch
 3. Live at `https://yourusername.github.io/repo-name/`
 
+## Interface
+
+The UI is original art made in code: CSS, inline SVG and canvas. There are no image files and no Jagex or Artix assets.
+
+- **Theme** (`css/theme.css`): the "Forged Gold" look. It has colour, type and frame tokens, stone panels with SVG filigree corners, parchment panels, bevelled buttons, gem-set tabs, and hover and press animations. `--ui-scale` (Settings → UI scale: 85, 100, 115 or 130%) zooms every HUD block, and the side panel height adjusts to fit.
+- **HUD** (`js/hud.js`):
+  - Glass orbs with a liquid fill for hitpoints, prayer, run and adrenaline. Adrenaline builds as you land hits and fades out of combat, and it is display only for now.
+  - A target panel with the target's name, a level badge coloured by combat level and an HP bar with damage lag.
+  - XP drops and a floating XP tracker showing XP gained, XP to the next level and XP per hour.
+  - Buff timer rings.
+  - An action bar with conic cooldown sweeps and 1 to 8 keybinds.
+- **Icons** (`js/icons.js`): every item is painted on a 64 px canvas. The shape comes from its category (sword, axe, helm, platebody, bow, arrows, bar, ore, logs, fish, potion, rune and so on) and the colour from its metal, wood, rune, potion or rarity. Icons are cached as data URLs. Rarity adds a coloured glow, and epic and legendary items also get a moving shine.
+- **Panels** (`js/inventoryUI.js`):
+  - Rich tooltips on desktop hover, showing stats, special, requirements and value.
+  - An equipment paper doll with slot silhouettes.
+  - Skill tiles with XP tooltips.
+  - A quest journal with town, status and difficulty filters and a progress bar.
+  - A bank with category tabs, search and placeholders (`settings.bankPh`).
+- **World UI**:
+  - A minimap ring with zoom, a map key and a player arrow (`js/minimap.js`).
+  - Nameplates over nearby monsters and townsfolk (`overlays.setPlates` / `updatePlates`).
+  - Painted, name-seeded dialogue portraits (`js/portrait.js`).
+  - Chat with unread badges and timestamps.
+  - A title and loading screen (`#loader` in index.html).
+  - Optional interface clicks, synthesised with WebAudio.
+- **Polish:** tab and window transitions, and a level-up banner with a ring flash and spark burst. Safe-area insets are respected, with layouts for phone portrait, phone landscape and desktop.
+
 ## Graphics
 
 - **Fog and view distance:** High uses FogExp2 density 0.0025, a 760-unit far plane and a 135-unit cull radius, so the northern mountains stay readable. Low uses 0.0064, 520 and 70.

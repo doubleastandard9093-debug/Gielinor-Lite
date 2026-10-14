@@ -26,6 +26,32 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>A whole new interface.</b></p>
+<ul>
+<li><b>New look.</b> Panels are framed in gold over dark stone, with filigree corners, parchment journals, and buttons and tabs that light up when you touch them.</li>
+<li><b>Orbs and target panel.</b> Hitpoints, prayer, run and a new <b>adrenaline</b> orb fill like glass flasks. Adrenaline builds as you land hits. It's a gauge only for now and doesn't power anything yet. When you fight, a panel shows your target's name, level (coloured by how tough it is) and health.</li>
+<li><b>XP tracker.</b> XP drops show the skill's badge. A tracker lists the skills you've trained recently, with XP gained, XP to the next level and XP per hour.</li>
+<li><b>Buffs and action bar.</b> Buffs have a ring that counts down. The action bar has cooldown sweeps and number keys.</li>
+<li><b>Item art.</b> Every item has its own painted icon: swords, helms, platebodies, bows, arrows, bars, ores, logs, fish, potions, runes and more. Each is coloured by its metal or wood. Rare, epic and legendary items glow, and the best ones shimmer. On a computer, hover over an item to see its stats, special, requirements and value.</li>
+<li><b>Panels.</b>
+  <ul>
+  <li>Equipment is shown on a paper doll with outlines for empty slots.</li>
+  <li>Skills show their XP to the next level when you hover.</li>
+  <li>Quests can be filtered by difficulty and show a progress bar.</li>
+  <li>The bank has tabs (weapons, armour, food and potions, runes, skilling, misc), a search box and placeholders.</li>
+  </ul></li>
+<li><b>Out in the world.</b>
+  <ul>
+  <li>Nearby monsters and townsfolk have nameplates. Monsters show their level, quest givers have a blue mark, and named monsters have a star.</li>
+  <li>The minimap has a gold ring, zoom buttons and a <b>?</b> map key.</li>
+  <li>Conversations show a painted portrait of whoever is speaking.</li>
+  <li>The chat tabs show how many new messages you've missed.</li>
+  <li>There's a title screen while the game loads.</li>
+  </ul></li>
+<li><b>Settings.</b> UI scale (85 to 130%), nameplates on or off, optional interface click sounds, and a keybind list.</li>
+<li><b>Level-ups.</b> A burst of sparks and a big banner when you level up.</li>
+</ul>
+<p><b>Earlier today</b></p>
 <p><b>Rough edges smoothed.</b></p>
 <ul>
 <li><b>The Mountain cave is open.</b> Enter it from the cave mouth in the northern foothills (torches mark the way) and climb down into a cavern lit by torches and glowing crystals. Inside are stalactites and stalagmites, webs, coal, iron and mithril seams and four giant spiders. The <b>Brood Mother</b> guards a hoard at the back: defeat her and search it once for 2,500 coins, an uncut ruby, an uncut diamond, mithril bars and coal. Climb the rope to leave.</li>

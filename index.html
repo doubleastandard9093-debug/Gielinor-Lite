@@ -346,6 +346,7 @@ button:active { background: linear-gradient(180deg, #2a2e35, #1c1f24); }
 <body>
 <div id="loader"><div class="ld-frame"><div class="ld-crest"><svg viewBox="0 0 64 64" width="64" height="64"><defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbe7a1"/><stop offset=".5" stop-color="#e0b04a"/><stop offset="1" stop-color="#6b4a14"/></linearGradient></defs><path d="M32 3l24 9v18c0 16-11 26-24 31C19 56 8 46 8 30V12z" fill="#1c1e23" stroke="url(#lg)" stroke-width="3"/><path d="M32 14v34M20 26h24" stroke="url(#lg)" stroke-width="4" stroke-linecap="round"/><circle cx="32" cy="26" r="4" fill="#c8202a" stroke="#fbe7a1"/></svg></div>
 <div class="ld-title">Gielinor</div><div class="ld-sub">A Lite Adventure</div><div class="ld-bar"><i></i></div><div class="ld-tip">Tip: hold on anything (or right-click) to see every option.</div></div></div>
+<script>setTimeout(function () { var l = document.getElementById('loader'); if (l && !window.gielinor) { l.querySelector('.ld-tip').textContent = 'Still loading. Check your connection, or tap to close this screen.'; l.onclick = function () { l.remove(); }; } }, 25000);</script>
 <div id="status"></div>
 <div id="xpdrops"></div>
 <div id="levelup"></div>
