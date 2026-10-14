@@ -3,7 +3,7 @@ import { makeRng } from './rng.js';
 import { MONSTER_TYPES, AGILITY_COURSES, RUNE_ALTARS } from './gameplay.js';
 import { QUEST_NPCS } from './questnpcs.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
-import { buildHumanoidRig, varyLook, hashStr, contactShadow } from './anatomy.js';
+import { buildHumanoidRig, apronGeo, varyLook, hashStr, contactShadow } from './anatomy.js';
 import { buildCreatureRig, rollVariant, namedVariant } from './creatures.js';
 import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap } from './models.js';
 
@@ -714,9 +714,9 @@ export function createWorld(scene) {
     g.rotation.y = Math.atan2(faceX - x, faceZ - z);
     scene.add(g);
     pickables.push(g);
-    const headExtras = npcExtras(look).map(([geo, hex, px = 0, py = 0, pz = 0, rx = 0, ry = 0, rz = 0, amt = 0.22]) => put(col(geo, hex, amt), px, py - 1.5, pz, rx, ry, rz));
+    const headExtras = npcExtras({ ...look, apron: null, beard: null }).map(([geo, hex, px = 0, py = 0, pz = 0, rx = 0, ry = 0, rz = 0, amt = 0.22]) => put(col(geo, hex, amt), px, py - 1.5, pz, rx, ry, rz));
     const e = tag(g, { mesh: g, type: 'npc', npc, name, alive: true, x, z, radius: 0.6 });
-    e.lod = { lo, hi: null, parent: g, buildHi: () => { const r = buildHumanoidRig({ ...L, headExtras: headExtras.map(q => q.clone()), noCollar: !!look.apron }, { extras: look.apron ? [put(col(prim.box(0.42, 0.62, 0.03), look.apron, 0.1), 0, 0.98, 0.21, -0.05)] : [] }); r.userData.id = x; return r; } };
+    e.lod = { lo, hi: null, parent: g, buildHi: () => { const r = buildHumanoidRig({ ...L, headExtras: headExtras.map(q => q.clone()), noCollar: !!look.apron, buckle: look.apron ? new THREE.Color(look.apron).multiplyScalar(0.75).getHex() : undefined }, { extras: look.apron ? apronGeo(look.apron, L.build ?? 1, L.chest ?? 1) : [] }); r.userData.id = x; return r; } };
     return e;
   }
 
@@ -843,6 +843,7 @@ export function createWorld(scene) {
     const cr = creatureParts(t.shape, c, typeName);
     const lo = new THREE.Group(); body.add(lo);
     let extras = [], headExtras = [];
+    const held = [[], []];
     if (cr) {
       lo.add(kit(cr.top));
       for (const L of cr.legs) { const p = legPivot(L.parts, L.x, L.y, L.z); lo.add(p); legs.push(p); }
@@ -853,9 +854,24 @@ export function createWorld(scene) {
       const ex = monsterExtras(typeName, skin, c);
       // detailed rig: head-height extras ride on the head, the rest on the torso
       const keep = typeName === 'Goblin' ? ex.slice(3) : /Skeleton|Zombie/.test(typeName) ? ex.slice(2) : ex;
+      // weapons / shields (out at the hands) are re-anchored onto the forearm so they swing with it
+      const grip = [null, null];
       for (const [geo, hex, px = 0, py = 0, pz = 0, rx = 0, ry = 0, rz = 0, amt = 0.22] of keep.map(q => [q[0].clone(), ...q.slice(1)])) {
-        if (py > 1.55 && Math.abs(px) < 0.35) headExtras.push(put(col(geo.clone(), hex, amt), px, py - 1.5, pz, rx, ry, rz));
+        if (Math.abs(px) >= 0.4 && py < 1.55) {
+          const side = px < 0 ? 0 : 1, hsl = {}; new THREE.Color(hex).getHSL(hsl);
+          const metal = hsl.s < 0.18 && hsl.l > 0.2 && !/Giant|Ogre|Grumsh/.test(typeName);
+          held[side].push({ geo: put(col(geo.clone(), hex, metal ? 0.08 : amt), px, py, pz, rx, ry, rz), metal });
+        } else if (py > 1.55 && Math.abs(px) < 0.35) headExtras.push(put(col(geo.clone(), hex, amt), px, py - 1.5, pz, rx, ry, rz));
         else extras.push(put(col(geo.clone(), hex, amt), px, py, pz, rx, ry, rz));
+      }
+      // grip near the handle end: clubs hang head-down from the fist, blades point up
+      for (const list of held) {
+        if (!list.length) continue;
+        const bb = new THREE.Box3(); for (const it of list) { it.geo.computeBoundingBox(); bb.union(it.geo.boundingBox); }
+        const hgt = bb.max.y - bb.min.y, club = /Giant|Ogre|Grumsh/.test(typeName);
+        const gy = list.length > 1 && !club && hgt > 1.5 ? (bb.min.y + bb.max.y) / 2 - hgt * 0.15 : club ? bb.max.y - hgt * 0.12 : bb.min.y + Math.min(0.12, hgt * 0.2);
+        const gx = (bb.min.x + bb.max.x) / 2, gz = (bb.min.z + bb.max.z) / 2;
+        for (const it of list) it.geo.translate(-gx, -gy - 0.31, -gz + 0.05);
       }
       lo.add(kit([...h.top, ...ex]));
       for (const lx of [-0.13, 0.13]) { const p = legPivot(h.leg.map(q => [q[0].clone(), ...q.slice(1)]), lx, h.hipY, 0); lo.add(p); legs.push(p); }
@@ -872,7 +888,7 @@ export function createWorld(scene) {
       x, z, spawnX: x, spawnZ: z, roam, bounds, radius: 0.7 * Math.max(1, t.scale * 0.8),
       state: 'idle', target: null, wanderAt: 0, nextAttackTick: 0, deathT: 0, respawnAt: 0, lastHitAt: -1e9
     });
-    e.lod = { lo, hi: null, parent: body, buildHi: () => buildCreatureRig(typeName, t, rollVariant(typeName, t, seed), extras.map(g => g.clone()), headExtras.map(g => g.clone())) };
+    e.lod = { lo, hi: null, parent: body, buildHi: () => buildCreatureRig(typeName, t, rollVariant(typeName, t, seed), extras.map(g => g.clone()), headExtras.map(g => g.clone()), held.map(l => l.map(h => ({ geo: h.geo.clone(), metal: h.metal })))) };
     return e;
   }
 

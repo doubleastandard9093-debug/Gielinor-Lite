@@ -53,6 +53,8 @@ export const charMat = makeCharMat();
 export const furMat = makeCharMat({ rough: 0.92, bump: 0.6, freq: 26, rim: 0.5, sss: 0, sheen: 1 });
 export const scaleMat = makeCharMat({ rough: 0.42, metal: 0.12, bump: 0.45, freq: 14, rim: 0.3, sss: 0 });
 export const chitinMat = makeCharMat({ rough: 0.3, metal: 0.05, bump: 0.25, freq: 20, rim: 0.45, sss: 0 });
+export const metalMat = makeCharMat({ rough: 0.22, metal: 0.9, bump: 0.06, freq: 40, rim: 0.6, sss: 0 });
+export const boneMat = makeCharMat({ rough: 0.62, metal: 0.0, bump: 0.4, freq: 34, rim: 0.3, sss: 0 });
 export const hideMat = makeCharMat({ rough: 0.85, bump: 0.4, freq: 18, rim: 0.3, sss: 0.3, sheen: 1 });
 
 // ---- small helpers ----------------------------------------------------------
@@ -210,7 +212,7 @@ export function varyLook(look, seed) {
 // ---- detailed humanoid rig --------------------------------------------------
 // Returns a Group with userData { body, head, arms[2], legs[2] } where each arm has
 // userData.elbow and each leg userData.knee, matching the player's rig layout.
-export function buildHumanoidRig(look, { extras = [], seg = LOD.seg, claws = false, ears = null, material = charMat } = {}) {
+export function buildHumanoidRig(look, { extras = [], held = [[], []], seg = LOD.seg, claws = false, ears = null, material = charMat } = {}) {
   const S = Math.round(16 * seg), b = look.build ?? 1, skin = look.skin ?? 0xe0ae84;
   const sk = (g, opt) => skinPaint(g, skin, { seed: 1, mottle: look.mottle ?? 0.06, ...opt });
   const cloth = (g, hex, opt) => skinPaint(g, hex, { mottle: 0.05, freq: 40, seed: 3, ...opt });
@@ -272,6 +274,7 @@ export function buildHumanoidRig(look, { extras = [], seg = LOD.seg, claws = fal
     const handParts = (claws ? shapes.claw(sx) : shapes.hand(sx, look.curl ?? 0.6, Math.max(5, Math.round(7 * seg)))).map(g => place(sk(g, { ao: 0.1 }), 0, -0.29, 0));
     if (claws) handParts.forEach(g => { /* tint nails */ });
     mesh([fa, ...handParts], elbow);
+    attachHeld(elbow, held[sx < 0 ? 0 : 1], material);
     pivot.userData.elbow = elbow;
     arms.push(pivot);
   }
@@ -291,6 +294,37 @@ export function buildHumanoidRig(look, { extras = [], seg = LOD.seg, claws = fal
   root.scale.setScalar(look.height ?? 1);
   root.userData = { body, head: headG, arms, legs };
   return root;
+}
+// Apron shaped to the torso: a bib over the chest, waist band, and a skirt that
+// drapes over the thighs, following the body's lathe profile with gentle folds.
+export function apronGeo(hex, b = 1, chest = 1) {
+  const prof = [[0.30, 0.45], [0.27, 0.62], [0.255, 0.78], [0.255, 0.81], [0.27, 0.9], [0.24, 1.02], [0.215, 1.1], [0.235, 1.18], [0.255 * chest, 1.3], [0.27 * chest, 1.38]];
+  const rAt = y => { for (let i = 1; i < prof.length; i++) if (y <= prof[i][1]) { const [r0, y0] = prof[i - 1], [r1, y1] = prof[i]; return r0 + (r1 - r0) * (y - y0) / (y1 - y0); } return prof[prof.length - 1][0]; };
+  const g = new THREE.PlaneGeometry(1, 1, 16, 30); g.deleteAttribute('uv');
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const u = p.getX(i) * 2, v = p.getY(i) + 0.5, y = 0.47 + v * 0.9;
+    const span = y > 1.0 ? 0.5 - (y - 1.0) * 0.35 : y > 0.9 ? 0.5 + (1.0 - y) * 5 : 1.0 + (0.9 - y) * 0.6;
+    const a = u * span, r = (rAt(y) * b + 0.04 + (y < 0.85 ? 0.018 * Math.sin(u * 11) * (0.85 - y) * 3 : 0));
+    const chestK = Math.max(0, 1 - Math.abs(y - 1.3) / 0.22);
+    p.setXYZ(i, Math.sin(a) * r, y, Math.cos(a) * r * 0.66 + chestK * 0.04 * chest + (y < 0.78 ? (0.78 - y) * 0.12 : 0));
+  }
+  g.computeVertexNormals();
+  skinPaint(g, hex, { mottle: 0.08, freq: 40, seed: 4, ao: 0.1 });
+  const str = new THREE.TorusGeometry(0.13 * b, 0.012, 5, 16, Math.PI); str.deleteAttribute('uv');
+  const band = new THREE.CylinderGeometry(0.262 * b, 0.262 * b, 0.05, 20, 1, true); band.deleteAttribute('uv'); band.scale(1, 1, 0.68);
+  return [g, place(skinPaint(str, dark(hex, 0.8)), 0, 1.38, -0.01, -0.3), place(skinPaint(band, dark(hex, 0.75)), 0, 0.88, 0.005)];
+}
+
+// Held items (weapons, shields) ride on the forearm pivot so they swing with the arm.
+// items: [{ geo, metal }], geometry already in elbow-local space (hand at y -0.3).
+export function attachHeld(elbow, items, material = charMat) {
+  if (!items || !items.length) return;
+  const plain = items.filter(i => !i.metal).map(i => i.geo), shiny = items.filter(i => i.metal).map(i => i.geo);
+  for (const [list, m] of [[plain, material], [shiny, metalMat]]) {
+    if (!list.length) continue;
+    const me = new THREE.Mesh(bakeList(list), m); me.castShadow = true; me.receiveShadow = true; me.userData.held = true; elbow.add(me);
+  }
 }
 const dark = (hex, k) => new THREE.Color(hex).multiplyScalar(k).getHex();
 function bakeList(geos) {

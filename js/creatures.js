@@ -3,7 +3,7 @@
 // and per-spawn variety (size, tint, markings, small part differences).
 import * as THREE from 'three';
 import { prim, place, paint, snoise, blob } from './models.js';
-import { lathe, seeded, skinPaint, buildHumanoidRig, bakeList, charMat, furMat, scaleMat, chitinMat, hideMat } from './anatomy.js';
+import { lathe, seeded, skinPaint, buildHumanoidRig, bakeList, charMat, furMat, scaleMat, chitinMat, hideMat, boneMat, attachHeld } from './anatomy.js';
 let MAT = null;
 
 const C = h => new THREE.Color(h);
@@ -289,9 +289,75 @@ export function namedVariant(typeName, seed) {
   return r() < 0.12 ? list[Math.floor(r() * list.length)] : null;
 }
 
+// Skeleton: built from separate bones on the same joint layout as the humanoid rig
+// (body > head, shoulder > elbow, hip > knee) so the shared walk/attack poses drive it.
+function skeletonRig(v, held) {
+  const B = lt(0xe4dcc4, (v.r() - 0.5) * 0.08), D = dk(B, 0.62);
+  const bone = g => skinPaint(g, B, { mottle: 0.25, freq: 40, seed: v.seed, ao: 0.3 });
+  const darkP = g => paint(g, () => 0x0a0806);
+  const mk = (geos, parent) => { const m = new THREE.Mesh(bakeList(geos), boneMat); m.castShadow = true; m.receiveShadow = true; parent.add(m); return m; };
+  const longBone = (len, r, knob = 1.5) => [place(bone(prim.cyl(r, r * 0.85, len, 10)), 0, -len / 2, 0), place(bone(prim.sphere(r * knob, 10, 8)), 0, 0, 0), place(bone(sq(prim.sphere(r * knob, 10, 8), 1.3, 0.8, 1)), 0, -len, 0)];
+  const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
+  const t = [];
+  // spine: stacked vertebrae with spinous processes
+  for (let i = 0; i < 13; i++) { const y = 0.86 + i * 0.05; t.push(place(bone(sq(prim.cyl(0.035, 0.035, 0.032, 10), 1.2, 1, 1)), 0, y, -0.06), place(bone(prim.cone(0.015, 0.05, 6)), 0, y, -0.1, -Math.PI / 2 - 0.4)); }
+  // ribcage: curved rib pairs, sternum, clavicles
+  for (let i = 0; i < 7; i++) {
+    const y = 1.36 - i * 0.055, r = 0.13 + Math.sin((i + 1) / 8 * Math.PI) * 0.05;
+    for (const sx of [-1, 1]) { const g = new THREE.TorusGeometry(r, 0.012, 5, 14, Math.PI * 0.8); g.deleteAttribute('uv'); g.rotateX(Math.PI / 2); g.rotateY(sx > 0 ? Math.PI / 2 : -Math.PI * 0.7); t.push(place(bone(sq(g, 1, 1, 0.85)), 0, y, -0.07 + r * 0.85, 0.22)); }
+  }
+  t.push(place(bone(prim.box(0.04, 0.26, 0.02)), 0, 1.24, 0.13, -0.15));
+  for (const sx of [-1, 1]) t.push(place(bone(prim.cyl(0.014, 0.012, 0.22, 6)), sx * 0.12, 1.43, 0.03, 0, 0.2 * sx, Math.PI / 2 - sx * 0.15), place(bone(sq(prim.sphere(0.07, 10, 8), 0.4, 1, 0.9)), sx * 0.14, 1.32, -0.11)); // clavicles + shoulder blades
+  // pelvis: iliac wings, sacrum, pubic arch
+  for (const sx of [-1, 1]) t.push(place(bone(sq(prim.sphere(0.1, 12, 8), 0.45, 0.85, 1)), sx * 0.11, 0.84, -0.02, 0, 0, sx * 0.5));
+  { const g = new THREE.TorusGeometry(0.11, 0.022, 6, 14, Math.PI); g.deleteAttribute('uv'); t.push(place(bone(g), 0, 0.76, 0.03, Math.PI / 2 + 0.3, 0, Math.PI)); }
+  t.push(place(bone(prim.cone(0.06, 0.14, 8)), 0, 0.8, -0.07, Math.PI));
+  t.push(place(paint(prim.box(0.36, 0.05, 0.22), () => dk(v.color || 0x6a5a4a, 0.6)), 0, 0.88, 0)); // tattered belt
+  mk(t, body);
+  // skull: cranium, cheekbones, eye sockets, nasal cavity, jaw with teeth
+  const headG = new THREE.Group(); headG.position.y = 1.5; body.add(headG);
+  const h = [...[0, 1, 2].map(i => place(bone(prim.cyl(0.03, 0.03, 0.03, 8)), 0, 0.02 + i * 0.04, -0.04))];
+  h.push(place(bone(sq(prim.sphere(0.2, 20, 16), 0.9, 1, 1.08)), 0, 0.3, -0.01));
+  for (const sx of [-1, 1]) { h.push(place(darkP(sq(prim.sphere(0.055, 10, 8), 1, 0.9, 0.6)), sx * 0.07, 0.28, 0.165)); h.push(place(paint(prim.sphere(0.013, 6, 4), () => 0xff4020), sx * 0.07, 0.28, 0.17)); h.push(place(bone(sq(prim.sphere(0.04, 8, 6), 1.6, 0.6, 1)), sx * 0.12, 0.22, 0.12)); }
+  h.push(place(darkP(prim.cone(0.025, 0.06, 3)), 0, 0.21, 0.19, Math.PI));
+  h.push(place(bone(sq(prim.box(0.2, 0.035, 0.16), 1, 1, 1)), 0, 0.12, 0.08));
+  for (let i = 0; i < 8; i++) { const a = (i / 7 - 0.5) * 1.6; h.push(place(paint(prim.box(0.016, 0.026, 0.014), () => 0xf0ead8), Math.sin(a) * 0.08, 0.155, 0.07 + Math.cos(a) * 0.09), place(paint(prim.box(0.016, 0.022, 0.014), () => 0xe8e0c8), Math.sin(a) * 0.075, 0.18, 0.07 + Math.cos(a) * 0.095)); }
+  mk(h, headG);
+  // arms: humerus / radius + ulna / carpals with jointed finger bones
+  const arms = [];
+  for (const sx of [-1, 1]) {
+    const pivot = new THREE.Group(); pivot.position.set(sx * 0.24, 1.38, -0.02); body.add(pivot);
+    mk(longBone(0.32, 0.02), pivot);
+    const elbow = new THREE.Group(); elbow.position.y = -0.34; elbow.rotation.x = -0.2; pivot.add(elbow);
+    const fa = [...longBone(0.27, 0.012, 1.8).map(g => place(g, 0.015, 0, 0)), ...longBone(0.27, 0.011, 1.6).map(g => place(g, -0.015, 0, 0.01))];
+    fa.push(place(bone(sq(prim.sphere(0.03, 8, 6), 1.2, 0.6, 0.8)), 0, -0.29, 0));
+    for (let f = 0; f < 5; f++) { const fx = (f - 2) * 0.012 * sx, thumb = f === 0; let y = -0.31;
+      for (let k = 0; k < 3; k++) { const L = (thumb ? 0.025 : 0.03) - k * 0.005; fa.push(place(bone(prim.cyl(0.005, 0.004, L, 5)), thumb ? sx * -0.025 : fx, y - L / 2, 0.008 + k * 0.006, 0.15 * k)); y -= L; } }
+    mk(fa, elbow);
+    attachHeld(elbow, held[sx < 0 ? 0 : 1], boneMat);
+    pivot.userData.elbow = elbow; arms.push(pivot);
+  }
+  const legs = [];
+  for (const sx of [-1, 1]) {
+    const pivot = new THREE.Group(); pivot.position.set(sx * 0.12, 0.78, 0); root.add(pivot);
+    mk(longBone(0.38, 0.024, 1.6), pivot);
+    const knee = new THREE.Group(); knee.position.y = -0.4; pivot.add(knee);
+    const sh = [...longBone(0.33, 0.02).map(g => place(g, -0.01 * sx, 0, 0)), ...longBone(0.32, 0.01).map(g => place(g, 0.03 * sx, 0, -0.01))];
+    sh.push(place(bone(sq(prim.sphere(0.03, 8, 6), 1, 1.1, 0.6)), 0, 0.02, 0.04)); // kneecap
+    sh.push(place(bone(sq(prim.sphere(0.04, 8, 6), 1, 0.7, 1.3)), 0, -0.35, -0.02)); // heel
+    for (let f = 0; f < 5; f++) sh.push(place(bone(prim.cyl(0.008, 0.006, 0.13, 5)), (f - 2) * 0.018, -0.37, 0.07, Math.PI / 2 - 0.25));
+    mk(sh, knee);
+    pivot.userData.knee = knee; legs.push(pivot);
+  }
+  root.scale.setScalar(1.02);
+  root.userData = { body, head: headG, arms, legs, id: v.seed };
+  return root;
+}
+
 // Build a detailed rig for one monster. extras: kit-format body extras (weapons).
-export function buildCreatureRig(typeName, t, v, extras = [], headExtras = []) {
+export function buildCreatureRig(typeName, t, v, extras = [], headExtras = [], held = [[], []]) {
   let out;
+  if (typeName === 'Skeleton') return skeletonRig(v, held);
   if (typeName === 'Wolf') { MAT = furMat; out = wolf(v); }
   else if (typeName === 'Cow') { MAT = hideMat; out = cow(v); }
   else if (t.shape === 'spider') { MAT = chitinMat; out = spider(v); }
@@ -301,7 +367,7 @@ export function buildCreatureRig(typeName, t, v, extras = [], headExtras = []) {
     if (look.hair === undefined) look.hair = [0x1a1410, 0x3a2a1a, 0x6a4a2a][Math.floor(v.r() * 3)];
     if (!look.hairStyle) look.hairStyle = look.hair ? ['short', 'long', 'spiky', 'pony'][Math.floor(v.r() * 4)] : 'bald';
     look.headExtras = headExtras;
-    const rig = buildHumanoidRig(look, { extras, claws: CLAWED.test(typeName), ears: typeName === 'Goblin' || typeName === 'Lesser Demon' ? true : null });
+    const rig = buildHumanoidRig(look, { extras, held, claws: CLAWED.test(typeName), ears: typeName === 'Goblin' || typeName === 'Lesser Demon' ? true : null });
     rig.userData.id = v.seed;
     return rig;
   }

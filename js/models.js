@@ -378,13 +378,13 @@ export function npcExtras(look) {
   if (look.hat) {
     const H = look.hatH ?? 0.16, W = look.hatW ?? 0.5;
     if (H >= 0.35) { // chef's toque
-      out.push([prim.cyl(0.2, 0.17, H, 12), look.hat, 0, 1.92 + H / 2, 0, 0, 0, 0, 0.1], [prim.sphere(0.22, 12, 8), look.hat, 0, 1.95 + H, 0, 0, 0, 0, 0.1]);
+      out.push([hairCap(0.275), look.hat, 0, 1.85, -0.03, -0.3, 0, 0, 0.08], [prim.cyl(0.25, 0.26, H * 0.8, 16), look.hat, 0, 1.96 + H * 0.4, -0.02, -0.1, 0, 0, 0.1], [scaled(prim.sphere(0.3, 16, 10), 1, 0.6, 1), look.hat, 0, 1.96 + H * 0.85, -0.04, -0.1, 0, 0, 0.1]);
     } else if (W >= 0.65) { // wide straw brim
-      out.push([prim.cyl(W * 0.6, W * 0.6, 0.04, 16), look.hat, 0, 1.9, 0], [prim.cyl(0.2, 0.25, 0.2, 12), look.hat, 0, 2.0, 0]);
+      out.push([prim.cyl(W * 0.6, W * 0.62, 0.035, 20), look.hat, 0, 1.93, -0.01, -0.1], [hairCap(0.275), look.hat, 0, 1.84, -0.02, -0.25, 0, 0, 0.1], [prim.cyl(0.22, 0.26, 0.14, 16), look.hat, 0, 2.02, -0.03, -0.12]);
     } else if (H >= 0.24) { // metal helm with nose guard
       out.push([hairCap(0.29), look.hat, 0, 1.76, 0, -0.1, 0, 0, 0.15], [prim.box(0.05, 0.18, 0.04), look.hat, 0, 1.72, 0.27]);
     } else { // soft cap / hood
-      out.push([hairCap(0.28), look.hat, 0, 1.78, -0.01, -0.25, 0, 0, 0.15], [prim.cyl(0.3, 0.3, 0.05, 14), look.hat, 0, 1.86, 0.03, -0.15]);
+      out.push([hairCap(0.28), look.hat, 0, 1.83, -0.02, -0.3, 0, 0, 0.15], [prim.cyl(0.3, 0.3, 0.05, 14), look.hat, 0, 1.9, 0.02, -0.18]);
     }
   }
   if (look.beard) out.push([scaled(prim.sphere(0.17, 10, 8), 1, 1.1, 0.7), look.beard, 0, 1.56, 0.14]);
