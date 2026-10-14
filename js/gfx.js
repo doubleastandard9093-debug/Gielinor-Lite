@@ -251,8 +251,8 @@ export function attachNoiseBump(mat, strength = 0.22) {
             float hx = texture2D(tNoiseBump, vBumpW.xz * 0.18).r;
             float hz = texture2D(tNoiseBump, vBumpW.xz * 0.18 + 0.37).g;
             vec3 nw = normalize(vec3((hx - 0.5) * k * 2.0, 1.0, (hz - 0.5) * k * 2.0));
-            // blend into view-space normal
-            vec3 nt = normalize(normalMatrix * nw);
+            // world-space bump normal -> view space (normalMatrix is vertex-only)
+            vec3 nt = normalize((viewMatrix * vec4(nw, 0.0)).xyz);
             normal = normalize(mix(normal, nt, 0.55));
           }
         }`);
