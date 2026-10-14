@@ -1,0 +1,100 @@
+:root {
+  --orn-tl: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2222%22%20height%3D%2222%22%20viewBox%3D%220%200%2022%2022%22%3E%3Cpath%20d%3D%22M1%2021V7Q1%201%207%201h14%22%20fill%3D%22none%22%20stroke%3D%22%231a1206%22%20stroke-width%3D%223%22/%3E%3Cpath%20d%3D%22M1%2021V7Q1%201%207%201h14%22%20fill%3D%22none%22%20stroke%3D%22%23e8c468%22%20stroke-width%3D%221.4%22/%3E%3Cpath%20d%3D%22M5%2017V8q0-3%203-3h9%22%20fill%3D%22none%22%20stroke%3D%22%238a6a26%22%20stroke-width%3D%221%22/%3E%3Ccircle%20cx%3D%225.5%22%20cy%3D%225.5%22%20r%3D%222.6%22%20fill%3D%22%23c8202a%22%20stroke%3D%22%23f6dc8a%22%20stroke-width%3D%221%22/%3E%3Ccircle%20cx%3D%224.8%22%20cy%3D%224.8%22%20r%3D%22.8%22%20fill%3D%22%23ffd0d0%22/%3E%3C/svg%3E"); --orn-tr: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2222%22%20height%3D%2222%22%20viewBox%3D%220%200%2022%2022%22%3E%3Cg%20transform%3D%22translate%2822%200%29%20scale%28-1%201%29%22%3E%3Cpath%20d%3D%22M1%2021V7Q1%201%207%201h14%22%20fill%3D%22none%22%20stroke%3D%22%231a1206%22%20stroke-width%3D%223%22/%3E%3Cpath%20d%3D%22M1%2021V7Q1%201%207%201h14%22%20fill%3D%22none%22%20stroke%3D%22%23e8c468%22%20stroke-width%3D%221.4%22/%3E%3Cpath%20d%3D%22M5%2017V8q0-3%203-3h9%22%20fill%3D%22none%22%20stroke%3D%22%238a6a26%22%20stroke-width%3D%221%22/%3E%3Ccircle%20cx%3D%225.5%22%20cy%3D%225.5%22%20r%3D%222.6%22%20fill%3D%22%23c8202a%22%20stroke%3D%22%23f6dc8a%22%20stroke-width%3D%221%22/%3E%3Ccircle%20cx%3D%224.8%22%20cy%3D%224.8%22%20r%3D%22.8%22%20fill%3D%22%23ffd0d0%22/%3E%3C/g%3E%3C/svg%3E"); --orn-bl: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2222%22%20height%3D%2222%22%20viewBox%3D%220%200%2022%2022%22%3E%3Cg%20transform%3D%22translate%280%2022%29%20scale%281%20-1%29%22%3E%3Cpath%20d%3D%22M1%2021V7Q1%201%207%201h14%22%20fill%3D%22none%22%20stroke%3D%22%231a1206%22%20stroke-width%3D%223%22/%3E%3Cpath%20d%3D%22M1%2021V7Q1%201%207%201h14%22%20fill%3D%22none%22%20stroke%3D%22%23e8c468%22%20stroke-width%3D%221.4%22/%3E%3Cpath%20d%3D%22M5%2017V8q0-3%203-3h9%22%20fill%3D%22none%22%20stroke%3D%22%238a6a26%22%20stroke-width%3D%221%22/%3E%3Ccircle%20cx%3D%225.5%22%20cy%3D%225.5%22%20r%3D%222.6%22%20fill%3D%22%23c8202a%22%20stroke%3D%22%23f6dc8a%22%20stroke-width%3D%221%22/%3E%3Ccircle%20cx%3D%224.8%22%20cy%3D%224.8%22%20r%3D%22.8%22%20fill%3D%22%23ffd0d0%22/%3E%3C/g%3E%3C/svg%3E"); --orn-br: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2222%22%20height%3D%2222%22%20viewBox%3D%220%200%2022%2022%22%3E%3Cg%20transform%3D%22translate%2822%2022%29%20scale%28-1%20-1%29%22%3E%3Cpath%20d%3D%22M1%2021V7Q1%201%207%201h14%22%20fill%3D%22none%22%20stroke%3D%22%231a1206%22%20stroke-width%3D%223%22/%3E%3Cpath%20d%3D%22M1%2021V7Q1%201%207%201h14%22%20fill%3D%22none%22%20stroke%3D%22%23e8c468%22%20stroke-width%3D%221.4%22/%3E%3Cpath%20d%3D%22M5%2017V8q0-3%203-3h9%22%20fill%3D%22none%22%20stroke%3D%22%238a6a26%22%20stroke-width%3D%221%22/%3E%3Ccircle%20cx%3D%225.5%22%20cy%3D%225.5%22%20r%3D%222.6%22%20fill%3D%22%23c8202a%22%20stroke%3D%22%23f6dc8a%22%20stroke-width%3D%221%22/%3E%3Ccircle%20cx%3D%224.8%22%20cy%3D%224.8%22%20r%3D%22.8%22%20fill%3D%22%23ffd0d0%22/%3E%3C/g%3E%3C/svg%3E");
+  --tex-stone: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22160%22%20height%3D%22160%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%22.9%22%20numOctaves%3D%223%22%20stitchTiles%3D%22stitch%22/%3E%3CfeColorMatrix%20values%3D%220%200%200%200%20.5%20%200%200%200%200%20.4%20%200%200%200%200%20.25%20%200%200%200%20.22%200%22/%3E%3C/filter%3E%3Crect%20width%3D%22160%22%20height%3D%22160%22%20filter%3D%22url%28%23n%29%22/%3E%3C/svg%3E"); --tex-parch: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22200%22%20height%3D%22200%22%3E%3Cfilter%20id%3D%22p%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%22.035%22%20numOctaves%3D%224%22%20seed%3D%227%22/%3E%3CfeColorMatrix%20values%3D%220%200%200%200%20.55%20%200%200%200%200%20.42%20%200%200%200%200%20.22%20%200%200%200%20.35%200%22/%3E%3C/filter%3E%3Crect%20width%3D%22200%22%20height%3D%22200%22%20filter%3D%22url%28%23p%29%22/%3E%3C/svg%3E");
+}
+/* ==========================================================================
+   Gielinor UI theme: "Forged Gold" (original art: CSS + inline SVG only)
+   Layered metal and stone frames, parchment panels, gold filigree corners.
+   ========================================================================== */
+:root {
+  --ui-scale: 1;
+  /* colour tokens */
+  --c-gold-hi: #fbe7a1; --c-gold: #e0b04a; --c-gold-mid: #b5862e; --c-gold-lo: #6b4a14; --c-gold-shadow: #2a1a04;
+  --c-stone-hi: #4a4d55; --c-stone: #2b2e35; --c-stone-lo: #17191d; --c-void: #0b0c0f;
+  --c-parch-hi: #f3e3bd; --c-parch: #dcc595; --c-parch-lo: #b89a62; --c-ink: #2e1d0b; --c-ink-red: #7a1410;
+  --c-text: #f3e7c9; --c-text-dim: #b9a989; --c-title: #ffd77a;
+  --c-hp: #d8322a; --c-hp-lo: #5a0c08; --c-pray: #45b8f0; --c-pray-lo: #0b2e48; --c-run: #e6c22e; --c-run-lo: #3e3208;
+  --c-adren: #ff8a1e; --c-adren-lo: #3a1a04; --c-xp: #6ee05a;
+  --r-common: #c8c8c8; --r-uncommon: #3ad03a; --r-rare: #3aa0ff; --r-epic: #c060ff; --r-legendary: #ff9a2a;
+  /* typography */
+  --f-title: 'Cinzel', 'Trajan Pro', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+  --f-body: 'Trebuchet MS', 'Segoe UI', Roboto, -apple-system, Helvetica, Arial, sans-serif;
+  --f-num: 'Segoe UI', Roboto, -apple-system, Helvetica, Arial, sans-serif;
+  /* frame recipe */
+  --frame-shadow: 0 0 0 1px var(--c-void), 0 0 0 3px var(--c-gold-lo), 0 0 0 4px var(--c-gold-mid), 0 0 0 5px var(--c-void),
+    inset 0 0 0 1px rgba(255, 225, 150, .18), inset 0 2px 10px rgba(0, 0, 0, .7), 0 10px 26px rgba(0, 0, 0, .65);
+  --stone-bg: var(--orn-tl) top left / 22px no-repeat, var(--orn-tr) top right / 22px no-repeat,
+    var(--orn-bl) bottom left / 22px no-repeat, var(--orn-br) bottom right / 22px no-repeat,
+    var(--tex-stone), radial-gradient(120% 80% at 50% 0%, rgba(90, 96, 110, .55), rgba(0, 0, 0, 0) 60%),
+    linear-gradient(180deg, #30333b, #1c1e23 55%, #141519);
+  --parch-bg: var(--tex-parch), radial-gradient(130% 100% at 50% 40%, var(--c-parch-hi), var(--c-parch) 60%, var(--c-parch-lo));
+  --ease-pop: cubic-bezier(.2, 1.4, .4, 1);
+}
+html, body { font-family: var(--f-body); }
+
+/* ---------- Buttons: bevelled metal plates ---------- */
+button { position: relative; color: var(--c-text); font-family: var(--f-body); letter-spacing: .2px;
+  background: linear-gradient(180deg, #4a4e57 0%, #33363e 45%, #25272d 55%, #2c2f36 100%);
+  border: 1px solid #0a0a0c; border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 240, 200, .22), inset 0 -1px 0 rgba(0, 0, 0, .5), inset 0 0 0 1px rgba(181, 134, 46, .35), 0 2px 3px rgba(0, 0, 0, .5);
+  transition: transform .08s ease, filter .12s ease, box-shadow .12s ease; text-shadow: 0 1px 0 #000; }
+@media (hover: hover) { button:hover:not(:disabled) { filter: brightness(1.18); box-shadow: inset 0 1px 0 rgba(255, 240, 200, .3), inset 0 0 0 1px rgba(224, 176, 74, .75), 0 0 8px rgba(224, 176, 74, .35), 0 2px 3px rgba(0, 0, 0, .5); } }
+button:active:not(:disabled) { transform: translateY(1px) scale(.97); background: linear-gradient(180deg, #24262b, #30333a); box-shadow: inset 0 2px 4px rgba(0, 0, 0, .7), inset 0 0 0 1px rgba(181, 134, 46, .5); }
+button.on, .style.on, .subtabs button.on, .chips button.on, .qtybar button.on, #chatTabs button.on {
+  color: #fff6d8; background: linear-gradient(180deg, #9a6c1c 0%, #6e4a10 50%, #573808 52%, #7a5414 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 236, 170, .5), inset 0 0 0 1px var(--c-gold), 0 0 8px rgba(224, 176, 74, .35); }
+.toggle.on { color: #b6ff9a; }
+.toggle { border-left: 3px solid var(--c-gold-lo); }
+.toggle.on { border-left-color: #5ad04a; }
+
+/* ---------- Ornate frames ---------- */
+#sidePanel, #window, #dialogue, #levelup, #ctxMenu, #targetPanel, #xpTracker, #settingsPanel {
+  background: var(--stone-bg); border: 1px solid #000; border-radius: 9px; box-shadow: var(--frame-shadow); color: var(--c-text); }
+#sidePanel { padding-top: 2px; }
+#tabContent { padding: 8px 8px 6px; }
+.tab-head, .win-head { font-family: var(--f-title); color: var(--c-title); letter-spacing: .6px;
+  text-shadow: 0 1px 0 #000, 0 0 6px rgba(255, 190, 80, .25); padding-bottom: 4px; margin-bottom: 6px;
+  border-bottom: 1px solid transparent; border-image: linear-gradient(90deg, transparent, var(--c-gold-mid), transparent) 1; }
+.tab-head b, .win-head b { font-weight: 700; font-size: 13px; }
+.craftskill, .bonushead { font-family: var(--f-title); color: var(--c-title); letter-spacing: .5px; font-size: 11px; margin-top: 8px;
+  border-bottom: 1px solid transparent; border-image: linear-gradient(90deg, var(--c-gold-mid), transparent) 1; }
+.hint { color: var(--c-text-dim); font-style: italic; }
+
+/* Tab bar: a forged rail with gem-set tabs */
+#tabBar { background: linear-gradient(180deg, #1a1b1f, #0e0f12); border-top: 1px solid var(--c-gold-lo);
+  box-shadow: inset 0 1px 0 rgba(255, 220, 140, .15); border-radius: 0 0 8px 8px; overflow: hidden; }
+#tabBar button { background: linear-gradient(180deg, #33363e, #1e2025); border: 0; border-right: 1px solid #000; border-bottom: 1px solid #000;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), inset 0 0 0 1px rgba(181, 134, 46, .18); border-radius: 0; filter: saturate(.85); }
+#tabBar button.on { filter: none; background: radial-gradient(90% 90% at 50% 30%, #b57d22, #6a440c 70%, #3e2606);
+  box-shadow: inset 0 0 0 1px var(--c-gold), inset 0 0 10px rgba(255, 210, 110, .55); }
+#tabBar button.on::after { content: ''; position: absolute; left: 25%; right: 25%; bottom: 1px; height: 2px; border-radius: 2px; background: var(--c-gold-hi); box-shadow: 0 0 6px var(--c-gold); }
+
+/* Inner wells: recessed stone for lists and cards */
+.skill, .recipe, .ab, .quest, .skilldetail, .perktotal {
+  background: linear-gradient(180deg, rgba(14, 15, 18, .78), rgba(30, 32, 38, .78)); border: 1px solid #000; border-radius: 6px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .8), 0 1px 0 rgba(255, 220, 140, .08); }
+.skill.sel, .quest.sel, .recipe.ok { box-shadow: inset 0 0 0 1px var(--c-gold-mid), inset 0 0 8px rgba(224, 176, 74, .25); }
+.bar { height: 7px; background: linear-gradient(180deg, #0b0b0d, #2a0e0c); border: 1px solid #000; box-shadow: inset 0 1px 2px #000; border-radius: 4px; }
+.bar i, .skill i { background: linear-gradient(180deg, #a8f27a, #3ea830 55%, #2a7a20); box-shadow: 0 0 6px rgba(110, 224, 90, .5); }
+
+/* Parchment panels */
+.journal, #dialogue.parch { background: var(--parch-bg); color: var(--c-ink); border: 1px solid #3e2a0e; border-radius: 4px;
+  box-shadow: 0 0 0 2px #7a5a26, 0 0 0 3px #2a1a06, inset 0 0 18px rgba(110, 70, 20, .45), 0 3px 8px rgba(0, 0, 0, .5); font-family: Georgia, 'Palatino Linotype', serif; }
+.journal b { font-family: var(--f-title); color: var(--c-ink-red); font-size: 13px; border-bottom: 1px solid rgba(90, 50, 10, .35); padding-bottom: 2px; }
+
+/* Context menu */
+#ctxMenu { border-radius: 7px; overflow: hidden; min-width: 170px; animation: uiPop .14s var(--ease-pop); }
+.ctx-title { font-family: var(--f-title); background: linear-gradient(180deg, #0e0f12, #1c1e23); color: var(--c-title); letter-spacing: .6px; padding: 4px 8px; border-bottom: 1px solid var(--c-gold-lo); }
+.ctx-opt { border-top: 1px solid rgba(0, 0, 0, .4); transition: background .1s, padding-left .1s; }
+.ctx-opt:hover, .ctx-opt:active { background: linear-gradient(90deg, rgba(224, 176, 74, .35), rgba(224, 176, 74, 0)); padding-left: 12px; }
+
+/* Chips */
+.qchip { background: linear-gradient(180deg, #2c2f36, #191b1f); border: 1px solid #000; box-shadow: inset 0 0 0 1px rgba(181, 134, 46, .25); color: var(--c-text-dim); transition: filter .1s; }
+.qchip.on { background: linear-gradient(180deg, #8a5e16, #523406); color: #fff2c8; box-shadow: inset 0 0 0 1px var(--c-gold); }
+
+/* Animations */
+@keyframes uiPop { from { transform: scale(.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes uiSlideUp { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes uiFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes uiShine { 0% { background-position: -150% 0; } 100% { background-position: 250% 0; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01s !important; transition-duration: .01s !important; } }
