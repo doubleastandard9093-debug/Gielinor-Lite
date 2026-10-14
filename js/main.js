@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { agilityStyle, agilityDuration, agilityVariation, agilityPose, snapshotRig, applyRigPose, releaseRig, mixPose, smooth } from './agilityAnim.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -628,30 +629,38 @@ function doAgility(a) {
   const res = runObstacle(obs, skills, player);
   stopAction();
   if (res.error) { log(res.error, 'warn'); return; }
-  pm.actionAnim = 1; pm.actionKind = 'tool';
+  const n = a.node, style = agilityStyle(obs), L = Math.hypot(n.toX - n.x, n.toZ - n.z) || 1;
+  const v = agilityVariation(), failed = !res.ok;
+  crossing = { style, L, v, failed, dmg: res.dmg || 0, sx: n.x, sz: n.z, yaw: Math.atan2(n.toX - n.x, n.toZ - n.z),
+    ox: pm.mesh.position.x - n.x, oz: pm.mesh.position.z - n.z, snap: snapshotRig(pm), t: 0,
+    dur: agilityDuration(style, L) * v.speed * (failed ? 1.35 : 1) };
+  pm.target = null; pm.actionAnim = 0;
   if (res.ok) {
-    const n = a.node;
-    crossing = { fx: pm.mesh.position.x, fz: pm.mesh.position.z, tx: n.toX, tz: n.toZ, t: 0, dur: Math.max(0.8, Math.hypot(n.toX - n.x, n.toZ - n.z) * 0.32) };
-    pm.target = null;
     log(res.msg, 'skill');
     giveXP('Agility', res.xp);
     if (res.lap) log(`Lap complete! You finish the ${AGILITY_COURSES[obs.course].name} for bonus Agility XP.`, 'skill', '#7aff7a');
   } else {
     log(res.msg, 'warn');
     if (res.xp) giveXP('Agility', res.xp);
-    hurtPlayer(res.dmg);
   }
   markDirty();
 }
+// Root motion along the obstacle plus a full-body keyframed pose (js/agilityAnim.js).
 function updateCrossing(dt) {
   if (!crossing) return;
-  crossing.t = Math.min(1, crossing.t + dt / crossing.dur);
-  const c = crossing, k = c.t;
-  pm.mesh.position.x = c.fx + (c.tx - c.fx) * k;
-  pm.mesh.position.z = c.fz + (c.tz - c.fz) * k;
-  faceToward(pm, c.tx, c.tz);
-  pm.actionAnim = 1;
-  if (k >= 1) { crossing = null; pm.actionAnim = 0; }
+  const c = crossing;
+  c.t = Math.min(1, c.t + dt / c.dur);
+  const { pose, impact } = agilityPose(c.style, c.t, c.L, c.v, c.failed);
+  if (impact && c.dmg) { hurtPlayer(c.dmg); c.dmg = 0; }
+  // blend in from whatever walk/idle pose we started in, and fold the approach offset into the first steps
+  const w = smooth(c.t * c.dur / 0.25), o = mixPose({ ...pose, ...c.snap, u: pose.u, y: pose.y, s: pose.s, yaw: pose.yaw }, pose, w);
+  const along = pose.u * c.L, side = pose.s, cy = Math.cos(c.yaw), sy = Math.sin(c.yaw), app = 1 - smooth(c.t / 0.12);
+  pm.mesh.position.x = c.sx + side * cy + along * sy + c.ox * app;
+  pm.mesh.position.z = c.sz - side * sy + along * cy + c.oz * app;
+  pm.mesh.position.y = terrainHeight(pm.mesh.position.x, pm.mesh.position.z) + pose.y;
+  pm.facing = c.yaw; pm.mesh.rotation.y = c.yaw + pose.yaw;
+  applyRigPose(pm, o);
+  if (c.t >= 1) { crossing = null; releaseRig(pm); pm.facing = c.yaw; pm.mesh.position.y = terrainHeight(pm.mesh.position.x, pm.mesh.position.z); }
 }
 function hurtPlayer(dmg) {
   if (dmg <= 0) return;
@@ -1865,7 +1874,7 @@ function animate(now) {
   updateFish(dt);
   updateFires(now);
   updateArrow(dt);
-  updateRig(rig, camera, pm.mesh.position.x, pm.mesh.position.z, dt, terrainHeight(pm.mesh.position.x, pm.mesh.position.z));
+  updateRig(rig, camera, pm.mesh.position.x, pm.mesh.position.z, dt, crossing ? pm.mesh.position.y * 0.6 + terrainHeight(pm.mesh.position.x, pm.mesh.position.z) * 0.4 : terrainHeight(pm.mesh.position.x, pm.mesh.position.z));
   updateCave(dt);
   followLight(dirLight, rig.fx, rig.fz);
   sky.follow(camera);

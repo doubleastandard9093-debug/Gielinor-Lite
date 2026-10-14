@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { makeRng } from './rng.js';
 import { MONSTER_TYPES, AGILITY_COURSES, RUNE_ALTARS, BOUNTIES } from './gameplay.js';
+import { agilityStyle } from './agilityAnim.js';
 import { QUEST_NPCS } from './questnpcs.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
 import { buildHumanoidRig, apronGeo, varyLook, hashStr, contactShadow } from './anatomy.js';
@@ -907,7 +908,25 @@ export function createWorld(scene) {
     const L = Math.hypot(ex - sx, ez - sz);
     const parts = [];
     const W = 0x6a4a2a, DW = 0x4a3020, ST = 0x8a8478;
-    if (obs.kind === 'log') {
+    const style = agilityStyle(obs);
+    if (style === 'shimmy') {
+      // stone wall with a narrow foot ledge and a hand edge; the player faces the wall (local -x side)
+      parts.push([prim.box(0.5, 2.6, L + 0.6), ST, -0.6, 1.3, L / 2, 0, 0, 0, 0.3], [prim.box(0.32, 0.1, L + 0.6), 0x6a645a, -0.22, 0.55, L / 2],
+        [prim.box(0.16, 0.08, L + 0.6), 0x6a645a, -0.32, 2.1, L / 2]);
+    } else if (style === 'swing') {
+      // two platforms with an A-frame overhead and a hanging rope
+      const A = 0.65, R = Math.max(1.4, (L / 2 - 0.45) / Math.sin(A)), pivY = 0.85 + 2.0 + R * Math.cos(A);
+      for (const z of [0.4, L - 0.4]) parts.push([prim.box(1.4, 0.85, 0.9), 0x7a5a3a, 0, 0.425, z, 0, 0, 0, 0.2]);
+      for (const x of [-1.1, 1.1]) parts.push([prim.cyl(0.09, 0.11, pivY + 0.2, 7), W, x, (pivY + 0.2) / 2, L / 2]);
+      parts.push([prim.cyl(0.08, 0.08, 2.4, 7), DW, 0, pivY + 0.05, L / 2, 0, 0, Math.PI / 2], [prim.cyl(0.035, 0.035, R + 0.6, 5), 0xd8c89a, 0, pivY - (R + 0.6) / 2, L / 2, 0, 0, 0, 0.05],
+        [prim.box(1.2, 0.04, Math.max(0.2, L - 1.8)), 0x1e3a4a, 0, 0.02, L / 2, 0, 0, 0, 0]);
+    } else if (style === 'monkey') {
+      // overhead frame of hand holds (monkey bars)
+      for (const z of [0, L]) for (const x of [-0.55, 0.55]) parts.push([prim.cyl(0.07, 0.08, 2.75, 7), W, x, 1.375, z]);
+      for (const x of [-0.55, 0.55]) parts.push([prim.cyl(0.05, 0.05, L, 6), W, x, 2.68, L / 2, Math.PI / 2, 0, 0]);
+      const n = Math.max(4, Math.round(L * 2.4));
+      for (let i = 0; i <= n; i++) parts.push([prim.cyl(0.03, 0.03, 1.1, 6), 0x9a9aa0, 0, 2.62, (i / n) * L, 0, 0, Math.PI / 2, 0.5]);
+    } else if (obs.kind === 'log') {
       parts.push([prim.cyl(0.22, 0.22, L, 10), 0x7a5a3a, 0, 0.45, L / 2, Math.PI / 2, 0, 0],
         [prim.box(0.5, 0.45, 0.3), DW, 0, 0.22, 0.2], [prim.box(0.5, 0.45, 0.3), DW, 0, 0.22, L - 0.2]);
     } else if (obs.kind === 'net') {
