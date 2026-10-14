@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { shapes, contactShadow } from './anatomy.js';
+import { terrainHeight } from './world.js';
 import { WORLD_HALF, insideLake, LAKE, colliders } from './world.js';
 
 export const WALK_SPEED = 3.3;  // world units per second
@@ -282,13 +283,13 @@ export function updatePlayer(pm, keys, dt, running, camYaw) {
     p.leftArm.rotation.x = -sw * 0.75; p.rightArm.rotation.x = sw * 0.75;
     elbow(p.leftArm).rotation.x = -0.3 - (running ? 0.7 : 0.2);
     elbow(p.rightArm).rotation.x = -0.3 - (running ? 0.7 : 0.2);
-    pm.mesh.position.y = Math.abs(Math.cos(ph)) * (running ? 0.07 : 0.04);
+    pm.mesh.position.y = terrainHeight(pos.x, pos.z) + Math.abs(Math.cos(ph)) * (running ? 0.07 : 0.04);
     p.body.rotation.y = Math.sin(ph) * 0.08;
     p.body.rotation.x = running ? 0.12 : 0.04;
     p.body.rotation.z = Math.sin(ph) * 0.025;
   } else {
     const k = Math.min(1, dt * 10);
-    pm.mesh.position.y += (0 - pm.mesh.position.y) * k;
+    { const gy = terrainHeight(pos.x, pos.z); pm.mesh.position.y += (gy - pm.mesh.position.y) * k; if (Math.abs(gy - pm.mesh.position.y) > 0.5) pm.mesh.position.y = gy; }
     for (const l of [p.leftLeg, p.rightLeg]) { l.rotation.x += (0 - l.rotation.x) * k; knee(l).rotation.x += (0 - knee(l).rotation.x) * k; }
     p.body.rotation.y += (0 - p.body.rotation.y) * k; p.body.rotation.x += (0 - p.body.rotation.x) * k; p.body.rotation.z += (0 - p.body.rotation.z) * k;
     // idle breathing

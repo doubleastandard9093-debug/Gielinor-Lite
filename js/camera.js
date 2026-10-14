@@ -20,7 +20,7 @@ export function zoomRig(rig, factor) {
   rig.targetDist = Math.max(rig.minDist, Math.min(rig.maxDist, rig.targetDist * factor));
 }
 
-export function updateRig(rig, camera, px, pz, dt) {
+export function updateRig(rig, camera, px, pz, dt, py = 0) {
   const k = Math.min(1, dt * 10);
   rig.yaw += (rig.targetYaw - rig.yaw) * k;
   rig.pitch += (rig.targetPitch - rig.pitch) * k;
@@ -28,11 +28,12 @@ export function updateRig(rig, camera, px, pz, dt) {
   const f = Math.min(1, dt * 8);
   rig.fx += (px - rig.fx) * f;
   rig.fz += (pz - rig.fz) * f;
+  rig.fy = (rig.fy ?? py) + (py - (rig.fy ?? py)) * f;
   const cp = Math.cos(rig.pitch);
   camera.position.set(
     rig.fx + Math.sin(rig.yaw) * cp * rig.dist,
-    1 + Math.sin(rig.pitch) * rig.dist,
+    rig.fy + 1 + Math.sin(rig.pitch) * rig.dist,
     rig.fz + Math.cos(rig.yaw) * cp * rig.dist
   );
-  camera.lookAt(rig.fx, 1, rig.fz);
+  camera.lookAt(rig.fx, rig.fy + 1, rig.fz);
 }

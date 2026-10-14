@@ -7,6 +7,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
 import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from './chunk.js';
+import { terrainHeight } from './world.js';
 import { createWorld, createPileMesh, SPAWN, setDecorQuality, updateDecorChunks } from './world.js';
 import { updateLod, setLodRange, poseHumanoid } from './anatomy.js';
 import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt } from './player.js';
@@ -1001,7 +1002,7 @@ function lightFire(a) {
   const l2 = new THREE.Mesh(logGeo, logMat); l2.rotation.y = -0.6; l2.position.y = 0.08;
   const fl = new THREE.Mesh(fireGeo, fireMat); fl.position.y = 0.5;
   g.add(l1, l2, fl);
-  g.position.set(x, 0, z);
+  g.position.set(x, terrainHeight(x, z), z);
   scene.add(g);
   const fire = { mesh: g, flame: fl, type: 'station', kind: 'range', name: 'Fire', isFire: true, alive: true, x, z, radius: 0.5, expires: performance.now() + 60000 };
   g.userData.entity = fire;
@@ -1448,6 +1449,7 @@ function updateMonsters(dt, now) {
         m.mesh.rotation.y = Math.atan2(dx, dz);
       }
     }
+    pos.y = terrainHeight(pos.x, pos.z);
     m.walkT = (m.walkT || 0) + (moving ? dt * 9 : 0);
     const sw = moving ? Math.sin(m.walkT) * 0.6 : 0;
     m.legs.forEach((l, i) => {
@@ -1632,7 +1634,7 @@ function updatePatrols(dt, now) {
     const [tx, tz] = n.patrol[n.pi], dx = tx - o.position.x, dz = tz - o.position.z, d = Math.hypot(dx, dz);
     if (d < 0.05) { n.pi = (n.pi + 1) % n.patrol.length; n.waitUntil = now + 2500 + Math.random() * 3000; continue; }
     const st = Math.min(d, dt * 0.9);
-    o.position.x += dx / d * st; o.position.z += dz / d * st; n.x = o.position.x; n.z = o.position.z;
+    o.position.x += dx / d * st; o.position.z += dz / d * st; n.x = o.position.x; n.z = o.position.z; o.position.y = terrainHeight(n.x, n.z);
     o.rotation.y = Math.atan2(dx, dz);
   }
 }
@@ -1729,7 +1731,7 @@ function animate(now) {
   updateFish(dt);
   updateFires(now);
   updateArrow(dt);
-  updateRig(rig, camera, pm.mesh.position.x, pm.mesh.position.z, dt);
+  updateRig(rig, camera, pm.mesh.position.x, pm.mesh.position.z, dt, terrainHeight(pm.mesh.position.x, pm.mesh.position.z));
   followLight(dirLight, rig.fx, rig.fz);
   sky.follow(camera);
   if (gfx.quality === 'low') renderer.render(scene, camera); else composer.render();
@@ -1755,7 +1757,7 @@ window.addEventListener('keydown', e => {
 });
 
 window.gielinor = {
-  gfx, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
+  gfx, terrainHeight, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
   renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, giveXP, setAutocast, get crossing() { return crossing; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; },

@@ -79,6 +79,8 @@ function nearestTown(x, z) {
 }
 // Solid areas the player can't walk through (filled in by createWorld).
 export const colliders = [];
+// Extra spots to keep level (points of interest added later register here).
+export const FLAT_SPOTS = [];
 
 // Shared geometry and materials keep memory and draw setup low on phones.
 const G = {
@@ -146,12 +148,75 @@ function tag(root, entity) {
 }
 
 
-// Height of the ground. Flat inside the walkable area; hills rise past the edge.
-export function terrainHeight(x, z) {
+// ---- Elevation ----------------------------------------------------------------
+// Natural relief (hills, ridges, valleys, a northern mountain range) multiplied by a
+// flatness mask so towns, roads, buildings and work spots stay level. After the
+// world is placed the result is baked into a 1-unit height grid (bilinear lookup).
+const HF = { data: null, N: 0, off: 0 };
+function ridge(v) { return 1 - Math.abs(v); }
+export function reliefHeight(x, z) {
+  const r = Math.hypot(x, z);
+  // gentle near the centre, bigger toward the outer ring
+  const amp = Math.min(1, Math.max(0, (r - 45) / 120));
+  let h = 0;
+  h += 3.2 * Math.sin(x * 0.021 + 1.3) * Math.cos(z * 0.018 - 0.7);
+  h += 1.6 * Math.sin(x * 0.047 - z * 0.031 + 2.1);
+  h += 0.7 * Math.sin(x * 0.11 + Math.cos(z * 0.07) * 1.7) * Math.cos(z * 0.09);
+  // winding ridges
+  h += 4.5 * Math.pow(Math.max(0, ridge(Math.sin(x * 0.012 + Math.sin(z * 0.017) * 1.8))), 3) * amp;
+  // valleys: a long river-less dale running east-west south of the centre
+  h -= 3.0 * Math.exp(-(((z - 175) / 22) ** 2)) * (0.6 + 0.4 * Math.sin(x * 0.02));
+  h *= 0.35 + 0.65 * amp;
+  // mountain range across the far north (negative z), peaks up to ~26
+  const m = Math.max(0, Math.min(1, (-z - 185) / 60));
+  if (m > 0) {
+    const peaks = 0.55 + 0.45 * Math.sin(x * 0.035 + 0.6) * Math.cos(x * 0.013 - 1.1);
+    const crag = Math.pow(Math.max(0, ridge(Math.sin(x * 0.06 + z * 0.02))), 2);
+    h += m * m * (18 * peaks + 8 * crag);
+  }
+  // western highland plateau
+  const w = Math.max(0, Math.min(1, (-x - 190) / 50)) * Math.max(0, 1 - Math.abs(z + 20) / 160);
+  h += w * (7 + 2 * Math.sin(z * 0.05));
+  return h;
+}
+function edgeHeight(x, z) {
   const d = Math.max(Math.abs(x), Math.abs(z)) - (WORLD_HALF + 3);
   if (d <= 0) return 0;
   const roll = 0.65 + 0.35 * Math.sin(x * 0.045 + Math.cos(z * 0.031) * 2.1) * Math.cos(z * 0.052 - x * 0.013);
   return Math.min(34, d * d * 0.018 * roll + d * 0.15);
+}
+export function terrainHeight(x, z) {
+  const H = HF.data;
+  if (!H) return edgeHeight(x, z);
+  const gx = x + HF.off, gz = z + HF.off;
+  const ix = Math.floor(gx), iz = Math.floor(gz);
+  if (ix < 0 || iz < 0 || ix >= HF.N - 1 || iz >= HF.N - 1) return edgeHeight(x, z) + reliefHeight(x, z) * 0.5;
+  const fx = gx - ix, fz = gz - iz, i = iz * HF.N + ix;
+  return (H[i] * (1 - fx) + H[i + 1] * fx) * (1 - fz) + (H[i + HF.N] * (1 - fx) + H[i + HF.N + 1] * fx) * fz;
+}
+// Surface normal-ish slope helper (for placing props upright on hills).
+export function groundAt(x, z) { return terrainHeight(x, z); }
+// flats: [{x, z, r}] circles and [{x1, z1, x2, z2, r}] segments kept level (blend over BLEND units).
+export function bakeHeightField(flats, segs, boxes) {
+  const BLEND = 10, M = WORLD_HALF + 70, N = M * 2 + 1;
+  const D = new Float32Array(N * N).fill(1e9);
+  const stamp = (x, z, r) => {
+    const R = r + BLEND, x0 = Math.max(0, Math.floor(x - R + M)), x1 = Math.min(N - 1, Math.ceil(x + R + M)), z0 = Math.max(0, Math.floor(z - R + M)), z1 = Math.min(N - 1, Math.ceil(z + R + M));
+    for (let iz = z0; iz <= z1; iz++) for (let ix = x0; ix <= x1; ix++) {
+      const d = Math.hypot(ix - M - x, iz - M - z) - r, k = iz * N + ix;
+      if (d < D[k]) D[k] = d;
+    }
+  };
+  for (const f of flats) stamp(f.x, f.z, f.r);
+  for (const sg of segs) { const L = Math.hypot(sg.x2 - sg.x1, sg.z2 - sg.z1), n = Math.max(1, Math.ceil(L)); for (let t = 0; t <= n; t++) stamp(sg.x1 + (sg.x2 - sg.x1) * t / n, sg.z1 + (sg.z2 - sg.z1) * t / n, sg.r); }
+  for (const b of boxes) stamp((b.minX + b.maxX) / 2, (b.minZ + b.maxZ) / 2, Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + 1.5);
+  const H = new Float32Array(N * N);
+  for (let iz = 0; iz < N; iz++) for (let ix = 0; ix < N; ix++) {
+    const k = iz * N + ix, d = D[k], t = Math.max(0, Math.min(1, d / BLEND)), w = t * t * (3 - 2 * t);
+    const x = ix - M, z = iz - M;
+    H[k] = reliefHeight(x, z) * w + edgeHeight(x, z);
+  }
+  HF.data = H; HF.N = N; HF.off = M;
 }
 
 // Paint the ground mask in code: R = dirt (paths, mines), G = sand (shore), B = cobbles (squares).
@@ -265,7 +330,7 @@ export function createWorld(scene) {
     let n = 0;
     for (const e of group.ents) {
       if (!e.alive || e.mesh.userData.culled) continue;
-      writeInstance(group.mesh, n++, e.x, 0, e.z, e.instRy, e.instScale, e.instScale, e.instScale);
+      writeInstance(group.mesh, n++, e.x, terrainHeight(e.x, e.z) - 0.05, e.z, e.instRy, e.instScale, e.instScale, e.instScale);
     }
     group.mesh.count = n;
     group.mesh.instanceMatrix.needsUpdate = true;
@@ -1131,6 +1196,23 @@ export function createWorld(scene) {
     }
   }
 
+  // ---- Elevation: keep every town, road, building and work spot level, then lift the land ----
+  {
+    const flats = [{ x: LAKE.x, z: LAKE.z, r: LAKE.r + 6 }];
+    for (const t of Object.values(TOWNS)) flats.push({ x: t.x, z: t.z, r: t === TOWNS.Brightwater ? 42 : 24 });
+    for (const o of occupied) if (o.r >= 2.5) flats.push({ x: o.x, z: o.z, r: Math.min(o.r, 12) + 1 });
+    for (const n of nodes) if (n.type !== 'tree' && n.type !== 'rock' && n.type !== 'fish') flats.push({ x: n.x, z: n.z, r: (n.radius || 1) + 2.5 });
+    for (const sp of FLAT_SPOTS) flats.push(sp);
+    bakeHeightField(flats, PATHS.map(([x1, z1, x2, z2]) => ({ x1, z1, x2, z2, r: 2.6 })), colliders);
+    for (let i = 0; i < pos.count; i++) pos.setZ(i, terrainHeight(pos.getX(i), -pos.getY(i)));
+    groundGeo.computeVertexNormals();
+    pos.needsUpdate = true; groundGeo.computeBoundingSphere(); groundGeo.computeBoundingBox();
+    // Everything placed at ground level sits on the surface.
+    for (const o of scene.children) {
+      if (o === ground || o === water || o === bed || o.isLight || Math.abs(o.position.y) > 0.001) continue;
+      o.position.y = terrainHeight(o.position.x, o.position.z);
+    }
+  }
   flushTreesAndRocks();
   scatterDecor(scene, rng, occupied);
   return { ground, nodes, monsters, pickables, buildings };
@@ -1219,7 +1301,7 @@ function scatterDecor(scene, rng, occupied) {
       if (!list.length) return null;
       const inst = new THREE.InstancedMesh(geo, mat, list.length);
       list.forEach((it, i) => {
-        m4.compose(p.set(it.x, 0, it.z), q.setFromEuler(e.set(0, it.ry, 0)), sc.set(it.s, it.s, it.s));
+        m4.compose(p.set(it.x, terrainHeight(it.x, it.z) - 0.02, it.z), q.setFromEuler(e.set(0, it.ry, 0)), sc.set(it.s, it.s, it.s));
         inst.setMatrixAt(i, m4);
         if (it.c) inst.setColorAt(i, it.c);
       });
@@ -1251,7 +1333,7 @@ export function createPileMesh(scene, x, z) {
   const a = new THREE.Mesh(pileGeo, pileMat); a.position.y = 0.11;
   const b = new THREE.Mesh(pileGeo, pileMat2); b.position.set(0.18, 0.08, 0.12); b.scale.set(0.7, 0.7, 0.7); b.rotation.y = 0.7;
   g.add(a, b);
-  g.position.set(x, 0, z);
+  g.position.set(x, terrainHeight(x, z), z);
   scene.add(g);
   return g;
 }

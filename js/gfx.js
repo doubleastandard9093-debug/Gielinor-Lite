@@ -161,8 +161,16 @@ export function terrainMaterial(maskTex, maskSize) {
         col = mix(col, dirt, smoothstep(0.38, 0.62, mk.r + edge));
         col = mix(col, stone, smoothstep(0.4, 0.6, mk.b + edge * 0.4));
         // hills beyond the playable area: grass to rock with height
-        float hrock = smoothstep(4.0, 12.0, vWPos.y + (n2 - 0.5) * 6.0);
-        col = mix(col, mix(vec3(0.45, 0.43, 0.4), vec3(0.6, 0.58, 0.54), n3), hrock);
+        // elevation: steep slopes and high ground turn to rock, peaks get snow
+        vec3 fwn = normalize(cross(dFdx(vWPos), dFdy(vWPos)));
+        float slope = 1.0 - abs(fwn.y);
+        float hrock = max(smoothstep(11.0, 19.0, vWPos.y + (n2 - 0.5) * 6.0), smoothstep(0.32, 0.5, slope + (n3 - 0.5) * 0.15));
+        vec3 rockC = mix(vec3(0.42, 0.40, 0.37), vec3(0.6, 0.58, 0.54), n3) * (0.85 + 0.3 * n4);
+        rockC = mix(rockC, vec3(0.32, 0.3, 0.28), smoothstep(0.6, 0.8, n2) * 0.5);
+        col = mix(col, rockC, hrock);
+        col = mix(col, mix(col, vec3(0.32, 0.42, 0.16), 0.5), smoothstep(-0.3, -2.5, vWPos.y)); // lush valley floors
+        float snow = smoothstep(19.0, 24.0, vWPos.y + (n2 - 0.5) * 5.0) * (1.0 - smoothstep(0.55, 0.75, slope));
+        col = mix(col, vec3(0.92, 0.94, 0.97) * (0.92 + 0.1 * n4), snow);
         diffuseColor.rgb *= lin(col);
       `);
   };
