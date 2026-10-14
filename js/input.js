@@ -1,3 +1,4 @@
+import { actionFor, takeCapture } from './keybinds.js';
 // Touch, mouse and keyboard input for the game canvas.
 // Tap = walk/act, long-press or right-click = options menu,
 // one-finger drag = rotate camera, pinch or scroll = zoom.
@@ -11,18 +12,27 @@ export function setupInput(canvas, handlers) {
   const DRAG_PX = 10;
   const LONG_MS = 480;
 
-  const keyMap = { arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right' };
+  // Movement and camera actions hold a key flag; everything else goes to handlers.onAction.
+  const HOLD = { walkN: 'w', walkW: 'a', walkS: 's', walkE: 'd', camU: 'up', camD: 'down', camL: 'left', camR: 'right' };
+  const held = new Map(); // physical key -> flag
   document.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
-    if (k === 'escape') { handlers.onEscape && handlers.onEscape(); return; }
-    if (keyMap[k]) { keys[keyMap[k]] = true; e.preventDefault(); return; }
-    if ('wasd'.includes(k) && k.length === 1) keys[k] = true;
-    if (handlers.onKey) handlers.onKey(k, e);
+    if (takeCapture(k)) { e.preventDefault(); e.stopPropagation(); return; }
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+    const act = actionFor(k);
+    if (act && HOLD[act]) {
+      keys[HOLD[act]] = true; held.set(k, HOLD[act]);
+      if (k.startsWith('arrow') || k === ' ') e.preventDefault();
+      if (handlers.onKey && 'wasd'.includes(HOLD[act])) handlers.onKey(HOLD[act], e);
+      return;
+    }
+    if (act === 'close' && handlers.onEscape) { handlers.onEscape(); return; }
+    if (act && handlers.onAction && !e.repeat) handlers.onAction(act, e);
   });
   document.addEventListener('keyup', e => {
     const k = e.key.toLowerCase();
-    if (keyMap[k]) keys[keyMap[k]] = false;
-    else keys[k] = false;
+    const f = held.get(k); if (f) { keys[f] = false; held.delete(k); }
   });
   window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 

@@ -9,6 +9,7 @@ import { ABILITIES, unlocked, adrenCost, adrenGain } from './abilities.js';
 import { QUESTS, questStatus, questPoints, QUEST_POINTS_TOTAL, QUEST_TOWNS, activeQuestBonuses } from './quests.js';
 import { esc } from './ui.js';
 import { iconImg } from './icons.js';
+import { KEY_ACTIONS, getBinds, setBind, resetBinds, keyLabel, captureNextKey } from './keybinds.js';
 
 const TABS = [
   { id: 'combat', icon: '⚔️', title: 'Combat options' },
@@ -197,6 +198,7 @@ export function createInventoryUI(api) {
   let selectedSkill = null;
   let selectedQuest = null, questTown = 'All', questState = 'all', questDiff = 'All';
   let bankTab = 'all', bankSearch = '';
+  let rebinding = null;
   let shopInfo = null;
   let craftTab = 'Smithing';
   let smithGroup = 'Smelting';
@@ -442,7 +444,8 @@ export function createInventoryUI(api) {
     const s = player.settings;
     const t = (act, label, on) => `<button class="toggle ${on ? 'on' : ''}" data-act="${act}">${label}: ${on ? 'On' : 'Off'}</button>`;
     const v = (act, label, val) => `<button class="toggle on" data-act="${act}">${label}: <b>${val}</b></button>`;
-    const KEYS = [['Click / tap', 'Walk or do the default action'], ['Right-click / hold', 'All options'], ['W A S D', 'Walk'], ['Arrow keys', 'Turn and tilt the camera'], ['Mouse wheel / pinch', 'Zoom'], ['1 – 8', 'Combat skills on the action bar'], ['Drag', 'Rotate the camera']];
+    const KEYS = [['Click / tap', 'Walk or do the default action'], ['Right-click / hold', 'All options'], ['Mouse wheel / pinch', 'Zoom'], ['Drag', 'Rotate the camera']];
+    const B = getBinds();
     return `<div class="tab-head"><b>Settings</b></div>
       <div class="savebtns"><button data-act="save">💾 Save</button><button data-act="export">Export</button><button data-act="import">Import</button><button data-act="paste">Paste save</button></div>
       <button class="toggle new" data-act="help">✨ What's new</button>
@@ -462,7 +465,9 @@ export function createInventoryUI(api) {
       ${t('run', 'Run', s.run)}
       ${t('autoloot', 'Auto-pickup loot', s.autoLoot)}
       <div class="craftskill">Keybinds &amp; controls</div>
-      <div class="keybinds">${KEYS.map(([k, d]) => `<div><kbd>${k}</kbd><span>${d}</span></div>`).join('')}</div>
+      <div class="keybinds">${KEY_ACTIONS.map(([id, label]) => `<div class="kb-row"><span>${label}</span><button class="kb-key ${rebinding === id ? 'listening' : ''} ${B[id] ? '' : 'unbound'}" data-rebind="${id}">${rebinding === id ? 'Press a key…' : keyLabel(B[id])}</button></div>`).join('')}</div>
+      <button class="toggle" data-keyreset="1">Reset keybinds to defaults</button>
+      <div class="keybinds fixed">${KEYS.map(([k, d]) => `<div><kbd>${k}</kbd><span>${d}</span></div>`).join('')}</div>
       <div class="help">Tap the minimap to walk there, + and − zoom it, ? shows the map key, and the compass faces north.</div>`;
   }
 
@@ -594,6 +599,19 @@ export function createInventoryUI(api) {
     if (spl) { api.setAutocast(spl.dataset.spell); return; }
     const cr = e.target.closest('[data-craft]');
     if (cr && !cr.disabled) { api.craft(cr.dataset.craft, cr.dataset.n === 'all' ? Infinity : 1); return; }
+    const rb = e.target.closest('[data-rebind]');
+    if (rb) {
+      const id = rb.dataset.rebind;
+      if (rebinding === id) { rebinding = null; captureNextKey(null); render(); return; }
+      rebinding = id; render();
+      captureNextKey(k => {
+        rebinding = null;
+        if (k !== 'escape' || id === 'close') { if (k === 'backspace' || k === 'delete') setBind(id, ''); else setBind(id, k); }
+        render();
+      });
+      return;
+    }
+    if (e.target.closest('[data-keyreset]')) { resetBinds(); rebinding = null; captureNextKey(null); render(); api.log && api.log('Keybinds reset to defaults.'); return; }
     const act = e.target.closest('[data-act]');
     if (act) { if (act.dataset.act === 'help') open('help'); else api.setting(act.dataset.act); }
   });

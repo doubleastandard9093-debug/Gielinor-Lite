@@ -437,7 +437,12 @@ const inputCtl = setupInput(renderer.domElement, {
   onZoom: f => zoomRig(rig, f),
   onEscape: () => { ui.hideMenu(); invUI.close(); },
   onDpad: () => { if (action && action.kind !== 'craft') stopAction(); },
-  onKey: k => { if ('wasd'.includes(k) && action && action.kind !== 'craft') stopAction(); }
+  onKey: k => { if ('wasd'.includes(k) && action && action.kind !== 'craft') stopAction(); },
+  onAction: act => {
+    if (/^ab\d$/.test(act)) { const list = ABILITIES.filter(a => abilityUnlocked(skills, a)); const a = list[+act.slice(2) - 1]; if (a) useAbility(a.id); }
+    else if (act === 'run') toggleRun();
+    else if (act.startsWith('tab')) invUI.showTab({ tabInv: 'inv', tabEquip: 'equip', tabSkills: 'skills', tabQuests: 'quests', tabPrayer: 'prayer', tabSettings: 'settings' }[act]);
+  }
 });
 const keys = inputCtl.keys;
 
@@ -1883,11 +1888,8 @@ requestAnimationFrame(animate);
 
 // Handy for testing in the browser console.
 // Number keys 1-8 fire combat skills on desktop.
-window.addEventListener('keydown', e => {
-  if (e.target && e.target.tagName === 'INPUT') return;
-  const n = +e.key;
-  if (n >= 1 && n <= 8) { const list = ABILITIES.filter(a => abilityUnlocked(skills, a)); if (list[n - 1]) useAbility(list[n - 1].id); }
-});
+// Keyboard actions (including action bar slots) are routed through keybinds.js and input.js.
+
 
 // Fade out the title/loading screen once the first frames are drawn.
 setTimeout(() => { const ld = document.getElementById('loader'); if (ld) { ld.classList.add('done'); setTimeout(() => ld.remove(), 900); } }, 300);
