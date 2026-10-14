@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { makeRng } from './rng.js';
 import { MONSTER_TYPES, AGILITY_COURSES, RUNE_ALTARS, BOUNTIES } from './gameplay.js';
-import { agilityStyle } from './agilityAnim.js';
+import { agilityStyle, swingGeom } from './agilityAnim.js';
 import { QUEST_NPCS } from './questnpcs.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
 import { buildHumanoidRig, apronGeo, varyLook, hashStr, contactShadow } from './anatomy.js';
@@ -909,20 +909,23 @@ export function createWorld(scene) {
     const parts = [];
     const W = 0x6a4a2a, DW = 0x4a3020, ST = 0x8a8478;
     const style = agilityStyle(obs);
+    let swingRope = null;
+    const solid = []; // [x0, x1, z0, z1] in obstacle space, kept clear of the path
     if (style === 'shimmy') {
       // stone wall with a narrow foot ledge and a hand edge; the player faces the wall (local -x side)
+      solid.push([-0.85, -0.5, -0.3, L + 0.3]);
       parts.push([prim.box(0.5, 2.6, L + 0.6), ST, -0.6, 1.3, L / 2, 0, 0, 0, 0.3], [prim.box(0.32, 0.1, L + 0.6), 0x6a645a, -0.22, 0.55, L / 2],
         [prim.box(0.16, 0.08, L + 0.6), 0x6a645a, -0.32, 2.1, L / 2]);
     } else if (style === 'swing') {
-      // two platforms with an A-frame overhead and a hanging rope
-      const A = 0.65, R = Math.max(1.4, (L / 2 - 0.45) / Math.sin(A)), pivY = 0.85 + 2.0 + R * Math.cos(A);
+      // two platforms with an A-frame overhead; the rope is its own mesh so it swings with you
+      const { R, pivY } = swingGeom(L);
       for (const z of [0.4, L - 0.4]) parts.push([prim.box(1.4, 0.85, 0.9), 0x7a5a3a, 0, 0.425, z, 0, 0, 0, 0.2]);
-      for (const x of [-1.1, 1.1]) parts.push([prim.cyl(0.09, 0.11, pivY + 0.2, 7), W, x, (pivY + 0.2) / 2, L / 2]);
-      parts.push([prim.cyl(0.08, 0.08, 2.4, 7), DW, 0, pivY + 0.05, L / 2, 0, 0, Math.PI / 2], [prim.cyl(0.035, 0.035, R + 0.6, 5), 0xd8c89a, 0, pivY - (R + 0.6) / 2, L / 2, 0, 0, 0, 0.05],
-        [prim.box(1.2, 0.04, Math.max(0.2, L - 1.8)), 0x1e3a4a, 0, 0.02, L / 2, 0, 0, 0, 0]);
+      for (const x of [-1.1, 1.1]) { parts.push([prim.cyl(0.09, 0.11, pivY + 0.2, 7), W, x, (pivY + 0.2) / 2, L / 2]); solid.push([x - 0.1, x + 0.1, L / 2 - 0.1, L / 2 + 0.1]); }
+      parts.push([prim.cyl(0.08, 0.08, 2.4, 7), DW, 0, pivY + 0.05, L / 2, 0, 0, Math.PI / 2], [prim.box(1.2, 0.04, Math.max(0.2, L - 1.8)), 0x1e3a4a, 0, 0.02, L / 2, 0, 0, 0, 0]);
+      swingRope = { R, pivY };
     } else if (style === 'monkey') {
       // overhead frame of hand holds (monkey bars)
-      for (const z of [0, L]) for (const x of [-0.55, 0.55]) parts.push([prim.cyl(0.07, 0.08, 2.75, 7), W, x, 1.375, z]);
+      for (const z of [0, L]) for (const x of [-0.55, 0.55]) { parts.push([prim.cyl(0.07, 0.08, 2.75, 7), W, x, 1.375, z]); solid.push([x + (x > 0 ? 0.3 : -0.38), x + (x > 0 ? 0.38 : -0.3), z - 0.08, z + 0.08]); }
       for (const x of [-0.55, 0.55]) parts.push([prim.cyl(0.05, 0.05, L, 6), W, x, 2.68, L / 2, Math.PI / 2, 0, 0]);
       const n = Math.max(4, Math.round(L * 2.4));
       for (let i = 0; i <= n; i++) parts.push([prim.cyl(0.03, 0.03, 1.1, 6), 0x9a9aa0, 0, 2.62, (i / n) * L, 0, 0, Math.PI / 2, 0.5]);
@@ -932,6 +935,7 @@ export function createWorld(scene) {
     } else if (obs.kind === 'net') {
       for (const x of [-0.9, 0.9]) parts.push([prim.cyl(0.07, 0.08, 2.4, 7), W, x, 1.2, L / 2]);
       parts.push([prim.box(1.9, 0.1, 0.1), W, 0, 2.35, L / 2]);
+      for (const x of [-0.9, 0.9]) solid.push([x - 0.08, x + 0.08, L / 2 - 0.08, L / 2 + 0.08]);
       for (let i = 0; i < 6; i++) parts.push([prim.box(1.8, 0.03, 0.03), 0xcab88a, 0, 0.3 + i * 0.36, L / 2, 0, 0, 0, 0.05]);
       for (let i = 0; i < 6; i++) parts.push([prim.box(0.03, 2.1, 0.03), 0xcab88a, -0.75 + i * 0.3, 1.25, L / 2, 0, 0, 0, 0.05]);
     } else if (obs.kind === 'rope') {
@@ -942,7 +946,9 @@ export function createWorld(scene) {
         [prim.cyl(0.38, 0.38, 0.05, 14), 0x101012, 0, 0.5, L + 0.01, Math.PI / 2, 0, 0, 0]);
     } else if (obs.kind === 'wall') {
       parts.push([prim.box(2.0, 2.2, 0.6), ST, 0, 1.1, L / 2, 0, 0, 0, 0.3]);
-      for (let i = 0; i < 5; i++) parts.push([prim.box(0.18, 0.1, 0.12), 0x5a524a, -0.4 + (i % 2) * 0.7, 0.4 + i * 0.4, L / 2 - 0.34]);
+      // hand and foot holds where the climb animation places them
+      for (let y = 0.36; y < 2.1; y += 0.3) for (const x of [-0.24, 0.24, -0.15, 0.15]) if ((x * x > 0.03) === (y > 1.0)) parts.push([prim.box(0.14, 0.07, 0.1), 0x5a524a, x, y, L / 2 - 0.34]);
+      solid.push([-1.0, 1.0, L / 2 - 0.3, L / 2 + 0.3]);
     } else {
       // gap: two wooden platforms with a drop between them
       for (const z of [0.4, L - 0.4]) {
@@ -953,13 +959,28 @@ export function createWorld(scene) {
     }
     const m = kit(parts);
     m.castShadow = true; m.receiveShadow = true;
-    m.rotation.y = Math.atan2(ex - sx, ez - sz);
+    const yaw = Math.atan2(ex - sx, ez - sz), cy = Math.cos(yaw), sy = Math.sin(yaw);
+    m.rotation.y = yaw;
     g.add(m);
+    for (const [x0, x1, z0, z1] of solid) {
+      const pts = [[x0, z0], [x1, z0], [x0, z1], [x1, z1]].map(([x, z]) => [sx + x * cy + z * sy, sz - x * sy + z * cy]);
+      colliders.push({ minX: Math.min(...pts.map(p => p[0])), maxX: Math.max(...pts.map(p => p[0])), minZ: Math.min(...pts.map(p => p[1])), maxZ: Math.max(...pts.map(p => p[1])), prop: obs.name });
+    }
+    let ropeG = null;
+    if (swingRope) {
+      // pivot group sits on the cross-beam; the rope hangs down its local -y and rotates about x with the swing
+      const frame = new THREE.Group(); frame.rotation.y = yaw; g.add(frame);
+      ropeG = new THREE.Group(); ropeG.position.set(0, swingRope.pivY, L / 2); frame.add(ropeG);
+      const len = swingRope.R + 0.35, ropeMat = new THREE.MeshStandardMaterial({ color: 0xd8c89a, roughness: 0.9 });
+      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, len, 6), ropeMat); rope.position.y = -len / 2; rope.castShadow = true; ropeG.add(rope);
+      const knot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), ropeMat); knot.position.y = -len; ropeG.add(knot);
+      ropeG.rotation.x = 0;
+    }
     g.position.set(sx, 0, sz);
     scene.add(g);
     pickables.push(g);
     occupied.push({ x: (sx + ex) / 2, z: (sz + ez) / 2, r: L / 2 + 1 });
-    return tag(g, { mesh: g, type: 'agility', obstacle: id, name: obs.name, verb: obs.verb, alive: true, x: sx, z: sz, toX: ex, toZ: ez, radius: 0.6 });
+    return tag(g, { mesh: g, type: 'agility', obstacle: id, name: obs.name, verb: obs.verb, alive: true, x: sx, z: sz, toX: ex, toZ: ez, radius: 0.6, rope: ropeG });
   }
 
   // ---- Rune altars: a ring of standing stones around a glowing altar ----

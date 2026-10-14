@@ -27,7 +27,7 @@ export function track(t, keys, ease = smooth) {
 // Blend two poses channel by channel.
 export function mixPose(a, b, k) {
   const o = { ...a };
-  for (const key in b) o[key] = lerp(a[key] ?? 0, b[key], k);
+  for (const key in b) if (typeof b[key] === 'number') o[key] = lerp(a[key] ?? 0, b[key], k);
   return o;
 }
 // How far the hips drop when the support leg bends (thigh 0.4, shin+foot 0.36).
@@ -265,6 +265,182 @@ const STYLES = {
   }
 };
 
+
+// ---------------------------------------------------------------------------
+// Hand/foot locked versions. These override the styles above and add o.ik:
+//   { lh, rh, lf, rf: [x, y, z] in obstacle space (x sideways, y up, z along the path) or null, wh, wf: weights }
+// ---------------------------------------------------------------------------
+// Swing rig shared with world.js so the rope and frame match the animation.
+export function swingGeom(L) {
+  const A = 0.65, PH = 0.85, Rf = Math.max(3.2, (L / 2 - 0.45) / Math.sin(A)), R = Rf - 2.05;
+  return { A, PH, Rf, R, pivY: PH + Rf * Math.cos(A) };
+}
+// Planted-then-moving step: holds for `plant` of each cycle, then moves to the next hold.
+const stepT = (c, off, plant = 0.55) => { const c2 = c + off, i = Math.floor(c2), f = c2 - i; return i + smooth((f - plant) / (1 - plant)); };
+const liftT = (c, off, plant = 0.55) => { const c2 = c + off, f = c2 - Math.floor(c2); return Math.sin(Math.PI * clamp01((f - plant) / (1 - plant))); };
+
+function feetOnLine(o, L, y, t0, t1, t, stride, spread) {
+  // feet placed heel-to-toe on a beam or rope at height y while the root walks along it
+  const z = o.u * L, c = z / stride;
+  o.ik.lf = [-spread, y + 0.1 + liftT(c, 0) * 0.1, stride * stepT(c, 0) + 0.12];
+  o.ik.rf = [spread, y + 0.1 + liftT(c, 0.5) * 0.1, stride * stepT(c, 0.5) - stride * 0.5 + 0.12];
+  o.ik.wf = seg(t, t0, t0 + 0.05) * (1 - seg(t, t1 - 0.05, t1));
+}
+const STYLES2 = {
+  balance(t, L, v) {
+    const o = STYLES.balance(t, L, v); o.ik = {};
+    feetOnLine(o, L, 0.67, 0.14, 0.86, t, 0.3, 0.03);
+    return o;
+  },
+  tightrope(t, L, v) {
+    const o = STYLES.tightrope(t, L, v); o.ik = {};
+    feetOnLine(o, L, 1.03, 0.15, 0.86, t, 0.3, 0.04);
+    const z = o.u * L, c = z / 0.4;
+    o.ik.lh = [-0.08, 2.0, 0.4 * stepT(c, 0, 0.4) + 0.25]; o.ik.rh = [0.08, 2.0, 0.4 * stepT(c, 0.5, 0.4) + 0.05];
+    o.ik.wh = seg(t, 0.06, 0.15) * (1 - seg(t, 0.86, 0.94));
+    return o;
+  },
+  shimmy(t, L, v) {
+    const o = STYLES.shimmy(t, L, v); o.ik = {};
+    const z = o.u * L, c = z / 0.36;
+    // facing the wall (−x): the rig's right side points along +z
+    o.ik.rh = [-0.3, 2.16, 0.36 * stepT(c, 0.5) + 0.05]; o.ik.lh = [-0.3, 2.16, 0.36 * stepT(c, 0) - 0.3];
+    o.ik.rf = [-0.2, 0.7 + liftT(c, 0.25) * 0.06, 0.36 * stepT(c, 0.25) + 0.0]; o.ik.lf = [-0.2, 0.7 + liftT(c, 0.75) * 0.06, 0.36 * stepT(c, 0.75) - 0.3];
+    o.ik.wh = seg(t, 0.08, 0.16) * (1 - seg(t, 0.84, 0.9)); o.ik.wf = seg(t, 0.13, 0.16) * (1 - seg(t, 0.86, 0.88));
+    o.s = -0.1 * smooth(t / 0.14) * (1 - smooth((t - 0.88) / 0.12)); o.P = 0.04;
+    return o;
+  },
+  wall(t, L, v) {
+    const o = { ...NEUTRAL, ik: {} }, H = 2.2, face = L / 2 - 0.3, rz = face - 0.42;
+    const S = 0.3, n = 1.5;
+    if (t < 0.12) { const k = t / 0.12; steps(o, k * 2 * Math.PI, 0.45, 0.6); o.u = lerp(0, rz / L, k); o.lax = -0.6 * k; o.rax = -0.6 * k; }
+    else if (t < 0.55) {
+      const k = (t - 0.12) / 0.43, c = k * n; o.u = rz / L; o.y = S * c; o.P = 0.08; o.hx = -0.4;
+      o.ik.lh = [-0.24, Math.min(H, 1.95 + S * stepT(c, 0)), Math.min(H, 1.95 + S * stepT(c, 0)) >= H ? face + 0.06 : face - 0.04];
+      o.ik.rh = [0.24, Math.min(H, 1.95 + S * stepT(c, 0.5)), Math.min(H, 1.95 + S * stepT(c, 0.5)) >= H ? face + 0.06 : face - 0.04];
+      o.ik.lf = [-0.15, 0.45 + S * stepT(c, 0.25), face - 0.17]; o.ik.rf = [0.15, 0.45 + S * stepT(c, 0.75), face - 0.17];
+      o.gl = 0.7 + 0.3 * (1 - liftT(c, 0)); o.gr = 0.7 + 0.3 * (1 - liftT(c, 0.5));
+      o.ik.wh = seg(t, 0.1, 0.16); o.ik.wf = seg(t, 0.12, 0.18); o.bz = Math.sin(c * TAU) * 0.05;
+    } else if (t < 0.78) { // pull up on the top edge, then press over it
+      const k = seg(t, 0.55, 0.78); o.u = lerp(rz, L / 2 - 0.05, seg(k, 0.4, 1)) / L; o.y = lerp(S * n, H, easeOut(k));
+      o.P = 0.1 + 0.6 * Math.sin(Math.PI * k); o.ik.lh = [-0.24, H, face + 0.08]; o.ik.rh = [0.24, H, face + 0.08]; o.ik.wh = 1 - seg(k, 0.7, 1);
+      o.gl = o.gr = 1 - seg(k, 0.7, 1); o.llx = -1.4 * Math.sin(Math.PI * k); o.lkx = 1.8 * Math.sin(Math.PI * k); o.rlx = -0.5; o.rkx = 0.9;
+      o.ik.lf = [-0.15, 0.45 + S * n, face - 0.17]; o.ik.rf = null; o.ik.wf = 1 - seg(k, 0, 0.35);
+    } else { // drop down the far side and absorb
+      const k = (t - 0.78) / 0.22, fall = seg(k, 0, 0.45, easeIn), land = Math.sin(Math.PI * clamp01((k - 0.4) / 0.6));
+      o.u = lerp(L / 2 - 0.05, L, easeOut(k)) / L; o.y = H * (1 - fall) - legDrop(-1.1 * land, 1.7 * land) * land;
+      o.llx = o.rlx = -0.6 * (1 - k) - 1.1 * land; o.lkx = o.rkx = 0.8 * (1 - k) + 1.7 * land;
+      o.lax = o.rax = -1.0 * (1 - k); o.laz = -0.5 * land; o.raz = 0.5 * land; o.P = 0.3 * land;
+    }
+    return o;
+  },
+  net(t, L, v) {
+    const o = { ...NEUTRAL, ik: {} }, top = 2.35, nz = L / 2, S = 0.33, n = 3;
+    o.R = Math.sin(t * 7 + v.ph) * 0.02;
+    if (t < 0.1) { const k = t / 0.1; steps(o, k * 2 * Math.PI, 0.45, 0.6); o.u = lerp(0, nz - 0.4, k) / L; o.lax = o.rax = -0.8 * k; }
+    else if (t < 0.45) {
+      const k = (t - 0.1) / 0.35, c = k * n; o.u = (nz - 0.4) / L; o.y = S * c; o.P = 0.06; o.hx = -0.35;
+      o.ik.lh = [-0.25, Math.min(top, 1.95 + S * stepT(c, 0)), nz - 0.05]; o.ik.rh = [0.25, Math.min(top, 1.95 + S * stepT(c, 0.5)), nz - 0.05];
+      o.ik.lf = [-0.18, 0.45 + S * stepT(c, 0.25), nz - 0.13]; o.ik.rf = [0.18, 0.45 + S * stepT(c, 0.75), nz - 0.13];
+      o.ik.wh = seg(t, 0.08, 0.14); o.ik.wf = seg(t, 0.1, 0.16); o.gl = 1 - 0.6 * liftT(c, 0); o.gr = 1 - 0.6 * liftT(c, 0.5);
+    } else if (t < 0.6) { // over the top bar, turning to face the net
+      const k = seg(t, 0.45, 0.6); o.u = lerp(nz - 0.4, nz + 0.4, k) / L; o.y = S * n + Math.sin(Math.PI * k) * 0.35; o.yaw = Math.PI * k;
+      o.P = 0.8 * Math.sin(Math.PI * k); const sx = k < 0.5 ? 1 : -1;
+      o.ik.lh = [-0.25 * sx, top, nz]; o.ik.rh = [0.25 * sx, top, nz]; o.ik.wh = k < 0.4 || k > 0.6 ? 1 : 0.3; o.gl = o.gr = 1;
+      o.llx = -1.5 * Math.sin(Math.PI * k); o.lkx = 1.6 * Math.sin(Math.PI * k); o.rlx = -0.9 * Math.sin(Math.PI * k); o.rkx = 1.2 * Math.sin(Math.PI * k);
+    } else if (t < 0.88) { // climb down facing the net (−z), so the rig's left is +x
+      const k = (t - 0.6) / 0.28, c = (1 - k) * n; o.u = (nz + 0.4) / L; o.y = S * c; o.yaw = Math.PI; o.P = 0.06; o.hx = 0.3;
+      o.ik.lh = [0.25, Math.min(top, 1.95 + S * stepT(c, 0)), nz + 0.05]; o.ik.rh = [-0.25, Math.min(top, 1.95 + S * stepT(c, 0.5)), nz + 0.05];
+      o.ik.lf = [0.18, 0.45 + S * stepT(c, 0.25), nz + 0.13]; o.ik.rf = [-0.18, 0.45 + S * stepT(c, 0.75), nz + 0.13];
+      o.ik.wh = 1 - seg(t, 0.84, 0.88); o.ik.wf = 1 - seg(t, 0.82, 0.86); o.gl = o.gr = 1 - seg(t, 0.84, 0.88);
+    } else { const k = seg(t, 0.88, 1); o.u = lerp(nz + 0.4, L, k) / L; o.yaw = Math.PI + Math.PI * k; const b = Math.sin(Math.PI * k);
+      o.llx = o.rlx = -0.7 * b; o.lkx = o.rkx = 1.1 * b; o.y = -legDrop(-0.7 * b, 1.1 * b) * b * 0.6; }
+    return o;
+  },
+  monkey(t, L, v) {
+    const o = { ...NEUTRAL, ik: {} }, bar = 2.62, n = Math.max(4, Math.round(L * 2.4)), D = L / n, moves = n - 1;
+    const hang = sp => bar - 1.36 - Math.sqrt(Math.max(0.05, 0.69 * 0.69 - (sp / 2) ** 2));
+    const idx = (c, start) => { const cc = c - start; if (cc < 0) return start; const e = 2 * Math.floor(cc / 2), f = cc - e; return start + (f < 1 ? e + 2 * smooth(f) : e + 2); };
+    const lift = (c, start) => { const cc = c - start; if (cc < 0) return 0; const f = cc - 2 * Math.floor(cc / 2); return f < 1 ? Math.sin(Math.PI * f) : 0; };
+    if (t < 0.12) { // crouch and jump up to the first two rungs
+      const k = seg(t, 0, 0.12, x => x), cr = Math.sin(Math.PI * Math.min(1, k * 2));
+      o.u = lerp(0, D / 2, k) / L; o.y = k < 0.5 ? -legDrop(-0.8 * cr, 1.3 * cr) : hang(D) * easeOut((k - 0.5) * 2);
+      o.llx = o.rlx = -0.8 * cr; o.lkx = o.rkx = 1.3 * cr; o.lax = o.rax = lerp(0.5, -2.9, seg(k, 0.3, 1));
+      o.ik.lh = [-0.14, bar, 0]; o.ik.rh = [0.14, bar, D]; o.ik.wh = seg(k, 0.6, 1); o.gl = o.gr = seg(k, 0.8, 1);
+    } else if (t < 0.86) {
+      const k = (t - 0.12) / 0.74, c = k * moves, li = idx(c, 0), ri = idx(c, 1), ll = lift(c, 0), rl = lift(c, 1);
+      const zl = li * D, zr = ri * D; o.u = (zl + zr) / 2 / L; o.y = hang(Math.abs(zl - zr));
+      o.ik.lh = [-0.14, bar - ll * 0.12, zl]; o.ik.rh = [0.14, bar - rl * 0.12, zr]; o.ik.wh = 1;
+      o.gl = 1 - ll * 0.9; o.gr = 1 - rl * 0.9;
+      const sw = Math.sin(c * Math.PI); o.by = -sw * 0.25; o.R = sw * 0.07; o.P = Math.cos(c * TAU) * 0.08;
+      o.llx = -0.35 + Math.cos(c * Math.PI) * 0.35; o.rlx = -0.25 - Math.cos(c * Math.PI) * 0.35; o.lkx = 0.6 + ll * 0.4; o.rkx = 0.6 + rl * 0.4; o.hx = -0.25;
+    } else { // drop and absorb
+      const k = seg(t, 0.86, 1, x => x), fall = easeIn(Math.min(1, k * 2)), b = Math.sin(Math.PI * clamp01((k - 0.35) / 0.65));
+      const z0 = (n - 1.5) * D; o.u = lerp(z0, L, k) / L; o.y = hang(D) * (1 - fall) - legDrop(-1.0 * b, 1.6 * b) * b;
+      o.ik.lh = [-0.14, bar, (n - 1) * D]; o.ik.rh = [0.14, bar, n * D]; o.ik.wh = 1 - seg(k, 0, 0.25);
+      o.lax = o.rax = lerp(-2.9, 0, smooth(k)); o.llx = o.rlx = -1.0 * b; o.lkx = o.rkx = 1.6 * b; o.P = 0.3 * b; o.laz = -0.4 * b; o.raz = 0.4 * b;
+    }
+    return o;
+  },
+  swing(t, L, v) {
+    const o = { ...NEUTRAL, ik: {} }, G = swingGeom(L), { A, PH, Rf, R, pivY } = G, cz = L / 2;
+    const grabZ = cz - Rf * Math.sin(A);
+    o.ropeA = -A;
+    if (t < 0.12) { mount(o, seg(t, 0, 0.12), PH); o.u = lerp(0, 0.05, t / 0.12); }
+    else if (t < 0.3) { // run-up across the platform
+      const k = (t - 0.12) / 0.18; steps(o, k * 3 * Math.PI, 0.7, 1.0); o.y = PH + Math.abs(Math.sin(k * 3 * Math.PI)) * 0.06;
+      o.u = lerp(0.05 * L, grabZ, k) / L; o.lax = -o.llx * 0.8 - 1.8 * seg(k, 0.6, 1); o.rax = -o.rlx * 0.8 - 1.8 * seg(k, 0.6, 1); o.lex = o.rex = -1.0 * (1 - k); o.P = 0.15;
+      o.ik.lh = [0, pivY - (R - 0.04) * Math.cos(A), cz - (R - 0.04) * Math.sin(A)]; o.ik.rh = [0, pivY - (R - 0.18) * Math.cos(A), cz - (R - 0.18) * Math.sin(A)]; o.ik.wh = seg(k, 0.75, 1);
+    } else if (t < 0.82) { // on the rope: the body hangs along it, so it pitches with the swing
+      const k = (t - 0.3) / 0.52, a = -A + 2 * A * smooth(k);
+      o.ropeA = a; o.u = (cz + Rf * Math.sin(a)) / L; o.y = pivY - Rf * Math.cos(a); o.P = -a;
+      const hand = r => [0, pivY - r * Math.cos(a), cz + r * Math.sin(a)];
+      o.ik.lh = hand(R - 0.04); o.ik.rh = hand(R - 0.18); o.ik.wh = 1; o.gl = o.gr = 1;
+      const tuck = Math.sin(Math.PI * k);
+      o.llx = o.rlx = -1.25 * tuck - 0.2; o.lkx = o.rkx = 1.5 * tuck + 0.2; o.hx = 0.1;
+      o.lax = o.rax = -3.0;
+    } else { // release onto the far platform, absorb, then step down
+      const k = (t - 0.82) / 0.18, land = seg(k, 0, 0.35), b = Math.sin(Math.PI * clamp01(k / 0.6)), down = seg(k, 0.6, 1);
+      o.ropeA = A * Math.cos(k * 4) * (1 - k * 0.5);
+      o.u = lerp(cz + Rf * Math.sin(A), L, seg(k, 0, 1)) / L; o.y = lerp(PH + 0.1 * Math.sin(Math.PI * land), 0, easeIn(down)) - legDrop(-1.0 * b, 1.7 * b) * b * (1 - down);
+      o.P = -A * (1 - land) + 0.35 * b; o.llx = o.rlx = -1.0 * b; o.lkx = o.rkx = 1.7 * b;
+      o.lax = o.rax = lerp(-3.0, -0.4, land) * (1 - down); o.laz = -0.6 * b; o.raz = 0.6 * b; o.gl = o.gr = 1 - land;
+    }
+    return o;
+  }
+};
+// FK baseline for the styles above (old functions kept as the arm/leg fallback when a limb is not locked).
+for (const k in STYLES2) { const fk = STYLES[k]; STYLES[k + '_fk'] = fk; }
+Object.assign(STYLES, STYLES2);
+STYLES.balance = (t, L, v) => { const o = STYLES.balance_fk(t, L, v); o.ik = {}; feetOnLine(o, L, 0.67, 0.14, 0.86, t, 0.3, 0.03); return o; };
+STYLES.tightrope = (t, L, v) => { const o = STYLES.tightrope_fk(t, L, v); o.ik = {}; feetOnLine(o, L, 1.03, 0.15, 0.86, t, 0.3, 0.04);
+  const c = o.u * L / 0.4; o.ik.lh = [-0.08, 2.0, 0.4 * stepT(c, 0, 0.4) + 0.25]; o.ik.rh = [0.08, 2.0, 0.4 * stepT(c, 0.5, 0.4) + 0.05];
+  o.ik.wh = seg(t, 0.06, 0.15) * (1 - seg(t, 0.86, 0.94)); return o; };
+STYLES.shimmy = (t, L, v) => { const o = STYLES.shimmy_fk(t, L, v); o.ik = {}; const c = o.u * L / 0.36;
+  o.ik.rh = [-0.3, 2.16, 0.36 * stepT(c, 0.5) + 0.05]; o.ik.lh = [-0.3, 2.16, 0.36 * stepT(c, 0) - 0.3];
+  o.ik.rf = [-0.2, 0.7 + liftT(c, 0.25) * 0.06, 0.36 * stepT(c, 0.25)]; o.ik.lf = [-0.2, 0.7 + liftT(c, 0.75) * 0.06, 0.36 * stepT(c, 0.75) - 0.3];
+  o.ik.wh = seg(t, 0.08, 0.16) * (1 - seg(t, 0.84, 0.9)); o.ik.wf = seg(t, 0.13, 0.16) * (1 - seg(t, 0.86, 0.88)); o.P = 0.04; return o; };
+
+// Analytic two-bone solver. pivot: shoulder/hip group (Euler order ZXY), joint: elbow/knee hinge (x only).
+// upper/lower: bone lengths; target: world-space point; w: blend from the current (FK) pose.
+const _t = { x: 0, y: 0, z: 0 };
+const wrapLerp = (a, b, k) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
+export function solveLimb(pivot, joint, upper, lower, target, w, arm) {
+  if (!(w > 0)) return;
+  const par = pivot.parent; par.updateWorldMatrix(true, false);
+  const lt = par.worldToLocal(target.clone()).sub(pivot.position);
+  const raw = lt.length() || 1e-4, d = Math.min(upper + lower - 0.002, Math.max(Math.abs(upper - lower) + 0.02, raw));
+  lt.multiplyScalar(d / raw);
+  const cosI = Math.max(-1, Math.min(1, (upper * upper + lower * lower - d * d) / (2 * upper * lower)));
+  const bend = Math.PI - Math.acos(cosI), e = arm ? -bend : bend;
+  const hy = -upper - lower * Math.cos(e), hz = -lower * Math.sin(e);
+  const y1 = (lt.y > 0 && arm ? 1 : -1) * Math.hypot(lt.x, lt.y);
+  const beta = Math.atan2(lt.z, y1) - Math.atan2(hz, hy), gamma = Math.atan2(-lt.x / (y1 || 1e-4), lt.y / (y1 || 1e-4));
+  pivot.rotation.set(wrapLerp(pivot.rotation.x, beta, w), wrapLerp(pivot.rotation.y, 0, w), wrapLerp(pivot.rotation.z, gamma, w));
+  joint.rotation.x = lerp(joint.rotation.x, e, w);
+  void _t;
+}
+
 // Failure: slip partway across, stumble, fall to the ground beside the obstacle, sit stunned, then stand.
 // Returns { pose, impact } where impact is true from the moment the body hits the ground.
 const FAIL_AT = 0.45;
@@ -274,6 +450,7 @@ function failPose(style, t, L, v) {
   const base = fn(FAIL_AT, L, v), k = (t - 0.4) / 0.6;
   const st = seg(k, 0, 0.22), fall = seg(k, 0.22, 0.42, easeIn), sit = seg(k, 0.42, 0.7), up = seg(k, 0.7, 1);
   const side = v.side, o = { ...base };
+  if (base.ik) o.ik = { ...base.ik, wh: (base.ik.wh || 0) * (1 - st), wf: (base.ik.wf || 0) * (1 - st) };
   const back = style === 'wall' || style === 'net' || style === 'pipe';
   // stumble: flailing arms and a big lurch
   const fl = Math.sin(k * 55) * st * (1 - fall);
@@ -290,7 +467,7 @@ function failPose(style, t, L, v) {
   o.lkx = lerp(lerp(base.lkx, 0.6, fall), 0.9, sit); o.rkx = lerp(lerp(base.rkx, 0.4, fall), 1.4, sit);
   o.y = lerp(o.y, sitH, sit);
   if (sit > 0) { o.laz = lerp(o.laz, -0.4, sit); o.raz = lerp(o.raz, 0.4, sit); o.lax = lerp(o.lax, 0.5, sit); o.rax = lerp(o.rax, 0.5, sit); o.hx = lerp(base.hx, 0.4, sit); o.bx = lerp(base.bx, -0.15, sit); }
-  return { pose: up > 0 ? mixPose(o, { ...NEUTRAL, u: o.u, s: o.s, yaw: o.yaw * (1 - up) }, up) : o, impact: k >= 0.42 };
+  return { pose: up > 0 ? mixPose({ ...o, ik: null }, { ...NEUTRAL, u: o.u, s: o.s, yaw: o.yaw * (1 - up) }, up) : o, impact: k >= 0.42 };
 }
 
 // Per-crossing random variation so no two crossings look identical.
@@ -312,9 +489,8 @@ export function snapshotRig(pm) {
 }
 const HIP_Y = 0.9;
 function setGrip(arm, g) {
-  const hand = arm.userData.elbow.children[1]; if (!hand) return;
-  // the hand is one merged mesh, so curl reads as the fingers folding in: shorten and tip the hand forward
-  hand.scale.set(1, 1 - 0.32 * g, 1 + 0.15 * g); hand.rotation.x = 0.55 * g; hand.position.z = 0.03 * g;
+  const hand = arm.userData.elbow.children.find(o => o.userData.curl);
+  if (hand) hand.userData.curl(Math.round((0.3 + 0.7 * g) * 50) / 50); // jointed fingers close around the hold
 }
 export function applyRigPose(pm, o) {
   const p = pm.parts, e = a => a.userData.elbow, kn = l => l.userData.knee;
@@ -324,16 +500,16 @@ export function applyRigPose(pm, o) {
   // pivot the torso about the hips rather than the feet
   p.body.position.set(HIP_Y * Math.sin(o.bz), HIP_Y * (1 - Math.cos(o.bx) * Math.cos(o.bz)), -HIP_Y * Math.sin(o.bx));
   p.headG.rotation.x = o.hx;
-  p.leftArm.rotation.x = o.lax; p.leftArm.rotation.z = o.laz; e(p.leftArm).rotation.x = o.lex;
-  p.rightArm.rotation.x = o.rax; p.rightArm.rotation.z = o.raz; e(p.rightArm).rotation.x = o.rex;
-  p.leftLeg.rotation.x = o.llx; p.leftLeg.rotation.z = o.llz; kn(p.leftLeg).rotation.x = o.lkx;
-  p.rightLeg.rotation.x = o.rlx; p.rightLeg.rotation.z = o.rlz; kn(p.rightLeg).rotation.x = o.rkx;
+  p.leftArm.rotation.set(o.lax, 0, o.laz); e(p.leftArm).rotation.x = o.lex;
+  p.rightArm.rotation.set(o.rax, 0, o.raz); e(p.rightArm).rotation.x = o.rex;
+  p.leftLeg.rotation.set(o.llx, 0, o.llz); kn(p.leftLeg).rotation.x = o.lkx;
+  p.rightLeg.rotation.set(o.rlx, 0, o.rlz); kn(p.rightLeg).rotation.x = o.rkx;
   setGrip(p.leftArm, o.gl); setGrip(p.rightArm, o.gr);
 }
 // Clear the agility-only channels so walk and idle take over cleanly.
 export function releaseRig(pm) {
   const p = pm.parts;
   pm.mesh.rotation.x = 0; pm.mesh.rotation.z = 0; p.body.position.set(0, 0, 0); p.headG.rotation.x = 0;
-  p.leftArm.rotation.z = 0; p.rightArm.rotation.z = 0; p.leftLeg.rotation.z = 0; p.rightLeg.rotation.z = 0;
+  for (const l of [p.leftArm, p.rightArm, p.leftLeg, p.rightLeg]) { l.rotation.y = 0; l.rotation.z = 0; }
   setGrip(p.leftArm, 0); setGrip(p.rightArm, 0);
 }

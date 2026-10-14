@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { agilityStyle, agilityDuration, agilityVariation, agilityPose, snapshotRig, applyRigPose, releaseRig, mixPose, smooth } from './agilityAnim.js';
+import { agilityStyle, agilityDuration, agilityVariation, agilityPose, snapshotRig, applyRigPose, releaseRig, mixPose, smooth, solveLimb } from './agilityAnim.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -632,9 +632,14 @@ function doAgility(a) {
   const n = a.node, style = agilityStyle(obs), L = Math.hypot(n.toX - n.x, n.toZ - n.z) || 1;
   const v = agilityVariation(), failed = !res.ok;
   crossing = { style, L, v, failed, dmg: res.dmg || 0, sx: n.x, sz: n.z, yaw: Math.atan2(n.toX - n.x, n.toZ - n.z),
-    ox: pm.mesh.position.x - n.x, oz: pm.mesh.position.z - n.z, snap: snapshotRig(pm), t: 0,
+    ox: pm.mesh.position.x - n.x, oz: pm.mesh.position.z - n.z, snap: snapshotRig(pm), t: 0, gy: n.mesh.position.y, rope: n.rope || null, node: n,
     dur: agilityDuration(style, L) * v.speed * (failed ? 1.35 : 1) };
   pm.target = null; pm.actionAnim = 0;
+  if (n.rope && !swingRopes.includes(n.rope)) swingRopes.push(n.rope);
+  // frame the obstacle: come in closer and lower for the crossing, then hand the old view back
+  if (!camSaved) camSaved = { dist: rig.targetDist, pitch: rig.targetPitch };
+  rig.targetDist = Math.min(camSaved.dist, 9.5); rig.targetPitch = Math.min(camSaved.pitch, 0.5);
+  pickCrossingCamera(true);
   if (res.ok) {
     log(res.msg, 'skill');
     giveXP('Agility', res.xp);
@@ -646,7 +651,52 @@ function doAgility(a) {
   markDirty();
 }
 // Root motion along the obstacle plus a full-body keyframed pose (js/agilityAnim.js).
+const _ikV = new THREE.Vector3();
+// Camera during obstacles: try yaws around the player and keep the one with the clearest line of sight,
+// so trees, bushes and buildings don't hide the climb. Re-checked a few times a second.
+const _ray = new THREE.Raycaster(), _cp = new THREE.Vector3(), _pp = new THREE.Vector3(), _sph = new THREE.Sphere();
+let camOccluders = null, camPickAt = 0, camSaved = null;
+function pickCrossingCamera(force) {
+  const now = performance.now();
+  if (!force && now - camPickAt < 600) return; camPickAt = now;
+  const P = pm.mesh.position;
+  if (force || !camOccluders) {
+    camOccluders = [];
+    scene.traverseVisible(o => {
+      if (!o.isMesh || o === pm.mesh || o.material?.transparent && o.material.opacity < 0.3) return;
+      let p = o; while (p) { if (p === pm.mesh) return; p = p.parent; }
+      if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+      _sph.copy(o.geometry.boundingSphere).applyMatrix4(o.matrixWorld);
+      if (o.isInstancedMesh ? _sph.radius > 400 : (_sph.radius > 60 || _sph.center.distanceTo(P) - _sph.radius > rig.dist + 4)) return;
+      camOccluders.push(o);
+    });
+  }
+  const cpitch = Math.cos(rig.targetPitch), sp = Math.sin(rig.targetPitch), base = rig.targetYaw;
+  // prefer a side-on view of the obstacle (the wall side is ruled out for ledges), close to the current view
+  const py = crossing ? crossing.yaw : base, sides = crossing && crossing.style === 'shimmy' ? [1] : [1, -1];
+  const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+  let best = base, bestScore = Infinity;
+  for (const sd of sides) for (const off of [0, 0.4, -0.4, 0.8, -0.8]) {
+    const yaw = py + sd * Math.PI / 2 + off; let hits = 0;
+    for (const h of [0.9, 1.7, 2.6]) {
+      _pp.set(P.x, P.y + h, P.z);
+      _cp.set(P.x + Math.sin(yaw) * cpitch * rig.targetDist, P.y + 1 + sp * rig.targetDist, P.z + Math.cos(yaw) * cpitch * rig.targetDist);
+      const dir = _pp.clone().sub(_cp), len = dir.length(); _ray.set(_cp, dir.divideScalar(len)); _ray.far = len - 0.6;
+      if (_ray.intersectObjects(camOccluders, false).length) hits++;
+    }
+    const score = hits * 10 + Math.abs(off) + 0.4 * Math.abs(wrap(yaw - rig.targetYaw));
+    if (score < bestScore) { bestScore = score; best = rig.targetYaw + wrap(yaw - rig.targetYaw); }
+  }
+  rig.targetYaw = best;
+}
+const swingRopes = [];
+const lerp3 = (a, b, k) => a + (b - a) * k;
+function settleRopes(dt) { // swing ropes keep swinging after you let go, and settle back to hanging
+  for (const r of swingRopes) { if (crossing && crossing.rope === r) continue; const u = r.userData; if (!u.a && !u.v) continue;
+    u.v = (u.v || 0) - (u.a * 2.2 + u.v * 0.5) * dt; u.a += u.v * dt; if (Math.abs(u.a) < 0.002 && Math.abs(u.v) < 0.002) u.a = u.v = 0; r.rotation.x = -u.a; }
+}
 function updateCrossing(dt) {
+  settleRopes(dt);
   if (!crossing) return;
   const c = crossing;
   c.t = Math.min(1, c.t + dt / c.dur);
@@ -657,10 +707,23 @@ function updateCrossing(dt) {
   const along = pose.u * c.L, side = pose.s, cy = Math.cos(c.yaw), sy = Math.sin(c.yaw), app = 1 - smooth(c.t / 0.12);
   pm.mesh.position.x = c.sx + side * cy + along * sy + c.ox * app;
   pm.mesh.position.z = c.sz - side * sy + along * cy + c.oz * app;
-  pm.mesh.position.y = terrainHeight(pm.mesh.position.x, pm.mesh.position.z) + pose.y;
+  pm.mesh.position.y = lerp3(terrainHeight(pm.mesh.position.x, pm.mesh.position.z), c.gy, smooth(Math.min(c.t, 1 - c.t) * 8)) + pose.y; // obstacle space while on it
   pm.facing = c.yaw; pm.mesh.rotation.y = c.yaw + pose.yaw;
   applyRigPose(pm, o);
-  if (c.t >= 1) { crossing = null; releaseRig(pm); pm.facing = c.yaw; pm.mesh.position.y = terrainHeight(pm.mesh.position.x, pm.mesh.position.z); }
+  // lock hands and feet onto the obstacle's holds (2-bone IK), targets are in obstacle space
+  if (pose.ik) {
+    const ik = pose.ik, P = pm.parts, gy = c.gy, wb = Math.min(1, w * 1.2);
+    const toW = q => _ikV.set(c.sx + q[0] * cy + q[2] * sy, gy + q[1], c.sz - q[0] * sy + q[2] * cy);
+    pm.mesh.updateMatrixWorld(true);
+    
+    if (ik.lh) solveLimb(P.leftArm, P.leftArm.userData.elbow, 0.34, 0.37, toW(ik.lh), (ik.wh || 0) * wb, true);
+    if (ik.rh) solveLimb(P.rightArm, P.rightArm.userData.elbow, 0.34, 0.37, toW(ik.rh), (ik.wh || 0) * wb, true);
+    if (ik.lf) solveLimb(P.leftLeg, P.leftLeg.userData.knee, 0.4, 0.28, toW(ik.lf), (ik.wf || 0) * wb, false);
+    if (ik.rf) solveLimb(P.rightLeg, P.rightLeg.userData.knee, 0.4, 0.28, toW(ik.rf), (ik.wf || 0) * wb, false);
+  }
+  pickCrossingCamera(false);
+  if (c.rope) { c.rope.rotation.x = -(pose.ropeA ?? 0); c.rope.userData.a = pose.ropeA ?? 0; c.rope.userData.v = 0; }
+  if (c.t >= 1) { crossing = null; releaseRig(pm); if (camSaved) { rig.targetDist = camSaved.dist; rig.targetPitch = camSaved.pitch; camSaved = null; } pm.facing = c.yaw; pm.mesh.position.y = terrainHeight(pm.mesh.position.x, pm.mesh.position.z); }
 }
 function hurtPlayer(dmg) {
   if (dmg <= 0) return;
