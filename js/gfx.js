@@ -171,14 +171,37 @@ export function terrainMaterial(maskTex, maskSize) {
         vec3 fwn = normalize(cross(dFdx(vWPos), dFdy(vWPos)));
         float slope = 1.0 - abs(fwn.y);
         float hrock = max(smoothstep(11.0, 19.0, vWPos.y + (n2 - 0.5) * 6.0), smoothstep(0.32, 0.5, slope + (n3 - 0.5) * 0.15));
-        vec3 rockC = mix(vec3(0.42, 0.40, 0.37), vec3(0.6, 0.58, 0.54), n3) * (0.85 + 0.3 * n4);
-        rockC = mix(rockC, vec3(0.32, 0.3, 0.28), smoothstep(0.6, 0.8, n2) * 0.5);
+        // triplanar rock: project the noise along all three axes and blend by the surface normal so cliffs do not stretch
+        vec3 tw = pow(abs(fwn), vec3(4.0)); tw /= (tw.x + tw.y + tw.z);
+        float r3 = texture2D(tNoise, vWPos.zy * 0.45).b * tw.x + texture2D(tNoise, vWPos.xz * 0.45).b * tw.y + texture2D(tNoise, vWPos.xy * 0.45).b * tw.z;
+        float r4 = texture2D(tNoise, vWPos.zy * 1.9).r * tw.x + n4 * tw.y + texture2D(tNoise, vWPos.xy * 1.9).r * tw.z;
+        float r2 = texture2D(tNoise, vWPos.zy * 0.07).g * tw.x + n2 * tw.y + texture2D(tNoise, vWPos.xy * 0.07).g * tw.z;
+        float strata = 0.5 + 0.5 * sin(vWPos.y * 3.1 + r2 * 6.0);   // horizontal layering on cliff faces
+        vec3 rockC = mix(vec3(0.42, 0.40, 0.37), vec3(0.6, 0.58, 0.54), r3) * (0.85 + 0.3 * r4);
+        rockC = mix(rockC, vec3(0.32, 0.3, 0.28), smoothstep(0.6, 0.8, r2) * 0.5);
+        rockC *= 0.88 + 0.16 * strata * slope;
         col = mix(col, rockC, hrock);
         col = mix(col, mix(col, vec3(0.32, 0.42, 0.16), 0.5), smoothstep(-0.3, -2.5, vWPos.y)); // lush valley floors
         float snow = smoothstep(19.0, 24.0, vWPos.y + (n2 - 0.5) * 5.0) * (1.0 - smoothstep(0.55, 0.75, slope));
         col = mix(col, vec3(0.92, 0.94, 0.97) * (0.92 + 0.1 * n4), snow);
         diffuseColor.rgb *= lin(col);
-      `);
+        // procedural height for bump shading and per-surface roughness
+        float isStone = smoothstep(0.4, 0.6, mk.b + edge * 0.4) * (1.0 - hrock), isDirt = smoothstep(0.38, 0.62, mk.r + edge) * (1.0 - hrock);
+        tHeight = mix(n4 * 0.6 + n3 * 0.4, (1.0 - grout) * -1.0 + n4 * 0.3, isStone);
+        tHeight = mix(tHeight, r4 * 0.6 + r3 * 0.6 + strata * 0.3 * slope, hrock) * (1.0 - snow * 0.7) * fineK;
+        tRough = mix(mix(mix(0.95, 0.88, isDirt), 0.72, isStone), 0.8 - 0.15 * r4, hrock);
+        tRough = mix(tRough, 0.55, snow) * (1.0 - smoothstep(-0.3, -2.5, vWPos.y) * 0.12);
+      `)
+      .replace('void main() {', 'float tHeight = 0.0; float tRough = 0.95;\nvoid main() {')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = tRough;')
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        { // screen-space bump from tHeight (Mikkelsen) gives grass clumps, dirt grain, cobble grout and rock strata real relief
+          vec3 sp = -vViewPosition, dpx = dFdx(sp), dpy = dFdy(sp);
+          float bh = tHeight * 0.14, dhx = dFdx(bh), dhy = dFdy(bh);
+          vec3 r1 = cross(dpy, normal), rr2 = cross(normal, dpx); float det = dot(dpx, r1);
+          vec3 grad = sign(det) * (dhx * r1 + dhy * rr2);
+          normal = normalize(abs(det) * normal - grad);
+        }`);
   };
   return m;
 }
