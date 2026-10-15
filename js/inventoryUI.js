@@ -27,6 +27,10 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>Sunsets with colour.</b> Dawn and dusk now paint the sky in orange at the horizon rising through pink into violet, brightest toward the sun, and the clouds pick up warm glowing edges and rosy undersides.</p>
+<p><b>Knights and guards in real armour.</b> On High, knights and Black Knights show banded, riveted plate and guards wear ringed chainmail, just like your own gear.</p>
+<p><b>A proper leather cowl.</b> Coifs and cowls are now a soft hood open at the face with a mantle over the shoulders, instead of a metal helm shape.</p>
+<p><b>Living leaf shadows.</b> Tree shadows now come from the actual leaf cut-outs and sway in the wind with the leaves. Falling leaves are larger and more frequent.</p>
 <p><b>Every torch lights the night.</b> Each fire, forge and wall torch now casts a warm pool of light on the ground around it, and door torches light the wall behind them, so streets at night are dotted with glowing doorways. On High, 12 nearby flames (up from 3) also cast real flickering light onto people and buildings.</p>
 <p><b>Clouds with real depth.</b> On High the sky is now filled with true volumetric cumulus. The clouds have flat bellies and billowing tops, shade themselves where they're thick and glow at their thin edges when the sun is behind them. Their edges break up into wisps as they drift.</p>
 <p><b>Armour you can read up close.</b> On High, platebody and platelegs are made of overlapping steel bands with rivets and brushed-metal streaks. Chainbodies show rows of interlocking rings that glint as you move. Leather has grain and stitched seams, and plain clothes show a fine weave. Dragon armour now shows its own red colour.</p>

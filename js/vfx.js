@@ -117,7 +117,7 @@ export function updateVfx(dt, px, pz, camera, now, night = 0, inCave = false) {
   // ambient: leaves drifting down from nearby trees, and dust motes floating in the air (High only)
   if (hi && !inCave) {
     for (const L of LEAF_SRC) { if (L.alive === false) continue; const dd = Math.hypot(L.x - px, L.z - pz); if (dd > 28) continue; const Lh = L.leafH || 3.6, Lr = L.leafR || 1.3, terrainY0 = L.mesh ? L.mesh.position.y : 0;
-      if (R() < 1.2 * d) emit(KIND.leaf, L.x + (R() - 0.5) * Lr * 2, terrainY0 + Lh * (0.75 + R() * 0.3), L.z + (R() - 0.5) * Lr * 2, 0.3 + R() * 0.3, -0.45 - R() * 0.25, (R() - 0.5) * 0.4, 7 + R() * 3, 0.14 + R() * 0.06); }
+      if (R() < 2.0 * d) emit(KIND.leaf, L.x + (R() - 0.5) * Lr * 2, terrainY0 + Lh * (0.75 + R() * 0.3), L.z + (R() - 0.5) * Lr * 2, 0.3 + R() * 0.3, -0.45 - R() * 0.25, (R() - 0.5) * 0.4, 7 + R() * 3, 0.21 + R() * 0.08); }
     if (R() < 12 * d) emit(KIND.mote, px + (R() - 0.5) * 16, 0.4 + R() * 3, pz + (R() - 0.5) * 16, (R() - 0.5) * 0.15, (R() - 0.3) * 0.08, (R() - 0.5) * 0.15, 5 + R() * 4, 0.035 + R() * 0.02);
   }
   const t = now * 0.001;

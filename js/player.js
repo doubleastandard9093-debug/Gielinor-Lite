@@ -150,6 +150,17 @@ export function createPlayer(scene) {
   mesh(new THREE.TorusGeometry(0.29, 0.025, 6, 22), helmMat, 0, 0.18, 0, helm).rotation.x = Math.PI / 2;
   helm.visible = false;
   headG.add(helm);
+  // Leather cowl: a soft hood open at the face (double-sided so the opening shows its lining), a rolled rim
+  // around the face, and a short mantle draped over the shoulders.
+  const cowlMat = gearDetail(std(0x7a4a24, 0.75, 0.0)); cowlMat.side = THREE.DoubleSide; cowlMat.userData.gk.value = 3;
+  const cowl = new THREE.Group();
+  const hood = mesh(new THREE.SphereGeometry(0.315, 22, 14, Math.PI / 2 + 0.8, Math.PI * 2 - 1.6, 0, Math.PI * 0.74), cowlMat, 0, 0.25, -0.015, cowl); hood.scale.set(1, 1.08, 1.05);
+  const cRim = mesh(new THREE.TorusGeometry(0.2, 0.03, 6, 18, Math.PI * 1.25), cowlMat, 0, 0.24, 0.215, cowl); cRim.rotation.z = -Math.PI / 8; cRim.scale.set(1, 1.25, 1);
+  cRim.rotation.x = -0.25;
+  mesh(new THREE.CylinderGeometry(0.17, 0.37, 0.2, 20, 1, true), cowlMat, 0, 0.0, -0.01, cowl);
+  mesh(new THREE.ConeGeometry(0.05, 0.12, 6), cowlMat, 0, 0.5, -0.17, cowl).rotation.x = -0.9;
+  cowl.visible = false;
+  headG.add(cowl);
 
   // Cape hangs off the back (slightly curved); amulet is a small gem at the neck.
   const capeMat = new THREE.MeshStandardMaterial({ color: 0xc03030, roughness: 0.8, side: THREE.DoubleSide });
@@ -176,7 +187,7 @@ export function createPlayer(scene) {
     animT: 0,
     actionAnim: 0,      // 0..1 swing timer for chopping/attacking
     actionKind: null,
-    parts: { body, bodyMat, leftArm, rightArm, leftLeg, rightLeg, legMat, helm, helmMat, hair, sword, swordMat, bow, bowMat, shield, shieldMat, cape, capeMat, neck, neckMat, headG }
+    parts: { cowl, cowlMat, body, bodyMat, leftArm, rightArm, leftLeg, rightLeg, legMat, helm, helmMat, hair, sword, swordMat, bow, bowMat, shield, shieldMat, cape, capeMat, neck, neckMat, headG }
   };
 }
 
@@ -213,7 +224,9 @@ export function applyEquipmentLook(pm, equipment) {
   p.legMat.color.setHex(equipment.legs ? metalColor(equipment.legs, 0x3a2a1a) : 0x3a2a1a);
   setGear(p.bodyMat, equipment.body, 0.65, 0.05); setGear(p.legMat, equipment.legs, 0.7, 0.05);
   setGear(p.helmMat, equipment.head, 0.35, 0.6); setGear(p.shieldMat, equipment.shield, 0.5, 0.3);
-  p.helm.visible = !!equipment.head;
+  const isCowl = !!(equipment.head && /cowl|coif|hood/i.test(equipment.head));
+  p.helm.visible = !!equipment.head && !isCowl;
+  if (p.cowl) { p.cowl.visible = isCowl; if (isCowl) p.cowlMat.color.setHex(/Hard/.test(equipment.head) ? 0x5a3a1a : 0x7a4a24); }
   p.hair.visible = !equipment.head;
   if (equipment.head) p.helmMat.color.setHex(metalColor(equipment.head, 0x7a4a24));
   if (p.cape) {

@@ -5,9 +5,9 @@ import { agilityStyle, swingGeom } from './agilityAnim.js';
 import { QUEST_NPCS } from './questnpcs.js';
 import { addFire } from './vfx.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise, WATER_MESHES } from './gfx.js';
-import { buildHumanoidRig, apronGeo, varyLook, hashStr, contactShadow } from './anatomy.js';
+import { buildHumanoidRig, apronGeo, varyLook, hashStr, contactShadow, plateCharMat, chainCharMat } from './anatomy.js';
 import { buildCreatureRig, rollVariant, namedVariant } from './creatures.js';
-import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap, treeMat, setMat, woodAxis, buildMat } from './models.js';
+import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap, treeMat, treeDepthMat, setMat, woodAxis, buildMat } from './models.js';
 
 // The world is about 440 x 440. Chunked decor + instance packing keep phones smooth.
 export const WORLD_HALF = 300;
@@ -405,6 +405,7 @@ export function createWorld(scene) {
       const geo = geoOf(key, ents[0]);
       const inst = new THREE.InstancedMesh(geo, material, ents.length);
       inst.castShadow = !!shadow; inst.receiveShadow = true;
+      if (material === treeMat) inst.customDepthMaterial = treeDepthMat;   // leaf shadows sway with the leaves
       inst.frustumCulled = true; // bounds refreshed when we pack
       const group = { mesh: inst, ents };
       ents.forEach(e => { e.instanceMesh = inst; e.instGroup = group; });
@@ -742,7 +743,7 @@ export function createWorld(scene) {
     pickables.push(g);
     const headExtras = npcExtras({ ...look, apron: null, beard: null }).map(([geo, hex, px = 0, py = 0, pz = 0, rx = 0, ry = 0, rz = 0, amt = 0.22]) => put(col(geo, hex, amt), px, py - 1.5, pz, rx, ry, rz));
     const e = tag(g, { mesh: g, type: 'npc', npc, name, alive: true, x, z, radius: 0.6 });
-    e.lod = { lo, hi: null, parent: g, buildHi: () => { const r = buildHumanoidRig({ ...L, headExtras: headExtras.map(q => q.clone()), noCollar: !!look.apron, buckle: look.apron ? new THREE.Color(look.apron).multiplyScalar(0.75).getHex() : undefined }, { extras: look.apron ? apronGeo(look.apron, L.build ?? 1, L.chest ?? 1) : [] }); r.userData.id = x; return r; } };
+    e.lod = { lo, hi: null, parent: g, buildHi: () => { const r = buildHumanoidRig({ ...L, headExtras: headExtras.map(q => q.clone()), noCollar: !!look.apron, buckle: look.apron ? new THREE.Color(look.apron).multiplyScalar(0.75).getHex() : undefined }, { extras: look.apron ? apronGeo(look.apron, L.build ?? 1, L.chest ?? 1) : [], material: /knight/i.test(npc) ? plateCharMat : /guard/i.test(npc) ? chainCharMat : undefined }); r.userData.id = x; return r; } };
     return e;
   }
 
@@ -1634,6 +1635,7 @@ function scatterDecor(scene, rng, occupied) {
       });
       inst.count = list.length;
       inst.castShadow = !!shadow; inst.receiveShadow = true;
+      if (mat === treeMat) inst.customDepthMaterial = treeDepthMat;   // leaf shadows sway with the leaves
       inst.computeBoundingSphere();
       group.add(inst);
       return inst;

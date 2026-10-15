@@ -80,17 +80,25 @@ export function createSky(scene) {
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       top: { value: SKY.top }, horizon: { value: SKY.horizon }, sunCol: { value: SKY.sun },
-      sunDir: { value: SUN_DIR }, time: TIME, tNoise: { value: getNoiseTexture() }, clouds: { value: 1 }, night: { value: 0 }
+      sunDir: { value: SUN_DIR }, time: TIME, tNoise: { value: getNoiseTexture() }, clouds: { value: 1 }, night: { value: 0 }, gold: { get value() { return SKY.gold || 0; } }
     },
     vertexShader: `varying vec3 vDir;
       void main(){ vDir = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p; }`,
-    fragmentShader: `uniform vec3 top, horizon, sunCol, sunDir; uniform float time, clouds, night; uniform sampler2D tNoise; varying vec3 vDir;
+    fragmentShader: `uniform vec3 top, horizon, sunCol, sunDir; uniform float time, clouds, night, gold; uniform sampler2D tNoise; varying vec3 vDir;
       void main(){
         vec3 d = normalize(vDir);
         float h = d.y;
         vec3 col = mix(horizon, top, pow(clamp(h, 0.0, 1.0), 0.55));
         col = mix(col, horizon * vec3(0.82, 0.9, 0.8), smoothstep(0.0, -0.25, h));
         float sd = max(dot(d, sunDir), 0.0);
+        // sunset/sunrise: warm orange at the horizon rising through pink into violet, strongest toward the sun
+        if (gold > 0.01) {
+          float azs = pow(max(0.0, dot(normalize(d.xz + 1e-4), normalize(sunDir.xz + 1e-4))) * 0.5 + 0.5, 2.0);
+          vec3 ss = mix(vec3(1.0, 0.42, 0.12), vec3(0.98, 0.45, 0.5), smoothstep(0.0, 0.14, h));
+          ss = mix(ss, vec3(0.5, 0.36, 0.7), smoothstep(0.12, 0.42, h));
+          col = mix(col, ss * (0.55 + 0.75 * azs), gold * (1.0 - smoothstep(0.3, 0.75, h)) * 0.85);
+          col += vec3(1.0, 0.5, 0.15) * pow(sd, 4.0) * gold * 0.45;
+        }
         col += sunCol * (pow(sd, 900.0) * 6.0 + pow(sd, 40.0) * 0.25 + pow(sd, 6.0) * 0.12);
         if (clouds > 0.5 && h > 0.0) {
           // volumetric cumulus: ray-march a slab between cloud base (y=1) and top (y=1.38) with jittered steps.
@@ -99,6 +107,7 @@ export function createSky(scene) {
           // self-shadow, glow at thin sunlit edges and get dark bellies.
           vec2 wind = vec2(time * 0.0025, time * 0.001); float T = 1.0, c = 0.0; vec3 lit = vec3(0.0);
           vec3 sunC = mix(vec3(1.0, 0.97, 0.92), sunCol, 0.35) * 1.08, shadeC = mix(horizon, top, 0.5) * vec3(0.6, 0.65, 0.78);
+          sunC = mix(sunC, vec3(1.0, 0.62, 0.36) * 1.2, gold); shadeC = mix(shadeC, vec3(0.6, 0.38, 0.52), gold * 0.85);
           const float HB = 1.0, HT = 1.38; const int NS = 14;
           float t0 = HB / max(h, 0.04), t1 = min(HT / max(h, 0.04), t0 + 3.0), dt = (t1 - t0) / float(NS);
           float jit = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
@@ -123,7 +132,7 @@ export function createSky(scene) {
               }
               float beer = exp(-od * 1.4), powder = 1.0 - exp(-den * 6.0);
               float sh = beer * mix(1.0, powder, 0.5) * (0.6 + 0.4 * yf);
-              vec3 Lc = mix(shadeC, sunC * hg, sh) + sunCol * pow(sd, 8.0) * beer * 0.5;
+              vec3 Lc = mix(shadeC, sunC * hg, sh) + sunCol * pow(sd, 8.0) * beer * 0.5 + vec3(1.0, 0.45, 0.18) * pow(sd, 3.0) * beer * gold * 0.7;
               float a = 1.0 - exp(-den * 2.5);
               lit += T * a * Lc; T *= 1.0 - a;
               if (T < 0.03) break;

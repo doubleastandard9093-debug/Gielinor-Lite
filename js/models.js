@@ -238,6 +238,9 @@ function leafAtlas() {
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4; return tex;
 }
 export const treeMat = (typeof document !== 'undefined') ? makeFoliageMat({ map: leafAtlas(), alphaTest: 0.5, side: THREE.DoubleSide }) : foliageMat;
+// shadow-pass twin of treeMat: same alpha-cut leaf atlas and the same wind sway, so leaf shadows move with the leaves
+export const treeDepthMat = (() => { const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: treeMat.map || null, alphaTest: 0.5, side: THREE.DoubleSide });
+  m.onBeforeCompile = sh => swayShader(sh, 1); m.customProgramCacheKey = () => 'tree-depth-sway'; return m; })();
 // One leaf card: a quad whose UVs cover the leaf half of the atlas
 function leafCard(size) { const g = new THREE.PlaneGeometry(size, size); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setX(i, 0.5 + uv.getX(i) * 0.5); g.userData.cardUv = true; return g; }
 

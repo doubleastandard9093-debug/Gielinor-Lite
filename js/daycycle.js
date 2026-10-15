@@ -37,7 +37,7 @@ export function updateDay(mode, tOverride) {
   SUN_DIR.set(Math.cos(az) * flat, h, Math.sin(az) * flat * 0.8).normalize();
   DAY.sunH = h;
   const night = sm(0.04, -0.16, h), gold = (1 - night) * (1 - sm(0.12, 0.42, h)), day = 1 - night - gold;
-  const w = { night, gold, day }; DAY.night = night;
+  const w = { night, gold, day }; DAY.night = night; DAY.gold = gold; SKY.gold = gold;
   SKY.top.copy(pick(PAL.top, w)); SKY.horizon.copy(pick(PAL.horizon, w)); SKY.sun.copy(pick(PAL.sun, w));
   DAY.fog.copy(SKY.horizon); DAY.lightCol.copy(pick(PAL.light, w)); DAY.hemiCol.copy(pick(PAL.hemiSky, w));
   // the shadow-casting light follows the sun by day and the moon (opposite side, high) by night,

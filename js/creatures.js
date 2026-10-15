@@ -3,7 +3,7 @@
 // and per-spawn variety (size, tint, markings, small part differences).
 import * as THREE from 'three';
 import { prim, place, paint, snoise, blob } from './models.js';
-import { lathe, seeded, skinPaint, buildHumanoidRig, bakeList, charMat, furMat, scaleMat, chitinMat, hideMat, boneMat, attachHeld } from './anatomy.js';
+import { lathe, seeded, skinPaint, buildHumanoidRig, bakeList, charMat, furMat, scaleMat, chitinMat, hideMat, boneMat, attachHeld, plateCharMat, chainCharMat } from './anatomy.js';
 let MAT = null;
 
 const C = h => new THREE.Color(h);
@@ -369,7 +369,8 @@ export function buildCreatureRig(typeName, t, v, extras = [], headExtras = [], h
     if (look.hair === undefined) look.hair = [0x1a1410, 0x3a2a1a, 0x6a4a2a][Math.floor(v.r() * 3)];
     if (!look.hairStyle) look.hairStyle = look.hair ? ['short', 'long', 'spiky', 'pony'][Math.floor(v.r() * 4)] : 'bald';
     look.headExtras = headExtras;
-    const rig = buildHumanoidRig(look, { extras, held, claws: CLAWED.test(typeName), ears: typeName === 'Goblin' || typeName === 'Lesser Demon' ? true : null });
+    const armour = typeName === 'Black Knight' ? plateCharMat : typeName === 'Guard' ? chainCharMat : undefined;   // armoured humanoids get the plate/chain surface detail
+    const rig = buildHumanoidRig(look, { extras, held, claws: CLAWED.test(typeName), ears: typeName === 'Goblin' || typeName === 'Lesser Demon' ? true : null, material: armour });
     rig.userData.id = v.seed;
     return rig;
   }

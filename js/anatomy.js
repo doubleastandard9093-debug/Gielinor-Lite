@@ -12,24 +12,32 @@ import { prim, place, paint, col, kit, snoise, blob, vcMat, humanoidParts, npcEx
 // and a warm subsurface-style glow on skin-coloured vertices. The extra terms are
 // switched off on Low via CHAR.q.
 export const CHAR = { q: { value: 1 } };
-export function makeCharMat({ rough = 0.68, metal = 0.02, bump = 0.35, freq = 9, rim = 0.35, sss = 1, sheen = 0 } = {}) {
+export function makeCharMat({ rough = 0.68, metal = 0.02, bump = 0.35, freq = 9, rim = 0.35, sss = 1, sheen = 0, gear = 0 } = {}) {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: metal });
   m.onBeforeCompile = sh => {
     sh.uniforms.tCharNoise = { value: getNoiseTexture() }; sh.uniforms.charQ = CHAR.q; sh.uniforms.cLDir = CHAR_LIGHT.dir; sh.uniforms.cLCol = CHAR_LIGHT.col; sh.uniforms.cLK = CHAR_LIGHT.k;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vCW; varying vec3 vCN;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vCW; varying vec3 vCN;' + (gear ? ' varying vec3 vGP;' : ''))
       .replace('#include <project_vertex>', `#include <project_vertex>
         vec4 cwp = vec4(transformed, 1.0);
         #ifdef USE_INSTANCING
           cwp = instanceMatrix * cwp;
         #endif
-        vCW = (modelMatrix * cwp).xyz; vCN = normalize(mat3(modelMatrix) * objectNormal);`);
+        vCW = (modelMatrix * cwp).xyz; vCN = normalize(mat3(modelMatrix) * objectNormal);${gear ? ' vGP = transformed;' : ''}`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        varying vec3 vCW; varying vec3 vCN; uniform sampler2D tCharNoise; uniform float charQ, cLK; uniform vec3 cLDir, cLCol;`)
+        varying vec3 vCW; varying vec3 vCN; uniform sampler2D tCharNoise; uniform float charQ, cLK; uniform vec3 cLDir, cLCol;${gear ? `
+        varying vec3 vGP; const float gk = ${gear.toFixed(1)};
+${GEAR_GLSL}` : ''}`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         float skinR = smoothstep(0.06, 0.2, vColor.r - vColor.b) * smoothstep(0.02, 0.12, vColor.g - vColor.b) * ${sss.toFixed(2)};
-        roughnessFactor = mix(roughnessFactor, 0.5, skinR * charQ);   // skin has a soft oily sheen, cloth stays matte`)
+        roughnessFactor = mix(roughnessFactor, 0.5, skinR * charQ);   // skin has a soft oily sheen, cloth stays matte${gear ? `
+        // armour pattern on everything that is not skin (and not near-black trim)
+        float gM = (1.0 - smoothstep(0.02, 0.1, skinR)) * smoothstep(0.06, 0.16, max(vColor.r, max(vColor.g, vColor.b)));
+        float gF = gM * charQ * (1.0 - smoothstep(8.0, 22.0, length(cameraPosition - vCW))); vec4 gP = gearPat(vGP);
+        diffuseColor.rgb *= mix(1.0, gP.y, gF); roughnessFactor = mix(roughnessFactor, gP.w, gF);` : ''}`)
+      .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>${gear ? `
+        metalnessFactor = mix(0.02, mix(0.15, 0.85, gP.z), gM);` : ''}`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         float cfade = charQ * (1.0 - smoothstep(10.0, 28.0, length(cameraPosition - vCW)));
         if (cfade > 0.01) {
@@ -38,8 +46,12 @@ export function makeCharMat({ rough = 0.68, metal = 0.02, bump = 0.35, freq = 9,
           float hx = texture2D(tCharNoise, P.yz).r * bw.x + texture2D(tCharNoise, P.xz).r * bw.y + texture2D(tCharNoise, P.xy).r * bw.z;
           float hy = texture2D(tCharNoise, P.yz + 0.37).g * bw.x + texture2D(tCharNoise, P.xz + 0.37).g * bw.y + texture2D(tCharNoise, P.xy + 0.37).g * bw.z;
           vec3 wn = normalize(vCN + (vec3(hx, hy, 1.0 - hx) - 0.5) * ${bump.toFixed(2)} * cfade);
-          normal = normalize(mix(normal, normalize((viewMatrix * vec4(wn, 0.0)).xyz), 0.6 * cfade));
-        }`)
+          normal = normalize(mix(normal, normalize((viewMatrix * vec4(wn, 0.0)).xyz), 0.6 * cfade * ${gear ? '(1.0 - gM)' : '1.0'}));
+        }${gear ? `
+        if (gF > 0.01) { float hh = gP.x * (gk > 1.5 ? 0.012 : 0.006) * gF;
+          vec3 dpx = dFdx(-vViewPosition), dpy = dFdy(-vViewPosition); float dhx = dFdx(hh), dhy = dFdy(hh);
+          vec3 r1 = cross(dpy, normal), r2 = cross(normal, dpx); float det = dot(dpx, r1);
+          normal = normalize(abs(det) * normal - sign(det) * (dhx * r1 + dhy * r2)); }` : ''}`)
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
         if (charQ > 0.5) {
           vec3 vv = normalize(vViewPosition);
@@ -61,7 +73,7 @@ export function makeCharMat({ rough = 0.68, metal = 0.02, bump = 0.35, freq = 9,
           reflectedLight.directDiffuse += diffuseColor.rgb * cLCol * cLK * (1.0 - skinK) * fr * max(0.0, nl + 0.25) * 0.35;`}
         }`);
   };
-  m.customProgramCacheKey = () => 'char-' + [rough, metal, bump, freq, rim, sss, sheen].join(',');
+  m.customProgramCacheKey = () => 'char-' + [rough, metal, bump, freq, rim, sss, sheen, gear].join(',');
   return m;
 }
 export const charMat = makeCharMat();
@@ -70,6 +82,8 @@ export const scaleMat = makeCharMat({ rough: 0.42, metal: 0.12, bump: 0.45, freq
 export const chitinMat = makeCharMat({ rough: 0.3, metal: 0.05, bump: 0.25, freq: 20, rim: 0.45, sss: 0 });
 export const metalMat = makeCharMat({ rough: 0.22, metal: 0.9, bump: 0.06, freq: 40, rim: 0.6, sss: 0 });
 export const boneMat = makeCharMat({ rough: 0.62, metal: 0.0, bump: 0.4, freq: 34, rim: 0.3, sss: 0 });
+export const plateCharMat = makeCharMat({ rough: 0.4, metal: 0.6, bump: 0.08, rim: 0.5, sss: 1, gear: 2 });
+export const chainCharMat = makeCharMat({ rough: 0.5, metal: 0.5, bump: 0.08, rim: 0.45, sss: 1, gear: 1 });
 export const hideMat = makeCharMat({ rough: 0.85, bump: 0.4, freq: 18, rim: 0.3, sss: 0.3, sheen: 1 });
 
 // ---- small helpers ----------------------------------------------------------
@@ -425,17 +439,7 @@ export function contactShadow(r = 0.5, k = 1) {
   return m;
 }
 
-// Armour and clothing surface detail for the player's equipment materials. Pattern is chosen per material by
-// mat.userData.gk.value: 0 woven cloth, 1 chainmail rings, 2 plate (bands, rivets, brushed streaks), 3 leather (grain and stitches).
-// Object-space coordinates keep the pattern stuck to the limb as it animates; bump uses screen derivatives. High only (CHAR.q).
-export function gearDetail(m) {
-  const gk = { value: 0 }; m.userData.gk = gk;
-  m.onBeforeCompile = sh => {
-    sh.uniforms.gk = gk; sh.uniforms.charQ = CHAR.q;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vGP; varying vec3 vGW;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\nvGP = transformed; vGW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-      varying vec3 vGP; varying vec3 vGW; uniform float gk, charQ;
+const GEAR_GLSL = `
       float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(gHash(i), gHash(i + vec2(1, 0)), f.x), mix(gHash(i + vec2(0, 1)), gHash(i + vec2(1, 1)), f.x), f.y); }
@@ -454,7 +458,20 @@ export function gearDetail(m) {
           return vec4(edge * 0.6 + rivet * 0.6 + brush * 0.03, (0.8 + 0.2 * edge) * (0.96 + 0.08 * brush) + rivet * 0.15, 1.0, 0.28 + 0.18 * brush + 0.3 * (1.0 - edge)); }
         float gr = gNoise(uv * 90.0) * 0.6 + gNoise(uv * 22.0) * 0.4;
         float st = step(0.5, fract(uv.x * 40.0)) * (1.0 - smoothstep(0.004, 0.009, abs(fract(p.y * 4.0) - 0.5)));
-        return vec4(gr * 0.5 - st * 0.5, 0.8 + 0.3 * gr - st * 0.25, 0.0, 0.6 + 0.25 * gr); }`)
+        return vec4(gr * 0.5 - st * 0.5, 0.8 + 0.3 * gr - st * 0.25, 0.0, 0.6 + 0.25 * gr); }`;
+
+// Armour and clothing surface detail for the player's equipment materials. Pattern is chosen per material by
+// mat.userData.gk.value: 0 woven cloth, 1 chainmail rings, 2 plate (bands, rivets, brushed streaks), 3 leather (grain and stitches).
+// Object-space coordinates keep the pattern stuck to the limb as it animates; bump uses screen derivatives. High only (CHAR.q).
+export function gearDetail(m) {
+  const gk = { value: 0 }; m.userData.gk = gk;
+  m.onBeforeCompile = sh => {
+    sh.uniforms.gk = gk; sh.uniforms.charQ = CHAR.q;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vGP; varying vec3 vGW;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvGP = transformed; vGW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+      varying vec3 vGP; varying vec3 vGW; uniform float gk, charQ;
+      ${GEAR_GLSL}`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
       float gF = charQ * (1.0 - smoothstep(8.0, 22.0, length(cameraPosition - vGW)));
       vec4 gP = gearPat(vGP);
