@@ -80,11 +80,11 @@ export function createSky(scene) {
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       top: { value: SKY.top }, horizon: { value: SKY.horizon }, sunCol: { value: SKY.sun },
-      sunDir: { value: SUN_DIR }, time: TIME, tNoise: { value: getNoiseTexture() }, clouds: { value: 1 }
+      sunDir: { value: SUN_DIR }, time: TIME, tNoise: { value: getNoiseTexture() }, clouds: { value: 1 }, night: { value: 0 }
     },
     vertexShader: `varying vec3 vDir;
       void main(){ vDir = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p; }`,
-    fragmentShader: `uniform vec3 top, horizon, sunCol, sunDir; uniform float time, clouds; uniform sampler2D tNoise; varying vec3 vDir;
+    fragmentShader: `uniform vec3 top, horizon, sunCol, sunDir; uniform float time, clouds, night; uniform sampler2D tNoise; varying vec3 vDir;
       void main(){
         vec3 d = normalize(vDir);
         float h = d.y;
@@ -97,7 +97,12 @@ export function createSky(scene) {
           float c = texture2D(tNoise, uv).r * 0.65 + texture2D(tNoise, uv * 2.7 + 0.3).g * 0.35;
           c = smoothstep(0.52, 0.78, c) * smoothstep(0.0, 0.22, h);
           vec3 cc = mix(vec3(0.86, 0.88, 0.94), vec3(1.0, 0.98, 0.93), clamp(sd * 1.4, 0.0, 1.0));
+          cc *= mix(vec3(1.0), vec3(0.16, 0.2, 0.32), night);
           col = mix(col, cc, c * 0.85);
+          // stars and a moon at night (the moon sits opposite the sun)
+          vec3 sp = floor(d * 260.0); float r = fract(sin(dot(sp, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+          col += vec3(0.9, 0.95, 1.0) * step(0.9965, r) * night * smoothstep(0.05, 0.3, h) * (1.0 - c);
+          float md = max(dot(d, -sunDir), 0.0); col += vec3(0.85, 0.9, 1.0) * (smoothstep(0.9993, 0.9996, md) * 1.4 + pow(md, 60.0) * 0.15) * night;
         }
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
@@ -112,7 +117,8 @@ export function createSky(scene) {
   return {
     mesh: sky,
     follow(camera) { sky.position.copy(camera.position); },
-    setQuality(q) { mat.uniforms.clouds.value = q === 'low' ? 0 : 1; }
+    setQuality(q) { mat.uniforms.clouds.value = q === 'low' ? 0 : 1; },
+    setNight(n) { mat.uniforms.night.value = n; }
   };
 }
 

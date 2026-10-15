@@ -40,6 +40,7 @@ The UI is original art made in code: CSS, inline SVG and canvas. There are no im
 
 ## Graphics
 
+- **Time of day** (`js/daycycle.js`): a 30-minute day follows the wall clock. The sun's height and azimuth drive `SUN_DIR`, the sky, fog, water and the sun light's colour, intensity and exposure, with blended night, golden-hour and day palettes. At night the shadow light becomes a moon, and the sky adds stars and a moon disc. Settings → Time of day switches between the cycle and Always morning.
 - **Ambient occlusion (High):** a `GTAOPass` (radius 0.9, 16 samples, Poisson denoise) runs between the render and bloom passes; Settings → Ambient occlusion turns it off. Low skips it.
 - **Fog and view distance:** High uses FogExp2 density 0.0025, a 760-unit far plane and a 135-unit cull radius, so the northern mountains stay readable. Low uses 0.0064, 520 and 70.
 

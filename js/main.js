@@ -5,6 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { updateDay, DAY, dayLabel } from './daycycle.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
@@ -485,6 +486,7 @@ function setting(act) {
   }
   else if (act === 'uiscale') { const opts = [0.85, 1, 1.15, 1.3]; s.uiScale = opts[(opts.indexOf(s.uiScale || 1) + 1) % opts.length]; document.documentElement.style.setProperty('--ui-scale', s.uiScale); window.dispatchEvent(new Event('resize')); }
   else if (act === 'ao') { s.ao = s.ao === false; applyGfx(); }
+  else if (act === 'timeofday') { s.timeOfDay = (s.timeOfDay || 'cycle') === 'cycle' ? 'day' : 'cycle'; log(s.timeOfDay === 'day' ? 'Time of day: always morning.' : `Time of day: day/night cycle (it is ${dayLabel()} now).`, 'game'); }
   else if (act === 'nameplates') s.nameplates = s.nameplates === false;
   else if (act === 'uisound') s.uiSound = !s.uiSound;
   else if (act === 'uivolume') { const opts = [0.25, 0.5, 1]; s.uiVolume = opts[(opts.indexOf(s.uiVolume || 0.5) + 1) % opts.length]; }
@@ -1292,11 +1294,16 @@ function updateCave(dt) {
   const G = CAVE.group; if (!G) return;
   if (caveShown !== inside) { caveShown = inside; G.userData.inner.visible = inside; G.userData.outer.visible = !inside; for (const L of G.userData.lights) L.intensity = inside ? (L.userData.base ??= L.intensity) : 0; }
   caveK += ((inside ? 1 : 0) - caveK) * Math.min(1, dt * 3);
-  if (!lightBase) lightBase = { hemi: lightsRef.hemi.intensity, dir: dirLight.intensity, fill: lightsRef.fill.intensity };
-  lightsRef.hemi.intensity = lightBase.hemi * (1 - 0.6 * caveK);
-  dirLight.intensity = lightBase.dir * (1 - 0.8 * caveK);
-  lightsRef.fill.intensity = lightBase.fill * (1 - 0.7 * caveK);
-  scene.fog.color.setHex(0xbfdcf0).lerp(_caveFog, caveK);
+  if (!lightBase) lightBase = { hemi: lightsRef.hemi.intensity, dir: dirLight.intensity, fill: lightsRef.fill.intensity, exp: renderer.toneMappingExposure };
+  updateDay(player.settings.timeOfDay || 'cycle', window.__dayT);
+  lightsRef.hemi.intensity = lightBase.hemi * DAY.hemiK * (1 - 0.6 * caveK);
+  lightsRef.hemi.color.copy(DAY.hemiCol);
+  dirLight.intensity = lightBase.dir * DAY.dirK * (1 - 0.8 * caveK);
+  dirLight.color.copy(DAY.lightCol);
+  lightsRef.fill.intensity = lightBase.fill * DAY.fillK * (1 - 0.7 * caveK);
+  renderer.toneMappingExposure = lightBase.exp * DAY.exposureK;
+  sky.setNight?.(DAY.night);
+  scene.fog.color.copy(DAY.fog).lerp(_caveFog, caveK);
   scene.background.copy(scene.fog.color);
 }
 const _caveFog = new THREE.Color(0x0c0a10);
@@ -1987,7 +1994,7 @@ function animate(now) {
   updateArrow(dt);
   updateRig(rig, camera, pm.mesh.position.x, pm.mesh.position.z, dt, crossing ? pm.mesh.position.y * 0.6 + terrainHeight(pm.mesh.position.x, pm.mesh.position.z) * 0.4 : terrainHeight(pm.mesh.position.x, pm.mesh.position.z));
   updateCave(dt);
-  followLight(dirLight, rig.fx, rig.fz);
+  followLight(dirLight, rig.fx, rig.fz, DAY.lightDir);
   sky.follow(camera);
   if (gfx.quality === 'low') renderer.render(scene, camera); else composer.render();
 

@@ -55,9 +55,10 @@ export function createLights(scene) {
   return { hemi, dirLight, fill };
 }
 
-export function followLight(dirLight, x, z) {
-  // Same direction as the sky's sun (0.55, 0.62, 0.42).
-  dirLight.position.set(x + 33, 37.2, z + 25.2);
+export function followLight(dirLight, x, z, dir) {
+  // Along the sun (or moon) direction from the day cycle; defaults to the old fixed morning sun.
+  if (dir) dirLight.position.set(x + dir.x * 60, dir.y * 60, z + dir.z * 60);
+  else dirLight.position.set(x + 33, 37.2, z + 25.2);
   dirLight.target.position.set(x, 0, z);
 }
 

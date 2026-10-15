@@ -27,6 +27,7 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>Day and night.</b> The sun now crosses the sky over a 30-minute day. Mornings are bright, evenings turn gold and orange with long shadows, and at night the world is lit by a blue moon under a starry sky. The sky, fog, water reflections and sunlight all follow the time of day. If you prefer the old look, set Settings → Time of day to <b>Always morning</b>.</p>
 <p><b>Ambient occlusion.</b> On High, corners, building bases, the well, eaves and the folds of characters now get soft contact shading (ground-truth AO), so objects sit in the world instead of floating on it. You can switch it off in Settings.</p>
 <p><b>Planted hands and feet.</b> Feet now stay planted through wall mantles, the roll over the net's top bar, gap take-offs and landings, and every landing after monkey bars and the rope swing. In pipes you crawl on hands and knees on the pipe floor, and after a fall your palms and heels rest on the ground. Bushes and trees between the camera and you are hidden during an obstacle. On a phone in portrait the camera starts closer, so your character is bigger, and Settings has a new <b>Zoom-out limit</b> (Close, Normal or Far).</p>
 <p><b>Agility, hands-on.</b> Your character now has jointed fingers (three segments each plus a thumb) that wrap around ropes, rungs, holds and weapon grips. On walls, nets, monkey bars, tightropes, ledges and the rope swing, hands and feet now lock onto the actual holds, so you climb the wall instead of sinking into it. The Port Sarim mast rope swings with you and keeps swinging after you let go. Course frames, posts and walls are solid now, without blocking the routes. During an obstacle the camera moves in for a side-on view and picks an angle that trees and bushes don't block.</p>
@@ -458,6 +459,7 @@ export function createInventoryUI(api) {
       <button class="toggle on" data-act="gfx">Graphics quality: <b>${api.gfxLabel ? api.gfxLabel() : 'Auto'}</b></button>
       <button class="toggle ${api.shadowsOn() ? 'on' : ''}" data-act="shadows">Shadows: ${api.shadowsOn() ? 'On' : 'Off'}${api.shadowsNote ? api.shadowsNote() : ''}</button>
       <div class="craftskill">Interface</div>
+      ${v('timeofday', 'Time of day', (s.timeOfDay || 'cycle') === 'cycle' ? 'Day/night cycle' : 'Always morning')}
       ${v('ao', 'Ambient occlusion', s.ao === false ? 'Off' : 'On (High)')}
       ${v('zoomlimit', 'Zoom-out limit', ({ 18: 'Close', 30: 'Normal', 45: 'Far' })[s.zoomLimit || 30])}
       ${v('uiscale', 'UI scale', Math.round((s.uiScale || 1) * 100) + '%')}
