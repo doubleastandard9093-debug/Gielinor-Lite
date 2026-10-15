@@ -300,37 +300,69 @@ export function updatePlayer(pm, keys, dt, running, camYaw) {
   }
   pm.moving = moved > 0.0005;
 
-  // Smooth turning
+  // Smooth turning (remember how much is left, for turn-in-place steps)
   let diff = pm.facing - pm.mesh.rotation.y;
   diff = Math.atan2(Math.sin(diff), Math.cos(diff));
   pm.mesh.rotation.y += diff * Math.min(1, dt * 14);
+  pm.turnLeft = diff;
 
-  // Animation: walk cycle with knee/elbow bend, body bob and sway
+  // Animation: walk/run cycle blended by speed (pm.runK) and eased in/out (pm.moveK), with slope adaptation
   const p = pm.parts;
   const knee = l => l.userData.knee, elbow = a => a.userData.elbow;
+  pm.moveK = (pm.moveK ?? 0) + ((pm.moving ? 1 : 0) - (pm.moveK ?? 0)) * Math.min(1, dt * (pm.moving ? 9 : 7));
+  pm.runK = (pm.runK ?? 0) + (((running && pm.moving) ? 1 : 0) - (pm.runK ?? 0)) * Math.min(1, dt * 5);
   if (pm.moving) {
-    pm.animT += dt * (running ? 11 : 8);
+    const R = pm.runK, M = Math.min(1, pm.moveK * 1.4), L = (a, b) => a + (b - a) * R;
+    pm.animT += dt * L(8, 11.5);
     const ph = pm.animT;
-    const amp = running ? 0.8 : 0.55;
+    // terrain slope along the facing: lean into hills, lift the knees more going up, shorten the stride going down
+    const f = pm.mesh.rotation.y, fx = Math.sin(f), fz = Math.cos(f);
+    const slope = Math.max(-0.6, Math.min(0.6, (terrainHeight(pos.x + fx * 0.6, pos.z + fz * 0.6) - terrainHeight(pos.x - fx * 0.6, pos.z - fz * 0.6)) / 1.2));
+    pm.slopeK = (pm.slopeK ?? 0) + (slope - (pm.slopeK ?? 0)) * Math.min(1, dt * 6);
+    const up = Math.max(0, pm.slopeK), dn = Math.max(0, -pm.slopeK);
+    const amp = L(0.55, 0.85) * (1 - dn * 0.35) * M;
     const sw = Math.sin(ph) * amp;
-    p.leftLeg.rotation.x = sw; p.rightLeg.rotation.x = -sw;
-    knee(p.leftLeg).rotation.x = Math.max(0, -Math.cos(ph)) * (running ? 1.1 : 0.7);
-    knee(p.rightLeg).rotation.x = Math.max(0, Math.cos(ph)) * (running ? 1.1 : 0.7);
-    p.leftArm.rotation.x = -sw * 0.75; p.rightArm.rotation.x = sw * 0.75;
-    elbow(p.leftArm).rotation.x = -0.3 - (running ? 0.7 : 0.2);
-    elbow(p.rightArm).rotation.x = -0.3 - (running ? 0.7 : 0.2);
-    pm.mesh.position.y = terrainHeight(pos.x, pos.z) + Math.abs(Math.cos(ph)) * (running ? 0.07 : 0.04);
-    p.body.rotation.y = Math.sin(ph) * 0.08;
-    p.body.rotation.x = running ? 0.12 : 0.04;
-    p.body.rotation.z = Math.sin(ph) * 0.025;
+    p.leftLeg.rotation.x = sw - up * 0.35; p.rightLeg.rotation.x = -sw - up * 0.35;
+    // swing-leg knee folds high in a run; the stance knee keeps a little give (and more downhill)
+    const kneeAmp = L(0.75, 1.55) * (1 + up * 0.6);
+    knee(p.leftLeg).rotation.x = (Math.max(0, -Math.cos(ph)) * kneeAmp + L(0.06, 0.16) + dn * 0.25) * M;
+    knee(p.rightLeg).rotation.x = (Math.max(0, Math.cos(ph)) * kneeAmp + L(0.06, 0.16) + dn * 0.25) * M;
+    // arms: relaxed pendulum walking, bent and pumping when running
+    p.leftArm.rotation.x = -sw * L(0.75, 1.05); p.rightArm.rotation.x = sw * L(0.75, 1.05);
+    p.leftArm.rotation.z = -L(0.06, 0.12) * M; p.rightArm.rotation.z = L(0.06, 0.12) * M;
+    elbow(p.leftArm).rotation.x = -L(0.45, 1.35) - Math.max(0, Math.sin(ph)) * L(0.15, 0.3);
+    elbow(p.rightArm).rotation.x = -L(0.45, 1.35) - Math.max(0, -Math.sin(ph)) * L(0.15, 0.3);
+    // two bobs per stride (one per footfall); running has a flight phase so the bob is bigger
+    pm.mesh.position.y = terrainHeight(pos.x, pos.z) + Math.abs(Math.cos(ph)) * L(0.04, 0.09) * M;
+    p.body.rotation.y = Math.sin(ph) * L(0.08, 0.14) * M;        // shoulders counter-rotate the hips
+    p.body.rotation.x = (L(0.04, 0.16) + up * 0.25 - dn * 0.1) * M; // lean forward with speed and uphill
+    p.body.rotation.z = Math.sin(ph) * 0.025 * M;
+    if (p.headG) { p.headG.rotation.x = -p.body.rotation.x * 0.6; p.headG.rotation.y = -p.body.rotation.y * 0.7; } // eyes stay level
+    pm.idleT = 0; pm.mesh.rotation.z = 0; p.leftLeg.rotation.z = 0; p.rightLeg.rotation.z = 0;
   } else {
     const k = Math.min(1, dt * 10);
     { const gy = terrainHeight(pos.x, pos.z); pm.mesh.position.y += (gy - pm.mesh.position.y) * k; if (Math.abs(gy - pm.mesh.position.y) > 0.5) pm.mesh.position.y = gy; }
     for (const l of [p.leftLeg, p.rightLeg]) { l.rotation.x += (0 - l.rotation.x) * k; knee(l).rotation.x += (0 - knee(l).rotation.x) * k; }
     p.body.rotation.y += (0 - p.body.rotation.y) * k; p.body.rotation.x += (0 - p.body.rotation.x) * k; p.body.rotation.z += (0 - p.body.rotation.z) * k;
-    // idle breathing
+    // idle: breathing, a slow weight shift onto one leg, and now and then a look around
     pm.idleT = (pm.idleT || 0) + dt;
-    p.body.position.y = Math.sin(pm.idleT * 2.2) * 0.008;
+    const it = pm.idleT, settle = Math.min(1, it / 1.2);
+    p.body.position.y = Math.sin(it * 2.1) * 0.009;
+    const shift = Math.sin(it * 0.42 + (pm.idleSeed ??= Math.random() * 6)) * settle;
+    p.body.rotation.z = shift * 0.03; pm.mesh.rotation.z = shift * 0.012;
+    knee(shift > 0 ? p.leftLeg : p.rightLeg).rotation.x = Math.abs(shift) * 0.22; // relaxed knee on the unweighted side
+    (shift > 0 ? p.leftLeg : p.rightLeg).rotation.z = 0; (shift > 0 ? p.rightLeg : p.leftLeg).rotation.z = shift * 0.04;
+    if (p.headG && !pm.actionAnim) {
+      const cyc = (it + 3) % 11, look = cyc > 7 ? Math.sin((cyc - 7) / 4 * Math.PI) : 0, dir = Math.floor((it + 3) / 11) % 2 ? 1 : -1;
+      p.headG.rotation.y += (look * 0.7 * dir - p.headG.rotation.y) * Math.min(1, dt * 4);
+      p.headG.rotation.x += (Math.sin(it * 0.3) * 0.05 - p.headG.rotation.x) * Math.min(1, dt * 4);
+    }
+    // turning on the spot: little stepping feet instead of sliding round
+    if (Math.abs(pm.turnLeft || 0) > 0.15) {
+      pm.turnT = (pm.turnT || 0) + dt * 12; const st = Math.sin(pm.turnT);
+      p.leftLeg.rotation.x = Math.max(0, st) * -0.3; p.rightLeg.rotation.x = Math.max(0, -st) * -0.3;
+      knee(p.leftLeg).rotation.x = Math.max(0, st) * 0.5; knee(p.rightLeg).rotation.x = Math.max(0, -st) * 0.5;
+    }
     elbow(p.leftArm).rotation.x += (-0.25 - elbow(p.leftArm).rotation.x) * k;
     if (pm.actionAnim > 0) {
       pm.actionAnim = Math.max(0, pm.actionAnim - dt * 2.0);

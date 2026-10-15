@@ -499,7 +499,7 @@ export function applyRigPose(pm, o) {
   p.body.rotation.set(o.bx, o.by, o.bz);
   // pivot the torso about the hips rather than the feet
   p.body.position.set(HIP_Y * Math.sin(o.bz), HIP_Y * (1 - Math.cos(o.bx) * Math.cos(o.bz)), -HIP_Y * Math.sin(o.bx));
-  p.headG.rotation.x = o.hx;
+  p.headG.rotation.x = o.hx; p.headG.rotation.y = 0;
   p.leftArm.rotation.set(o.lax, 0, o.laz); e(p.leftArm).rotation.x = o.lex;
   p.rightArm.rotation.set(o.rax, 0, o.raz); e(p.rightArm).rotation.x = o.rex;
   p.leftLeg.rotation.set(o.llx, 0, o.llz); kn(p.leftLeg).rotation.x = o.lkx;

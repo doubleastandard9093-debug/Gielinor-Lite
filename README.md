@@ -68,6 +68,10 @@ Modern, RuneScape 3-inspired look made entirely in code (no image files or third
 
 **Settings → Graphics quality** cycles Auto / High / Low. Low skips bloom, colour grade, clouds, sway, grass and shadows and renders at a lower resolution. Auto starts on High and drops to Low once if a phone averages under ~26 fps.
 
+## Animation
+
+- **Locomotion** (`js/player.js`): the walk and run cycles blend by a smoothed speed weight (`runK`) and ease in and out by `moveK`. Terrain slope sampled along the facing adds lean, knee lift and stride changes. The head counter-rotates so the gaze stays level. Idle adds breathing, a slow weight shift with a relaxed knee, periodic look-arounds and turn-in-place steps.
+
 ## Controls
 
 - **Tap** a tree, rock, fishing spot, monster, item pile, townsperson, furnace, anvil, range, altar, the bank booth or a shop to walk there and act.
