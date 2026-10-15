@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { updateDay, DAY, dayLabel } from './daycycle.js';
-import { poseGait } from './gait.js';
+import { poseGait, tailSway } from './gait.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, SUN_DIR, createWaterReflection } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
@@ -1722,7 +1722,7 @@ function updateMonsters(dt, now) {
     m.walkT = (m.walkT || 0) + (moving ? dt * 9 : 0);
     const sw = moving ? Math.sin(m.walkT) * 0.6 : 0;
     const hiQuad = m.lod && m.lod.hi && !m.rigHi && m.lod.hi.userData.legs && m.lod.hi.userData.legs === m.legs;
-    if (hiQuad) { const sp = moving ? Math.min(speed, Math.hypot(pos.x - (m._px ?? pos.x), pos.z - (m._pz ?? pos.z)) / Math.max(dt, 1e-3) || speed) : 0; poseGait(m, m.lod.hi, dt, sp, now); }
+    if (hiQuad) { const sp = moving ? Math.min(speed, Math.hypot(pos.x - (m._px ?? pos.x), pos.z - (m._pz ?? pos.z)) / Math.max(dt, 1e-3) || speed) : 0; poseGait(m, m.lod.hi, dt, sp, now); tailSway(m, m.lod.hi, dt, sp, now); }
     m._px = pos.x; m._pz = pos.z;
     if (!hiQuad) m.legs.forEach((l, i) => {
       const ud = l.userData;

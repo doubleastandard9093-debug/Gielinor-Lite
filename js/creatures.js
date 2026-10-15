@@ -102,8 +102,9 @@ function wolf(v) {
   // tail: bushy, hanging back
   const tail = latheZ([[0, 0.04], [0.06, 0], [0.1, -0.15], [0.11, -0.32], [0.07, -0.48], [0, -0.55]], 12);
   tail.rotateX(-0.7 * v.tailUp);
-  body.push(place(fur(tail, 0.04), 0, 0.92, -0.5));
   const bodyG = new THREE.Group(); root.add(bodyG); meshOf(body, bodyG);
+  // separate pivot so the tail can swing with secondary motion
+  const tailG = new THREE.Group(); tailG.position.set(0, 0.92, -0.5); bodyG.add(tailG); meshOf([fur(tail, 0.04)], tailG);
   const legs = [];
   for (const [x, z, front] of [[0.15, 0.3, 1], [-0.15, 0.3, 1], [0.15, -0.3, 0], [-0.15, -0.3, 0]]) {
     const up = [fur(lathe([[0, 0.06], [0.08, 0.04], [0.085, -0.08], [0.06, -0.22], [0.045, -0.3], [0, -0.32]], 12), 0.02)];
@@ -112,7 +113,7 @@ function wolf(v) {
     for (let t = -1.5; t <= 1.5; t++) paw.push(place(paint(sq(prim.sphere(0.018, 6, 4), 1, 0.8, 1.2), () => dk(base, 0.5)), t * 0.022, -0.28, 0.065));
     legs.push(jointLeg(root, x, 0.6, z, up, lo, paw, -0.3, front ? 0.05 : -0.25, front ? -0.05 : 0.45));
   }
-  return { root, legs, head };
+  return { root, legs, head, tail: tailG };
 }
 function cow(v) {
   const root = new THREE.Group(), s = v.seed;
@@ -123,9 +124,10 @@ function cow(v) {
   body.push(place(hide(sq(prim.sphere(0.2, 14, 10), 1.5, 0.6, 1)), 0, 1.38, -0.65)); // hip bones
   body.push(place(skinPaint(sq(prim.sphere(0.15, 14, 10), 1, 0.7, 1.1), 0xe8a8a0, { mottle: 0.06 }), 0, 0.6, -0.35));
   for (const [x, z] of [[-0.06, -0.3], [0.06, -0.3], [-0.06, -0.42], [0.06, -0.42]]) body.push(place(skinPaint(prim.cone(0.025, 0.08, 6), 0xd89890), x, 0.49, z, Math.PI));
-  const tail = lathe([[0, 0], [0.03, -0.02], [0.022, -0.6], [0, -0.62]], 8); body.push(place(hide(tail), 0, 1.25, -0.86, 0.15));
-  body.push(place(skinPaint(blob(0.05, 0.1, 0.05, { detail: 2, lump: 0.3, seed: s }), dk(v.hideB, 1)), 0, 0.6, -0.92));
+  const tail = lathe([[0, 0], [0.03, -0.02], [0.022, -0.6], [0, -0.62]], 8);
+  const tuft = place(skinPaint(blob(0.05, 0.1, 0.05, { detail: 2, lump: 0.3, seed: s }), dk(v.hideB, 1)), 0, -0.62, 0);
   const bodyG = new THREE.Group(); root.add(bodyG); meshOf(body, bodyG);
+  const tailG = new THREE.Group(); tailG.position.set(0, 1.25, -0.86); tailG.rotation.x = 0.15; bodyG.add(tailG); meshOf([hide(tail), tuft], tailG);
   const head = new THREE.Group(); head.position.set(0, 1.2, 0.9); root.add(head);
   const hd = [hide(sq(latheZ([[0, 0.12], [0.14, 0.08], [0.2, -0.05], [0.18, -0.2], [0, -0.24]], 16), 1, 1.05, 1))];
   hd.push(place(skinPaint(sq(prim.sphere(0.15, 14, 10), 1.1, 0.8, 0.85), 0xe8b0a0, { mottle: 0.1 }), 0, -0.14, 0.24));
@@ -372,6 +374,6 @@ export function buildCreatureRig(typeName, t, v, extras = [], headExtras = [], h
     return rig;
   }
   MAT = null;
-  out.root.userData = { legs: out.legs, head: out.head, wings: out.wings, quad: true, id: v.seed };
+  out.root.userData = { legs: out.legs, head: out.head, wings: out.wings, tail: out.tail, quad: true, id: v.seed };
   return out.root;
 }

@@ -27,6 +27,7 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>Things that follow through.</b> Capes now hang from your shoulders and stream out behind you when you run, flutter at speed, swing out when you turn and settle when you stop. Wolf and cow tails are now loose and springy: they trail behind when the animal runs, swing out on turns, bob with each stride and swish or wag while it stands, tucking low when a wolf is fighting.</p>
 <p><b>Softer, more natural shadows.</b> Shadows are now crisp where something touches the ground, like feet, fence posts and tree trunks, and soften the further they stretch from it, so tree crowns and roof edges cast gentle, blurry shapes instead of hard cut-outs.</p>
 <p><b>Living water.</b> On High, lakes and ponds now mirror the trees, buildings, hills and sky around them, rippling as the surface moves. Shallows near the bank turn clearer and take on the colour of the sandy bed, and bands of foam lap in toward the shore.</p>
 <p><b>Ground with real texture.</b> Cliffs and steep hillsides now show rock projected from every side, so it no longer smears down slopes, with layered strata across the faces. Grass clumps, dirt grain, cobble grout and rock catch the light with small bumps and shadows, and each surface has its own sheen: dull grass and dirt, smoother cobbles, glinting snow and slightly damp valley floors.</p>

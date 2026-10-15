@@ -153,8 +153,9 @@ export function createPlayer(scene) {
 
   // Cape hangs off the back (slightly curved); amulet is a small gem at the neck.
   const capeMat = new THREE.MeshStandardMaterial({ color: 0xc03030, roughness: 0.8, side: THREE.DoubleSide });
-  const capeGeo = new THREE.CylinderGeometry(0.42, 0.55, 1.05, 12, 1, true, Math.PI * 0.7, Math.PI * 0.6);
-  const cape = mesh(capeGeo, capeMat, 0, 0.9, 0.12, body);
+  const capeGeo = new THREE.CylinderGeometry(0.42, 0.55, 1.05, 12, 4, true, Math.PI * 0.7, Math.PI * 0.6);
+  capeGeo.translate(0, -0.525, 0); // pivot at the shoulders so it can swing
+  const cape = mesh(capeGeo, capeMat, 0, 1.425, 0.12, body);
   cape.visible = false;
   const neckMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
   const neck = mesh(new THREE.OctahedronGeometry(0.06, 0), neckMat, 0, 1.33, 0.2, body);
@@ -459,6 +460,16 @@ export function updatePlayer(pm, keys, dt, running, camYaw) {
       elbow(p.rightArm).rotation.x += (-0.25 - elbow(p.rightArm).rotation.x) * k;
       p.leftArm.rotation.z += (-0.05 - p.leftArm.rotation.z) * k; p.rightArm.rotation.z += (0.05 - p.rightArm.rotation.z) * k;
     }
+  }
+  // cape: damped spring that flares back with speed, lags behind turns and flutters while running
+  if (p.cape && p.cape.visible) {
+    const cs = pm.capeS ??= { x: 0, v: 0, z: 0, vz: 0, yaw: pm.mesh.rotation.y };
+    let dy = pm.mesh.rotation.y - cs.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); cs.yaw = pm.mesh.rotation.y;
+    const spd = moved / Math.max(dt, 1e-3), d = Math.min(dt, 0.05), tm = performance.now() * 0.001;
+    const tx = Math.min(0.65, spd * 0.1) + Math.sin(tm * 9) * 0.06 * Math.min(1, spd / 4);
+    cs.v += ((tx - cs.x) * 45 - cs.v * 6) * d; cs.x += cs.v * d;
+    cs.vz += ((dy / Math.max(dt, 1e-3) * 0.08 - cs.z) * 45 - cs.vz * 6) * d; cs.z += cs.vz * d;
+    p.cape.rotation.x = Math.max(-0.1, Math.min(0.75, cs.x)); p.cape.rotation.z = Math.max(-0.4, Math.min(0.4, cs.z));
   }
   // reactions layered on top of whatever else is playing: flinch when hit, shield or forearm block when the hit is stopped
   if (pm.hitT > 0) { pm.hitT = Math.max(0, pm.hitT - dt * 3.2); const h = Math.sin(pm.hitT * Math.PI) * (pm.hitK || 1);

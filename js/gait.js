@@ -59,3 +59,17 @@ export function poseGait(m, rig, dt, speed, now) {
     if (speed > 2) rig.position.y += Math.max(0, -f) * 0.05; // each downstroke lifts the body a little
   }
 }
+
+// Secondary motion: tails lag behind turns and body bounce through a damped spring, with an idle swish or wag.
+export function tailSway(m, rig, dt, speed, now) {
+  const t = rig.userData && rig.userData.tail; if (!t) return;
+  const sp = m.tailS ??= { x: 0, vx: 0, y: 0, vy: 0, rx: t.rotation.x, yaw: m.mesh.rotation.y };
+  let dyaw = m.mesh.rotation.y - sp.yaw; dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw)); sp.yaw = m.mesh.rotation.y;
+  const turn = dyaw / Math.max(dt, 1e-3), d = Math.min(dt, 0.05);
+  const idle = speed < 0.05 ? Math.sin(now * (m.shape === 'cow' ? 0.0025 : 0.006) + (m.spawnX || 0)) * (m.state === 'fight' ? 0.1 : 0.35) : 0;
+  const tyaw = -turn * 0.12 + idle, tpitch = -Math.min(1.5, speed * 0.12) * (m.state === 'fight' ? 1.3 : 1) + (rig.position.y || 0) * 6;
+  const k = 60, c = 7;
+  sp.vy += ((tyaw - sp.y) * k - sp.vy * c) * d; sp.y += sp.vy * d;
+  sp.vx += ((tpitch - sp.x) * k - sp.vx * c) * d; sp.x += sp.vx * d;
+  t.rotation.y = Math.max(-1, Math.min(1, sp.y)); t.rotation.x = sp.rx + Math.max(-1.2, Math.min(0.6, sp.x));
+}
