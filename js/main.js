@@ -7,13 +7,14 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { updateDay, DAY, dayLabel } from './daycycle.js';
 import { poseGait, tailSway } from './gait.js';
+import { PUSH } from './models.js';
 import { initVfx, updateVfx, addFire, removeFireVfx, burst, setVfxQuality } from './vfx.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, SUN_DIR, createWaterReflection } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
 import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from './chunk.js';
 import { terrainHeight, insideLake, WORLD_HALF, TOWNS, CAVE, inCave } from './world.js';
-import { createWorld, createPileMesh, SPAWN, setDecorQuality, updateDecorChunks } from './world.js';
+import { createWorld, createPileMesh, SPAWN, setDecorQuality, updateDecorChunks, updateLocalGrass } from './world.js';
 import { updateLod, setLodRange, poseHumanoid } from './anatomy.js';
 import { createCritters } from './critters.js';
 import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt } from './player.js';
@@ -1325,6 +1326,13 @@ function updateCave(dt) {
 }
 const _caveFog = new THREE.Color(0x0c0a10);
 const _shaftV = new THREE.Vector3();
+function updatePushers() {
+  const P = PUSH.value, p = pm.mesh.position; P[0].set(p.x, p.z, 0.9, 1);
+  const near = [];
+  for (const m of monsters) { if (!m.alive || !m.mesh.visible) continue; const d = Math.hypot(m.mesh.position.x - p.x, m.mesh.position.z - p.z); if (d < 25) near.push([d, m]); }
+  near.sort((a, b) => a[0] - b[0]);
+  for (let i = 1; i < 4; i++) { const n = near[i - 1]; if (n) P[i].set(n[1].mesh.position.x, n[1].mesh.position.z, 0.6 + 0.5 * (n[1].mesh.scale.x || 1), 0.9); else P[i].w = 0; }
+}
 function updateShafts() {
   const U = gradePass.uniforms; _shaftV.copy(SUN_DIR).multiplyScalar(400).add(camera.position).project(camera);
   const facing = _shaftV.z < 1 ? 1 : 0, on = Math.abs(_shaftV.x) < 1.6 && Math.abs(_shaftV.y) < 1.6 ? 1 : 0;
@@ -2046,6 +2054,7 @@ function animate(now) {
   updateCave(dt);
   followLight(dirLight, rig.fx, rig.fz, DAY.lightDir);
   sky.follow(camera);
+  updatePushers(); updateLocalGrass(scene, pm.mesh.position.x, pm.mesh.position.z, gfx.quality !== 'low' && !inCave(pm.mesh.position.x, pm.mesh.position.z));
   updateVfx(dt, pm.mesh.position.x, pm.mesh.position.z, camera, now);
   if (gfx.quality === 'low') { waterRefl.update(false); renderer.render(scene, camera); } else { updateShafts(); waterRefl.update(true); composer.render(); }
 

@@ -123,6 +123,8 @@ export function col(geo, hex, amt = 0.22) { return shade(geo, hex, amt); }
 // ---------------------------------------------------------------------------
 // Shared vertex-colour Standard materials (roughness/metalness tuned for outdoor props).
 export const vcMat = attachNoiseBump(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, metalness: 0.04 }), 0.2);
+// Up to 4 world-space pushers (x, z, radius, strength): the player and nearby mobs flatten grass around them.
+export const PUSH = { value: [new THREE.Vector4(0, 0, 0, 0), new THREE.Vector4(0, 0, 0, 0), new THREE.Vector4(0, 0, 0, 0), new THREE.Vector4(0, 0, 0, 0)] };
 export function makeFoliageMat(opts = {}, amount = 1) {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.0, ...opts });
   m.onBeforeCompile = sh => swayShader(sh, amount);
@@ -130,9 +132,9 @@ export function makeFoliageMat(opts = {}, amount = 1) {
   return m;
 }
 function swayShader(sh, amount) {
-  sh.uniforms.time = TIME; sh.uniforms.sway = SWAY;
+  sh.uniforms.time = TIME; sh.uniforms.sway = SWAY; if (amount > 1) sh.uniforms.pushers = PUSH;
   sh.vertexShader = sh.vertexShader
-    .replace('#include <common>', '#include <common>\nuniform float time, sway;')
+    .replace('#include <common>', '#include <common>\nuniform float time, sway;' + (amount > 1 ? '\nuniform vec4 pushers[4];' : ''))
     .replace('#include <begin_vertex>', `#include <begin_vertex>
       {
         vec4 wo = modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);
@@ -145,7 +147,13 @@ function swayShader(sh, amount) {
         float ph = wo.x * 0.37 + wo.z * 0.23;
         transformed.x += sin(time * 1.25 + ph) * 0.03 * h * sway * AMT * lod;
         transformed.z += cos(time * 1.05 + ph * 1.3) * 0.025 * h * sway * AMT * lod;
-      }`.replace(/AMT/g, amount.toFixed(2)).replace('transformed.y - 0.9', amount > 1 ? 'transformed.y' : 'transformed.y - 0.9'));
+        PUSHCODE
+      }`.replace('PUSHCODE', amount > 1 ? `
+        // bend away from pushers, tips most, with a little squash so trampled grass lies lower
+        for (int i = 0; i < 4; i++) { vec4 P = pushers[i]; if (P.w <= 0.0) continue;
+          vec2 dv = wo.xz - P.xy; float dd = length(dv); float f = (1.0 - smoothstep(P.z * 0.3, P.z, dd)) * P.w;
+          vec2 dir = dd > 1e-3 ? dv / dd : vec2(1.0, 0.0);
+          transformed.xz += dir * f * transformed.y * 0.9; transformed.y *= 1.0 - 0.45 * f; }` : '').replace(/AMT/g, amount.toFixed(2)).replace('transformed.y - 0.9', amount > 1 ? 'transformed.y' : 'transformed.y - 0.9'));
 }
 export const foliageMat = makeFoliageMat();
 

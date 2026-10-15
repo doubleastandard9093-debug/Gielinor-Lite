@@ -1517,8 +1517,33 @@ function distToSeg(px, pz, x1, z1, x2, z2) {
   const t = Math.max(0, Math.min(1, ((px - x1) * dx + (pz - z1) * dz) / l2));
   return Math.hypot(px - (x1 + dx * t), pz - (z1 + dz * t));
 }
+let decorOk = null, localGrass = null;
+// Dense near-player meadow (High): a deterministic jittered grid of tufts in a 32 m square that is rebuilt as the player
+// crosses 4 m cells, so the ground near you is carpeted with grass that bends around you.
+export function updateLocalGrass(scene, px, pz, on) {
+  if (!decorOk) return;
+  if (!localGrass) {
+    const N = 14000, mat = makeFoliageMat({}, 2.5), geo = tuftGeometry(4, 0.34, 0.12);
+    const mesh = new THREE.InstancedMesh(geo, mat, N); mesh.count = 0; mesh.frustumCulled = false; mesh.receiveShadow = true;
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(N * 3), 3);
+    scene.add(mesh); localGrass = { mesh, N, cx: 1e9, cz: 1e9 };
+  }
+  const G = localGrass; G.mesh.visible = on; if (!on) return;
+  const cx = Math.round(px / 4), cz = Math.round(pz / 4); if (cx === G.cx && cz === G.cz) return; G.cx = cx; G.cz = cz;
+  const S = 0.27, H = 16, x0 = cx * 4 - H, z0 = cz * 4 - H, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), sc = new THREE.Vector3(), c = new THREE.Color();
+  const hash = (a, b) => { const h = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return h - Math.floor(h); };
+  let n = 0;
+  for (let gx = Math.floor(x0 / S); gx * S < x0 + 2 * H && n < G.N; gx++) for (let gz = Math.floor(z0 / S); gz * S < z0 + 2 * H && n < G.N; gz++) {
+    const r1 = hash(gx, gz), r2 = hash(gz + 7.3, gx - 2.1); if (r1 > 0.62) continue;
+    const x = (gx + r2) * S, z = (gz + hash(gx + 1.7, gz + 9.2)) * S;
+    if (Math.abs(x) > WORLD_HALF - 2 || Math.abs(z) > WORLD_HALF - 2 || !decorOk(x, z, 0.2)) continue;
+    const edge = Math.min(H - Math.abs(x - cx * 4), H - Math.abs(z - cz * 4)), s = (0.55 + r1 * 0.9) * Math.min(1, Math.max(0, edge / 5)); if (s < 0.08) continue; m4.compose(p.set(x, terrainHeight(x, z) - 0.02, z), q.setFromEuler(e.set(0, r2 * 6.283, 0)), sc.set(s, s * (0.8 + r2 * 0.5), s));
+    G.mesh.setMatrixAt(n, m4); G.mesh.setColorAt(n, c.setHSL(0.21 + r2 * 0.07, 0.33 + r1 * 0.15, 0.62 + hash(gx * 3, gz) * 0.28)); n++;
+  }
+  G.mesh.count = n; G.mesh.instanceMatrix.needsUpdate = true; G.mesh.instanceColor.needsUpdate = true;
+}
 function scatterDecor(scene, rng, occupied) {
-  const ok = (x, z, pad) => {
+  const ok = decorOk = (x, z, pad) => {
     if (Math.hypot(x, z) < 6.5 || Math.hypot(x - 50, z + 24) < 4) return false;
     for (const t of Object.values(TOWNS)) if (Math.hypot(x - t.x, z - t.z) < 6) return false;
     if (Math.hypot(x - 132, z + 22) < 6) return false;
