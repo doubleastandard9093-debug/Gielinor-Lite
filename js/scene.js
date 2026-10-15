@@ -2,6 +2,22 @@ import * as THREE from 'three';
 
 export const IS_TOUCH = (typeof window !== 'undefined') && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
+// Height fog: patch three's fog chunks so fog is thicker in low ground and valleys and thins with altitude,
+// letting peaks rise out of a ground mist. Applies to every material that uses fog.
+THREE.ShaderChunk.fog_pars_vertex = '#ifdef USE_FOG\n varying float vFogDepth; varying float vFogWorldY;\n#endif';
+THREE.ShaderChunk.fog_vertex = '#ifdef USE_FOG\n vFogDepth = - mvPosition.z; vFogWorldY = (inverse(viewMatrix) * mvPosition).y;\n#endif';
+THREE.ShaderChunk.fog_pars_fragment = '#ifdef USE_FOG\n uniform vec3 fogColor; varying float vFogDepth; varying float vFogWorldY;\n #ifdef FOG_EXP2\n uniform float fogDensity;\n #else\n uniform float fogNear; uniform float fogFar;\n #endif\n#endif';
+THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
+ #ifdef FOG_EXP2
+  float fogH = 0.7 + 0.55 * exp(-max(vFogWorldY + 1.0, 0.0) * 0.08);
+  float fogD = fogDensity * fogH;
+  float fogFactor = 1.0 - exp(- fogD * fogD * vFogDepth * vFogDepth);
+ #else
+  float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
+ #endif
+ gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor);
+#endif`;
+
 export function createScene() {
   const scene = new THREE.Scene();
   // Fog matches the sky's horizon colour so distant land fades into the sky dome.

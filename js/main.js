@@ -8,7 +8,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { updateDay, DAY, dayLabel } from './daycycle.js';
 import { poseGait } from './gait.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY } from './gfx.js';
+import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, SUN_DIR } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
 import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from './chunk.js';
 import { terrainHeight, insideLake, WORLD_HALF, TOWNS, CAVE, inCave } from './world.js';
@@ -59,11 +59,17 @@ composer.addPass(bloom);
 composer.addPass(new OutputPass());
 // Final colour grade: a touch more saturation and a soft vignette (High quality only).
 const gradePass = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, sat: { value: 1.12 }, vig: { value: 0.32 } },
+  uniforms: { tDiffuse: { value: null }, sat: { value: 1.12 }, vig: { value: 0.32 }, sunUV: { value: new THREE.Vector2(0.5, 0.8) }, shaftK: { value: 0 }, shaftCol: { value: new THREE.Color(1, 0.9, 0.7) } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, vig; varying vec2 vUv;
-    void main(){ vec4 c = texture2D(tDiffuse, vUv); float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
-      c.rgb = mix(vec3(l), c.rgb, sat); vec2 d = vUv - 0.5; c.rgb *= 1.0 - vig * smoothstep(0.25, 0.85, dot(d, d) * 2.2); gl_FragColor = c; }`
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, vig, shaftK; uniform vec2 sunUV; uniform vec3 shaftCol; varying vec2 vUv;
+    void main(){ vec4 c = texture2D(tDiffuse, vUv);
+      // light shafts: radial march toward the sun gathering bright sky pixels, so rays stream past trees and roofs
+      if (shaftK > 0.001) { vec2 dl = (vUv - sunUV) / 28.0; vec2 uv = vUv; float acc = 0.0, w = 1.0;
+        for (int i = 0; i < 28; i++) { uv -= dl; vec3 s = texture2D(tDiffuse, uv).rgb; acc += smoothstep(0.82, 1.0, dot(s, vec3(0.33))) * w; w *= 0.95; }
+        float fall = 1.0 - smoothstep(0.0, 0.75, length((vUv - sunUV) * vec2(1.6, 1.0)));
+        c.rgb += shaftCol * acc / 28.0 * shaftK * fall; }
+      float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+      c.rgb = mix(vec3(l), c.rgb, sat); c.rgb = mix(c.rgb, smoothstep(0.0, 1.0, c.rgb), (sat - 1.12) * 0.9); vec2 d = vUv - 0.5; c.rgb *= 1.0 - vig * smoothstep(0.25, 0.85, dot(d, d) * 2.2); gl_FragColor = c; }`
 });
 composer.addPass(gradePass);
 document.body.prepend(renderer.domElement);
@@ -148,6 +154,10 @@ function applyGfx() {
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(window.innerWidth, window.innerHeight);
   gtao.enabled = gfx.quality !== 'low' && player.settings.ao !== false;
+  // High: AgX filmic tone mapping (wider highlight roll-off, no hue shift on bright skies) with a saturation lift; Low keeps ACES
+  renderer.toneMapping = gfx.quality === 'low' ? THREE.ACESFilmicToneMapping : THREE.AgXToneMapping;
+  renderer.toneMappingExposure = gfx.quality === 'low' ? 1.12 : 1.18;
+  gradePass.uniforms.sat.value = gfx.quality === 'low' ? 1.12 : 1.5;
   sky.setQuality(gfx.quality);
   setDecorQuality(gfx.quality);
   SWAY.value = gfx.quality === 'low' ? 0 : 1;
@@ -1308,6 +1318,16 @@ function updateCave(dt) {
   scene.background.copy(scene.fog.color);
 }
 const _caveFog = new THREE.Color(0x0c0a10);
+const _shaftV = new THREE.Vector3();
+function updateShafts() {
+  const U = gradePass.uniforms; _shaftV.copy(SUN_DIR).multiplyScalar(400).add(camera.position).project(camera);
+  const facing = _shaftV.z < 1 ? 1 : 0, on = Math.abs(_shaftV.x) < 1.6 && Math.abs(_shaftV.y) < 1.6 ? 1 : 0;
+  U.sunUV.value.set((_shaftV.x + 1) / 2, (_shaftV.y + 1) / 2);
+  // strongest at golden hour, gone at night and in the cave
+  const gold = 1 - Math.min(1, Math.max(0, (DAY.sunH - 0.1) / 0.5));
+  U.shaftK.value = facing * on * (1 - DAY.night) * (1 - caveK) * (0.35 + 0.65 * gold) * 0.9;
+  U.shaftCol.value.copy(DAY.lightCol);
+}
 
 let ammoMsg = null;
 function useArrow() {
@@ -2000,7 +2020,7 @@ function animate(now) {
   updateCave(dt);
   followLight(dirLight, rig.fx, rig.fz, DAY.lightDir);
   sky.follow(camera);
-  if (gfx.quality === 'low') renderer.render(scene, camera); else composer.render();
+  if (gfx.quality === 'low') renderer.render(scene, camera); else { updateShafts(); composer.render(); }
 
   overlays.update(camera, barEnts, now);
   if (frame % 10 === 4) { if (player.settings.nameplates === false) overlays.setPlates([]); else refreshPlates(); }

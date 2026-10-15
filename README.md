@@ -73,6 +73,7 @@ Modern, RuneScape 3-inspired look made entirely in code (no image files or third
 - **Locomotion** (`js/player.js`): the walk and run cycles blend by a smoothed speed weight (`runK`) and ease in and out by `moveK`. Terrain slope sampled along the facing adds lean, knee lift and stride changes. The head counter-rotates so the gaze stays level. Idle adds breathing, a slow weight shift with a relaxed knee, periodic look-arounds and turn-in-place steps.
 
 - **Creature gaits** (`js/gait.js`): detailed quadruped rigs use per-leg stance/swing cycles with gait tables (4-beat walk for cows and dragons, diagonal trot, and a rotary gallop above 2.2 u/s for wolves), cross-faded when the gait changes, plus body bob, pitch and roll. Spiders use a wave gait. Dragon wings fan at rest and flap with body lift when moving fast. Idle animals get head look-arounds.
+- **Tone mapping, height fog and light shafts**: High uses `THREE.AgXToneMapping` (exposure 1.18) plus a saturation and contrast lift in the grade pass; Low keeps ACES. `js/scene.js` patches three's fog chunks so FogExp2 density scales with world height (denser in valleys). The grade pass does a 28-tap radial march toward the projected sun (`updateShafts` in `js/main.js`), faded by sun height, night and the cave.
 - **Skilling poses** (`SKILL_POSES` in `js/player.js`): chop, mine, fish, smith, cook, craft (Fletching, Crafting and Herblore) and fire are keyed on `pm.actionKind`, which the gather, make and light actions set. Torso lean pivots about the hips (`hipPivot`).
 
 ## Controls
