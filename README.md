@@ -40,6 +40,7 @@ The UI is original art made in code: CSS, inline SVG and canvas. There are no im
 
 ## Graphics
 
+- **Ambient occlusion (High):** a `GTAOPass` (radius 0.9, 16 samples, Poisson denoise) runs between the render and bloom passes; Settings → Ambient occlusion turns it off. Low skips it.
 - **Fog and view distance:** High uses FogExp2 density 0.0025, a 760-unit far plane and a 135-unit cull radius, so the northern mountains stay readable. Low uses 0.0064, 520 and 70.
 
 Modern, RuneScape 3-inspired look made entirely in code (no image files or third-party art): sky dome with sun and clouds, warm sunlight with soft shadows, bloom and a light colour grade, splat-textured terrain (grass, dirt paths, sand, cobbles) with hills beyond the map edge, animated water, swaying layered trees, ore-veined rocks, timber and stone buildings with tiled gable roofs, grass/flower/bush ground clutter, and rounded player, NPC and monster models. Most models are baked into one mesh each to keep draw calls low on phones.

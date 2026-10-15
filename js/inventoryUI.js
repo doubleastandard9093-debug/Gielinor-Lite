@@ -27,6 +27,7 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>Ambient occlusion.</b> On High, corners, building bases, the well, eaves and the folds of characters now get soft contact shading (ground-truth AO), so objects sit in the world instead of floating on it. You can switch it off in Settings.</p>
 <p><b>Planted hands and feet.</b> Feet now stay planted through wall mantles, the roll over the net's top bar, gap take-offs and landings, and every landing after monkey bars and the rope swing. In pipes you crawl on hands and knees on the pipe floor, and after a fall your palms and heels rest on the ground. Bushes and trees between the camera and you are hidden during an obstacle. On a phone in portrait the camera starts closer, so your character is bigger, and Settings has a new <b>Zoom-out limit</b> (Close, Normal or Far).</p>
 <p><b>Agility, hands-on.</b> Your character now has jointed fingers (three segments each plus a thumb) that wrap around ropes, rungs, holds and weapon grips. On walls, nets, monkey bars, tightropes, ledges and the rope swing, hands and feet now lock onto the actual holds, so you climb the wall instead of sinking into it. The Port Sarim mast rope swings with you and keeps swinging after you let go. Course frames, posts and walls are solid now, without blocking the routes. During an obstacle the camera moves in for a side-on view and picks an angle that trees and bushes don't block.</p>
 <p><b>Realistic Agility.</b> Every obstacle now has its own full-body animation that follows the obstacle: arms out and careful steps with the odd wobble on logs, hands sliding along the rope on tightropes, hand-over-hand net climbs that roll over the top bar, alternating hand and foot holds up rough walls with a mantle and drop, a crouch-and-crawl through pipes, a wind-up, tucked jump and landing over gaps, a run-up, grab and pendulum swing on the Port Sarim mast rope, swinging hand to hand on Falador's new monkey bars, and a face-the-wall shimmy along ledges. Failing now shows a stumble and a fall before you take damage. Each crossing varies a little, and the camera follows you up and over.</p>
@@ -457,6 +458,7 @@ export function createInventoryUI(api) {
       <button class="toggle on" data-act="gfx">Graphics quality: <b>${api.gfxLabel ? api.gfxLabel() : 'Auto'}</b></button>
       <button class="toggle ${api.shadowsOn() ? 'on' : ''}" data-act="shadows">Shadows: ${api.shadowsOn() ? 'On' : 'Off'}${api.shadowsNote ? api.shadowsNote() : ''}</button>
       <div class="craftskill">Interface</div>
+      ${v('ao', 'Ambient occlusion', s.ao === false ? 'Off' : 'On (High)')}
       ${v('zoomlimit', 'Zoom-out limit', ({ 18: 'Close', 30: 'Normal', 45: 'Far' })[s.zoomLimit || 30])}
       ${v('uiscale', 'UI scale', Math.round((s.uiScale || 1) * 100) + '%')}
       ${t('nameplates', 'Nameplates', s.nameplates !== false)}

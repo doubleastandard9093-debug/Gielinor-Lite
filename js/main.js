@@ -5,6 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
 import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from './chunk.js';
@@ -45,6 +46,12 @@ const camera = createCamera();
 const renderer = createRenderer();
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
+// Ground-truth ambient occlusion (High only): contact darkening where walls meet ground, under eaves, in folds.
+const gtao = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight);
+gtao.output = GTAOPass.OUTPUT.Default; gtao.blendIntensity = 0.85;
+gtao.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.6, thickness: 1.4, scale: 1.0, samples: 16, distanceFallOff: 1.0 });
+gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+composer.addPass(gtao);
 const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.3, 0.45, 0.9);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
@@ -138,6 +145,7 @@ function applyGfx() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(window.innerWidth, window.innerHeight);
+  gtao.enabled = gfx.quality !== 'low' && player.settings.ao !== false;
   sky.setQuality(gfx.quality);
   setDecorQuality(gfx.quality);
   SWAY.value = gfx.quality === 'low' ? 0 : 1;
@@ -476,6 +484,7 @@ function setting(act) {
     if (text && text.trim()) finishImport(applySaveData(text.trim(), skills, player, pm));
   }
   else if (act === 'uiscale') { const opts = [0.85, 1, 1.15, 1.3]; s.uiScale = opts[(opts.indexOf(s.uiScale || 1) + 1) % opts.length]; document.documentElement.style.setProperty('--ui-scale', s.uiScale); window.dispatchEvent(new Event('resize')); }
+  else if (act === 'ao') { s.ao = s.ao === false; applyGfx(); }
   else if (act === 'nameplates') s.nameplates = s.nameplates === false;
   else if (act === 'uisound') s.uiSound = !s.uiSound;
   else if (act === 'uivolume') { const opts = [0.25, 0.5, 1]; s.uiVolume = opts[(opts.indexOf(s.uiVolume || 0.5) + 1) % opts.length]; }
@@ -2020,7 +2029,7 @@ document.addEventListener('pointerdown', e => {
 }, true);
 window.gielinor = {
   gfx, terrainHeight, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
-  renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
+  renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
