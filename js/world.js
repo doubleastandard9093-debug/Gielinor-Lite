@@ -1540,7 +1540,7 @@ function scatterDecor(scene, rng, occupied) {
   function bucket(x, z) {
     const cx = Math.floor((x + WORLD_HALF) / CHUNK_SIZE), cz = Math.floor((z + WORLD_HALF) / CHUNK_SIZE);
     const key = cx + ',' + cz;
-    if (!buckets.has(key)) buckets.set(key, { grass: [], flowers: [], bushes: [], pebbles: [] });
+    if (!buckets.has(key)) buckets.set(key, { grass: [], grassHi: [], flowers: [], bushes: [], pebbles: [] });
     return buckets.get(key);
   }
   function scatterInto(kind, count, range, pad, scaleMin, scaleMax, colorFn) {
@@ -1555,6 +1555,8 @@ function scatterDecor(scene, rng, occupied) {
     }
   }
   scatterInto('grass', Math.round(8000 * Math.min(areaScale, 1.6)), WORLD_HALF - 2, 0.3, 0.7, 1.4, cc => cc.setHSL(0.22 + rng() * 0.06, 0.35, 0.75 + rng() * 0.2));
+  // High-only meadow layer: twice as many tufts again, shorter and darker near the roots so the ground reads as thick grass
+  scatterInto('grassHi', Math.round(16000 * Math.min(areaScale, 1.6)), WORLD_HALF - 2, 0.3, 0.5, 1.1, cc => cc.setHSL(0.2 + rng() * 0.09, 0.3 + rng() * 0.15, 0.62 + rng() * 0.25));
   scatterInto('flowers', Math.round(900 * Math.min(areaScale, 1.6)), WORLD_HALF - 2, 0.3, 0.8, 1.3, cc => cc.setHex(FLOWER[(rng() * FLOWER.length) | 0]));
   scatterInto('bushes', Math.round(320 * Math.min(areaScale, 1.5)), WORLD_HALF - 3, 1.0, 0.7, 1.4, cc => cc.setHSL(0.27 + rng() * 0.07, 0.4 + rng() * 0.2, 0.55 + rng() * 0.15));
   scatterInto('pebbles', Math.round(650 * Math.min(areaScale, 1.5)), WORLD_HALF - 2, 0.2, 0.6, 2.0, cc => cc.setScalar(0.75 + rng() * 0.35));
@@ -1580,6 +1582,7 @@ function scatterDecor(scene, rng, occupied) {
       return inst;
     }
     const g = makeInst(grassGeo, grassMat, lists.grass, false); if (g) fine.push(g);
+    const gh = makeInst(grassGeo, grassMat, lists.grassHi, false); if (gh) fine.push(gh);
     const f = makeInst(flowerGeo, flowerMat, lists.flowers, false); if (f) fine.push(f);
     makeInst(bushGeo, foliageMat, lists.bushes, true);
     makeInst(pebGeo, vcMat, lists.pebbles, false);
