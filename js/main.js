@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { updateDay, DAY, dayLabel } from './daycycle.js';
+import { poseGait } from './gait.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
@@ -1687,7 +1688,10 @@ function updateMonsters(dt, now) {
     pos.y = terrainHeight(pos.x, pos.z);
     m.walkT = (m.walkT || 0) + (moving ? dt * 9 : 0);
     const sw = moving ? Math.sin(m.walkT) * 0.6 : 0;
-    m.legs.forEach((l, i) => {
+    const hiQuad = m.lod && m.lod.hi && !m.rigHi && m.lod.hi.userData.legs && m.lod.hi.userData.legs === m.legs;
+    if (hiQuad) { const sp = moving ? Math.min(speed, Math.hypot(pos.x - (m._px ?? pos.x), pos.z - (m._pz ?? pos.z)) / Math.max(dt, 1e-3) || speed) : 0; poseGait(m, m.lod.hi, dt, sp, now); }
+    m._px = pos.x; m._pz = pos.z;
+    if (!hiQuad) m.legs.forEach((l, i) => {
       const ud = l.userData;
       if (ud.spider) { l.rotation.x = (i % 2 ? sw : -sw) * 0.5 * (((i >> 1) % 2) ? 1 : -1); ud.knee.rotation.x = ud.kneeRest + (moving ? Math.max(0, Math.sin(m.walkT + i)) * 0.3 : 0); return; }
       const ph = i === 1 || i === 2 ? m.walkT + Math.PI : m.walkT;
@@ -1696,7 +1700,7 @@ function updateMonsters(dt, now) {
     });
     if (m.rigHi) poseHumanoid(m.rigHi, m.walkT, moving ? 1 : 0, m.lungeT || 0, 0);
     else if (m.lod && m.lod.hi && m.lod.hi.userData.head && moving) m.lod.hi.userData.head.rotation.x = Math.sin(m.walkT * 2) * 0.05;
-    if (m.lod && m.lod.hi && m.lod.hi.userData.wings) { const f = Math.sin(now * 0.003 + m.spawnX) * 0.12; m.lod.hi.userData.wings.forEach((w, k) => { w.rotation.z = (k ? 1 : -1) * (0.25 + f); }); }
+    if (!hiQuad && m.lod && m.lod.hi && m.lod.hi.userData.wings) { const f = Math.sin(now * 0.003 + m.spawnX) * 0.12; m.lod.hi.userData.wings.forEach((w, k) => { w.rotation.z = (k ? 1 : -1) * (0.25 + f); }); }
     if (m.lungeT > 0) { m.lungeT = Math.max(0, m.lungeT - dt * 3); m.body.position.z = Math.sin(m.lungeT * Math.PI) * 0.35; }
   }
 }
