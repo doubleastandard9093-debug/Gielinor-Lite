@@ -9,15 +9,16 @@ const aLife = new Float32Array(MAX), aSize = new Float32Array(MAX), aKind = new 
 let cursor = 0, quality = 'high', inited = false, points = null;
 const FIRES = [];     // { obj, k, spawn, kind }
 const LIGHTS = [];
+const NL_HI = 12, NL_LO = 2, GLOW_MAX = 256, GLOW = {}; const _m4 = new THREE.Matrix4(), _q4 = new THREE.Quaternion(), _s4 = new THREE.Vector3(), _p4 = new THREE.Vector3(), _up = new THREE.Vector3(0, 0, 1);
 const _v = new THREE.Vector3();
 // kinds: 0 flame, 1 ember, 2 smoke, 3 spark, 4 magic, 5 dust
 const KIND = { flame: 0, ember: 1, smoke: 2, spark: 3, magic: 4, dust: 5, leaf: 6, mote: 7 };
 let LEAF_SRC = [];
 export function setLeafSources(list) { LEAF_SRC = list; }
 
-export function addFire(obj, k = 1, kind = 'fire') { const f = { obj, k, spawn: Math.random(), kind }; FIRES.push(f); return f; }
+export function addFire(obj, k = 1, kind = 'fire', opts = {}) { const f = { obj, k, spawn: Math.random(), kind, ground: opts.ground ?? 0, wall: opts.wall || null }; FIRES.push(f); return f; }
 export function removeFireVfx(obj) { const i = FIRES.findIndex(f => f.obj === obj); if (i >= 0) FIRES.splice(i, 1); }
-export function setVfxQuality(q) { quality = q; }
+export function setVfxQuality(q) { quality = q; LIGHTS.forEach((L, i) => { L.visible = i < (q === 'low' ? NL_LO : NL_HI); }); }
 
 function emit(kind, x, y, z, vx, vy, vz, d, size) {
   const i = cursor; cursor = (cursor + 1) % MAX;
@@ -71,7 +72,24 @@ export function initVfx(scene) {
     blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor
   });
   points = new THREE.Points(g, mat); points.frustumCulled = false; points.renderOrder = 5; scene.add(points);
-  for (let i = 0; i < 3; i++) { const L = new THREE.PointLight(0xff9a40, 0, 9, 1.6); L.castShadow = false; scene.add(L); LIGHTS.push(L); }
+  for (let i = 0; i < NL_HI; i++) { const L = new THREE.PointLight(0xff9a40, 0, 9, 1.6); L.castShadow = false; L.visible = i < NL_LO; scene.add(L); LIGHTS.push(L); }
+  // light pools: one additive radial glow on the ground under every fire/torch and one on the wall behind each torch.
+  // These are instanced quads (2 draw calls in total), so every visible flame lights its surroundings,
+  // and the pooled point lights add real shading on top for the nearest ones.
+  const glowMat = new THREE.ShaderMaterial({
+    vertexShader: `attribute float aI; varying vec2 vU; varying float vI; void main(){ vU = vec2(position.x, position.y + position.z); vI = aI;
+      gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `varying vec2 vU; varying float vI; void main(){ float r = length(vU) * 2.0; float a = pow(max(0.0, 1.0 - r), 2.6) * vI;
+      gl_FragColor = vec4(vec3(1.0, 0.52, 0.2) * a, 0.0); }`,
+    transparent: true, depthWrite: false, blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+  });
+  for (const key of ['ground', 'wall']) {
+    const q = new THREE.PlaneGeometry(1, 1); if (key === 'ground') q.rotateX(-Math.PI / 2);
+    const ia = new THREE.InstancedBufferAttribute(new Float32Array(GLOW_MAX), 1); ia.setUsage(THREE.DynamicDrawUsage); q.setAttribute('aI', ia);
+    const m = new THREE.InstancedMesh(q, glowMat, GLOW_MAX); m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.count = 0; m.frustumCulled = false; m.renderOrder = 4;
+    scene.add(m); GLOW[key] = m;
+  }
   inited = true;
 }
 
@@ -83,8 +101,8 @@ export function updateVfx(dt, px, pz, camera, now, night = 0, inCave = false) {
   const near = [];
   for (const f of FIRES) {
     if (!f.obj.parent || f.obj.visible === false) continue;
-    f.obj.getWorldPosition(_v); const dist = Math.hypot(_v.x - px, _v.z - pz); if (dist > 45) continue;
-    near.push([dist, f, _v.x, _v.y, _v.z]);
+    f.obj.getWorldPosition(_v); const dist = Math.hypot(_v.x - px, _v.z - pz); if (dist > 60) continue;
+    near.push([dist, f, _v.x, _v.y, _v.z]); if (dist > 45) continue;
     const torch = f.kind === 'torch', lit = torch ? Math.max(0.25, night) : 1;
     const rate = (f.kind === 'forge' ? 12 : torch ? 16 : 34) * f.k * (hi ? 1 : 0.35) * lit;
     f.spawn += rate * d;
@@ -108,6 +126,17 @@ export function updateVfx(dt, px, pz, camera, now, night = 0, inCave = false) {
     L.position.set(n[2] + Math.sin(t * 7 + i) * 0.05, n[3] + (f.kind === 'forge' ? 0.8 : f.kind === 'torch' ? 0.35 : 0.7), n[4] + Math.cos(t * 6 + i) * 0.05);
     L.intensity = (f.kind === 'forge' ? 5 : f.kind === 'torch' ? 4.5 * Math.max(0.25, night) : 7) * f.k * fl * (1 - Math.min(1, Math.max(0, (n[0] - 30) / 15)));
     L.color.setRGB(1, 0.55 + 0.1 * fl, 0.22); });
+  // light pools under/behind every fire within 60 m
+  { let ng = 0, nw = 0; const G = GLOW.ground, W = GLOW.wall, gi = G.geometry.attributes.aI, wi = W.geometry.attributes.aI;
+    for (const n of near) { if (n[0] > 60) break; const f = n[1], torch = f.kind === 'torch';
+      const fl = 0.85 + 0.1 * Math.sin(t * 13 + n[2]) + 0.06 * Math.sin(t * 23.7 + n[4]);
+      const lit = (torch ? (0.12 + 0.88 * night) : (0.35 + 0.65 * night)) * fl * (1 - Math.max(0, (n[0] - 45) / 15));
+      if (ng < GLOW_MAX) { const sz = (torch ? 5.5 : f.kind === 'forge' ? 4 : 6.5) * Math.sqrt(f.k / (torch ? 0.45 : 1));
+        _p4.set(n[2], n[3] - f.ground + 0.05, n[4]); _s4.set(sz, 1, sz); _m4.compose(_p4, _q4.identity(), _s4); G.setMatrixAt(ng, _m4); gi.array[ng++] = lit * 0.07; }
+      if (f.wall && nw < GLOW_MAX) { _p4.set(n[2] - f.wall[0] * 0.165, n[3] - 0.15, n[4] - f.wall[1] * 0.165); _q4.setFromUnitVectors(_up, _v.set(f.wall[0], 0, f.wall[1])); _s4.set(3.2, 3.6, 1);
+        _m4.compose(_p4, _q4, _s4); W.setMatrixAt(nw, _m4); wi.array[nw++] = lit * 0.06; }
+    }
+    G.count = ng; W.count = nw; G.instanceMatrix.needsUpdate = W.instanceMatrix.needsUpdate = gi.needsUpdate = wi.needsUpdate = true; }
   // integrate
   for (let i = 0; i < MAX; i++) {
     if (life[i] >= 1) { aLife[i] = 1; continue; }

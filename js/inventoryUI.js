@@ -27,6 +27,7 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>Every torch lights the night.</b> Each fire, forge and wall torch now casts a warm pool of light on the ground around it, and door torches light the wall behind them, so streets at night are dotted with glowing doorways. On High, 12 nearby flames (up from 3) also cast real flickering light onto people and buildings.</p>
 <p><b>Clouds with real depth.</b> On High the sky is now filled with true volumetric cumulus. The clouds have flat bellies and billowing tops, shade themselves where they're thick and glow at their thin edges when the sun is behind them. Their edges break up into wisps as they drift.</p>
 <p><b>Armour you can read up close.</b> On High, platebody and platelegs are made of overlapping steel bands with rivets and brushed-metal streaks. Chainbodies show rows of interlocking rings that glint as you move. Leather has grain and stitched seams, and plain clothes show a fine weave. Dragon armour now shows its own red colour.</p>
 <p><b>Torchlight and drifting leaves.</b> Every house now has a pair of wall torches beside its door. They burn brighter as night falls and cast flickering light onto the walls and path, and the mountain cave's exit torches are lit too. On High, leaves now drift and tumble down from the trees near you, and dust motes float in the air.</p>

@@ -605,7 +605,7 @@ export function createWorld(scene) {
       add(prim.box(0.08, 0.08, 0.08), 0x2a2a2e, 0.1, ox - oc[0] * 0.08, 1.85, oz - oc[1] * 0.08);
       add(prim.cyl(0.035, 0.03, 0.45, 6), 0x4a2e16, 0.1, ox, 2.0, oz, oc[1] * 0.35, 0, -oc[0] * 0.35);
       add(prim.cyl(0.06, 0.045, 0.1, 7), 0x2a1a0e, 0.1, ox + oc[0] * 0.07, 2.22, oz + oc[1] * 0.07);
-      const head = new THREE.Object3D(); head.position.set(ox + oc[0] * 0.08, 2.27, oz + oc[1] * 0.08); g.add(head); addFire(head, 0.45, 'torch');
+      const head = new THREE.Object3D(); head.position.set(ox + oc[0] * 0.08, 2.27, oz + oc[1] * 0.08); g.add(head); addFire(head, 0.45, 'torch', { ground: 2.27, wall: oc });
     }
     add(alongXdoor ? prim.box(DOOR + 0.15, 0.06, 0.55) : prim.box(0.55, 0.06, DOOR + 0.15), 0x8a8478, 0.2, fx + toCentre[0] * 0.35, 0.03, fz + toCentre[1] * 0.35);
     if (!big) {
@@ -755,7 +755,7 @@ export function createWorld(scene) {
         [prim.cyl(0.25, 0.32, 1.4, 10), 0x5a524a, 0, 1.7, -0.2], [prim.cyl(0.3, 0.3, 0.12, 10), 0x48423c, 0, 2.42, -0.2],
         [prim.box(0.75, 0.55, 0.1), 0x2a2420, 0, 0.6, 0.7, 0, 0, 0, 0]]));
       const glow = new THREE.Mesh(prim.box(0.55, 0.4, 0.05), glowMat(0xff8a2a)); glow.position.set(0, 0.6, 0.76); g.add(glow);
-      const mouth = new THREE.Object3D(); mouth.position.set(0, 0.1, 0.7); g.add(mouth); addFire(mouth, 0.6, 'forge');
+      const mouth = new THREE.Object3D(); mouth.position.set(0, 0.1, 0.7); g.add(mouth); addFire(mouth, 0.6, 'forge', { ground: 0.1 });
     } else if (kind === 'anvil') {
       name = 'Anvil';
       g.add(kit([[prim.cyl(0.32, 0.38, 0.5, 10), 0x6a4a2a, 0, 0.25, 0], [prim.box(0.32, 0.2, 0.26), 0x34343c, 0, 0.6, 0, 0, 0, 0, 0.1],
@@ -1416,7 +1416,7 @@ export function createWorld(scene) {
       // exit: a rope up to the light
       parts.push([prim.cyl(0.035, 0.035, 7.5, 6), 0xc8b088, 0, 3.75, R - 3], [blob(1.2, 0.3, 1.0, { detail: 1, lump: 0.2, seed: 50 }), 0x5a5048, 0, 0.1, R - 3]);
       const deco = new THREE.Group(); deco.add(kit(parts)); cave.add(deco);
-      for (const sx of [-1, 1]) { const h = new THREE.Object3D(); h.position.set(sx * 1.8, 1.97, R - 1.4); deco.add(h); addFire(h, 0.5, 'torch'); }
+      for (const sx of [-1, 1]) { const h = new THREE.Object3D(); h.position.set(sx * 1.8, 1.97, R - 1.4); deco.add(h); addFire(h, 0.5, 'torch', { ground: 1.97 }); }
       { // webs: radial spokes and spiral threads
         const wm = new THREE.LineBasicMaterial({ color: 0xe8e8e0, transparent: true, opacity: 0.55 }), v = [];
         for (let k = 0; k < 8; k++) { const t = k / 8 * Math.PI * 2; v.push(0, 0, 0, Math.cos(t) * 1.2, Math.sin(t) * 1.2, 0); }
