@@ -244,6 +244,67 @@ export function faceToward(pm, x, z) {
 
 // Moves the player. keys move relative to the camera; a tap target overrides keys.
 // Returns distance travelled this frame (used to drain run energy).
+// Skilling poses (t: 0..1 through one action). Each fully overrides the arms and torso for that action.
+const ease = k => k * k * (3 - 2 * k), seg = (t, a, b) => ease(Math.min(1, Math.max(0, (t - a) / (b - a))));
+// Lean the torso about the hips (not the feet), like the agility rig does.
+function hipPivot(p, extraY = 0) { const H = 0.9, bx = p.body.rotation.x, bz = p.body.rotation.z;
+  p.body.position.set(H * Math.sin(bz), H * (1 - Math.cos(bx) * Math.cos(bz)) + extraY, -H * Math.sin(bx)); }
+const SKILL_POSES = {
+  // two-handed axe: wind back over the right shoulder, drive across into the trunk, follow through
+  chop(p, t, knee, elbow) {
+    const w = seg(t, 0, 0.35), s = seg(t, 0.35, 0.55), r = seg(t, 0.6, 1);
+    const twist = -0.7 * w + 1.1 * s - 0.4 * r;
+    p.body.rotation.y = twist; p.body.rotation.x = 0.12 + 0.12 * s * (1 - r);
+    p.rightArm.rotation.x = -1.2 - 0.9 * w + 0.7 * s; p.rightArm.rotation.z = 0.3 * w - 0.2 * s;
+    p.leftArm.rotation.x = -1.0 - 0.8 * w + 0.6 * s; p.leftArm.rotation.z = -0.5 + 0.2 * w;
+    elbow(p.rightArm).rotation.x = -0.9 + 0.6 * s; elbow(p.leftArm).rotation.x = -1.3 + 0.7 * s;
+    knee(p.leftLeg).rotation.x = 0.18; knee(p.rightLeg).rotation.x = 0.18; p.leftLeg.rotation.z = 0.08; p.rightLeg.rotation.z = -0.08;
+  },
+  // pickaxe: raise overhead with both hands, bring it down with the whole back, knees absorbing the impact
+  mine(p, t, knee, elbow) {
+    const up = seg(t, 0, 0.4), dn = seg(t, 0.4, 0.58), r = seg(t, 0.65, 1), hit = Math.max(0, 1 - Math.abs(t - 0.58) * 8);
+    const a = -0.7 - 2.1 * up + 2.2 * dn * (1 - r * 0.2);
+    p.rightArm.rotation.x = a; p.leftArm.rotation.x = a + 0.1; p.leftArm.rotation.z = -0.25; p.rightArm.rotation.z = 0.15;
+    elbow(p.rightArm).rotation.x = -0.4 - 0.6 * up * (1 - dn); elbow(p.leftArm).rotation.x = -0.5 - 0.6 * up * (1 - dn);
+    p.body.rotation.x = -0.12 * up + 0.42 * dn - 0.2 * r; p.body.rotation.y = 0;
+    const k = 0.2 + 0.35 * dn * (1 - r) + hit * 0.1; knee(p.leftLeg).rotation.x = k; knee(p.rightLeg).rotation.x = k; p.leftLeg.rotation.x = -k * 0.5; p.rightLeg.rotation.x = -k * 0.3;
+  },
+  // rod or net held out over the water, with small jigs and the occasional strike
+  fish(p, t, knee, elbow, pm) {
+    const jig = Math.sin((pm.idleT || 0) * 5) * 0.06, strike = Math.max(0, Math.sin(Math.PI * seg(t, 0.75, 1)));
+    p.rightArm.rotation.x = -1.05 + jig - 0.5 * strike; p.leftArm.rotation.x = -0.85 + jig * 0.5 - 0.3 * strike; p.leftArm.rotation.z = 0.25;
+    elbow(p.rightArm).rotation.x = -0.6; elbow(p.leftArm).rotation.x = -0.9; p.body.rotation.x = 0.1 - 0.12 * strike; p.body.rotation.y = 0.1;
+  },
+  // hammer on the anvil: left hand steadies the work, right arm beats down from shoulder height
+  smith(p, t, knee, elbow) {
+    const up = seg(t, 0, 0.45), dn = seg(t, 0.45, 0.6);
+    p.rightArm.rotation.x = -0.6 - 1.4 * up + 1.3 * dn; elbow(p.rightArm).rotation.x = -0.6 - 0.9 * up + 0.6 * dn; p.rightArm.rotation.z = 0.1;
+    p.leftArm.rotation.x = -0.75; elbow(p.leftArm).rotation.x = -1.0; p.leftArm.rotation.z = 0.2;
+    p.body.rotation.x = 0.28 + 0.06 * dn; p.body.rotation.y = -0.15;
+  },
+  // stirring over the fire: forearms forward, the right hand circling the pan
+  cook(p, t, knee, elbow, pm) {
+    const c = (pm.idleT || 0) * 4;
+    p.rightArm.rotation.x = -0.75 + Math.sin(c) * 0.12; p.rightArm.rotation.z = 0.1 + Math.cos(c) * 0.12; elbow(p.rightArm).rotation.x = -1.1;
+    p.leftArm.rotation.x = -0.6; elbow(p.leftArm).rotation.x = -1.2; p.leftArm.rotation.z = 0.15;
+    p.body.rotation.x = 0.22; p.body.rotation.y = 0; knee(p.leftLeg).rotation.x = 0.12; knee(p.rightLeg).rotation.x = 0.12;
+  },
+  // close bench work (fletching, crafting, herblore): hands together at the chest, head down, small cutting strokes
+  craft(p, t, knee, elbow, pm) {
+    const cut = Math.max(0, Math.sin((pm.idleT || 0) * 7));
+    p.leftArm.rotation.x = -0.55; p.leftArm.rotation.z = 0.3; elbow(p.leftArm).rotation.x = -1.6;
+    p.rightArm.rotation.x = -0.6 + cut * 0.15; p.rightArm.rotation.z = -0.25 - cut * 0.1; elbow(p.rightArm).rotation.x = -1.45 + cut * 0.25;
+    p.body.rotation.x = 0.18; p.body.rotation.y = 0; if (p.headG) p.headG.rotation.x = 0.45;
+  },
+  // firemaking: bent low over the logs, striking the tinderbox with quick strokes
+  fire(p, t, knee, elbow) {
+    const st = Math.max(0, Math.sin(t * Math.PI * 6));
+    p.body.rotation.x = 0.65; p.body.rotation.y = 0;
+    p.rightArm.rotation.x = -0.35 - st * 0.25; elbow(p.rightArm).rotation.x = -0.7; p.leftArm.rotation.x = -0.45; elbow(p.leftArm).rotation.x = -0.8; p.leftArm.rotation.z = 0.25;
+    const k = 0.55; knee(p.leftLeg).rotation.x = k; knee(p.rightLeg).rotation.x = k; p.leftLeg.rotation.x = -k * 0.6; p.rightLeg.rotation.x = -k * 0.6;
+    if (p.headG) p.headG.rotation.x = 0.3;
+  }
+};
 export function updatePlayer(pm, keys, dt, running, camYaw) {
   const pos = pm.mesh.position;
   let dx = 0, dz = 0;
@@ -336,7 +397,7 @@ export function updatePlayer(pm, keys, dt, running, camYaw) {
     pm.mesh.position.y = terrainHeight(pos.x, pos.z) + Math.abs(Math.cos(ph)) * L(0.04, 0.09) * M;
     p.body.rotation.y = Math.sin(ph) * L(0.08, 0.14) * M;        // shoulders counter-rotate the hips
     p.body.rotation.x = (L(0.04, 0.16) + up * 0.25 - dn * 0.1) * M; // lean forward with speed and uphill
-    p.body.rotation.z = Math.sin(ph) * 0.025 * M;
+    p.body.rotation.z = Math.sin(ph) * 0.025 * M; hipPivot(p);
     if (p.headG) { p.headG.rotation.x = -p.body.rotation.x * 0.6; p.headG.rotation.y = -p.body.rotation.y * 0.7; } // eyes stay level
     pm.idleT = 0; pm.mesh.rotation.z = 0; p.leftLeg.rotation.z = 0; p.rightLeg.rotation.z = 0;
   } else {
@@ -347,7 +408,7 @@ export function updatePlayer(pm, keys, dt, running, camYaw) {
     // idle: breathing, a slow weight shift onto one leg, and now and then a look around
     pm.idleT = (pm.idleT || 0) + dt;
     const it = pm.idleT, settle = Math.min(1, it / 1.2);
-    p.body.position.y = Math.sin(it * 2.1) * 0.009;
+    p.body.position.set(0, Math.sin(it * 2.1) * 0.009, 0);
     const shift = Math.sin(it * 0.42 + (pm.idleSeed ??= Math.random() * 6)) * settle;
     p.body.rotation.z = shift * 0.03; pm.mesh.rotation.z = shift * 0.012;
     knee(shift > 0 ? p.leftLeg : p.rightLeg).rotation.x = Math.abs(shift) * 0.22; // relaxed knee on the unweighted side
@@ -365,18 +426,20 @@ export function updatePlayer(pm, keys, dt, running, camYaw) {
     }
     elbow(p.leftArm).rotation.x += (-0.25 - elbow(p.leftArm).rotation.x) * k;
     if (pm.actionAnim > 0) {
-      pm.actionAnim = Math.max(0, pm.actionAnim - dt * 2.0);
+      pm.actionAnim = Math.max(0, pm.actionAnim - dt * (pm.actionKind === 'fish' || pm.actionKind === 'cook' || pm.actionKind === 'craft' ? 0.75 : 2.0));
       const t = 1 - pm.actionAnim;
       // wind up then strike, with the body twisting into the swing
       p.rightArm.rotation.x = t < 0.3 ? -(t / 0.3) * 2.4 : -2.4 + ((t - 0.3) / 0.7) * 2.8;
       elbow(p.rightArm).rotation.x = t < 0.3 ? -0.9 * (t / 0.3) : -0.9 + ((t - 0.3) / 0.7) * 0.7;
       p.body.rotation.y = t < 0.3 ? -0.25 * (t / 0.3) : -0.25 + ((t - 0.3) / 0.7) * 0.45;
       p.leftArm.rotation.x += (0 - p.leftArm.rotation.x) * k;
+      const S = SKILL_POSES[pm.actionKind]; if (S) { S(p, t, knee, elbow, pm); const kb = knee(p.leftLeg).rotation.x; hipPivot(p, -0.3 * (1 - Math.cos(kb)) - 0.05 * Math.max(0, -p.leftLeg.rotation.x)); }
       if (pm.actionKind === 'bow') { p.leftArm.rotation.x = -1.6; elbow(p.leftArm).rotation.x = 0; p.rightArm.rotation.x = -1.5 + Math.sin(t * Math.PI) * 0.25; elbow(p.rightArm).rotation.x = -1.2; p.body.rotation.y = 0; }
     } else {
       p.leftArm.rotation.x += (0 - p.leftArm.rotation.x) * k;
       p.rightArm.rotation.x += (0 - p.rightArm.rotation.x) * k;
       elbow(p.rightArm).rotation.x += (-0.25 - elbow(p.rightArm).rotation.x) * k;
+      p.leftArm.rotation.z += (-0.05 - p.leftArm.rotation.z) * k; p.rightArm.rotation.z += (0.05 - p.rightArm.rotation.z) * k;
     }
   }
   { const r = p.sword.visible ? 1 : 0.3, l = p.bow.visible ? 1 : p.shield.visible ? 0.85 : 0.3;

@@ -1031,7 +1031,7 @@ function doGatherTick(a) {
   // Try every 2 ticks; Chain Chop / Rich Vein sometimes make it 1 tick (never faster).
   const gi = gatherInfo(node);
   a.wait = gi ? nextGatherWait(skills, gi.skill) : 1;
-  pm.actionAnim = 1; pm.actionKind = 'tool';
+  pm.actionAnim = 1; pm.actionKind = ({ Woodcutting: 'chop', Mining: 'mine', Fishing: 'fish' })[gi?.skill] || 'tool';
   const r = gatherTick(node, skills, player);
   if (!a.started) { a.started = true; const info = gatherInfo(node); if (info && !r?.error) log(SKILL_VERB[info.skill].replace('your axe', 'your ' + (bestTool(player, skills, 'axe') || 'axe').toLowerCase()).replace('your pick', 'your ' + (bestTool(player, skills, 'pickaxe') || 'pickaxe').toLowerCase()), 'skill'); }
   if (!r) return;
@@ -1107,7 +1107,7 @@ function craftOne() {
     giveXP(r.skill, makeXp(r, skills));
     log(`You make ${outQty > 1 ? outQty + ' ' : ''}${output}.${saved ? ' You manage to save your materials!' : ''}${extra ? ' Your perk makes a free extra one!' : ''}`, 'skill');
   }
-  pm.actionAnim = 1; pm.actionKind = 'tool';
+  pm.actionAnim = 1; pm.actionKind = ({ Smithing: 'smith', Cooking: 'cook', Fletching: 'craft', Crafting: 'craft', Herblore: 'craft' })[r.skill] || 'tool';
   a.left--;
   a.wait = makeTicks(r, skills) - 1;
   if (a.left <= 0) stopAction();
@@ -1596,7 +1596,7 @@ function gameTick(now) {
   } else if (a.kind === 'bury') {
     if (a.wait > 0) a.wait--; else buryOne();
   } else if (a.kind === 'light') {
-    if (a.wait > 0) { a.wait--; pm.actionAnim = 1; pm.actionKind = 'tool'; } else lightFire(a);
+    if (a.wait > 0) { a.wait--; pm.actionAnim = 1; pm.actionKind = 'fire'; } else lightFire(a);
   }
 }
 
