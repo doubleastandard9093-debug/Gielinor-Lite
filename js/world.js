@@ -7,7 +7,7 @@ import { addFire } from './vfx.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise, WATER_MESHES } from './gfx.js';
 import { buildHumanoidRig, apronGeo, varyLook, hashStr, contactShadow } from './anatomy.js';
 import { buildCreatureRig, rollVariant, namedVariant } from './creatures.js';
-import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap } from './models.js';
+import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap, setMat, woodAxis, buildMat } from './models.js';
 
 // The world is about 440 x 440. Chunked decor + instance packing keep phones smooth.
 export const WORLD_HALF = 300;
@@ -545,7 +545,8 @@ export function createWorld(scene) {
     const parts = [];
     const h = 2.7, base = 0.55, T = 0.18, DOOR = 1.15;
     const TIMBER = 0x4a3020, STONE = 0x7d776c;
-    const add = (geo, hex, amt, px, py, pz, rx = 0, ry = 0, rz = 0) => parts.push(put(col(geo, hex, amt), px, py, pz, rx, ry, rz));
+    const WOODS = new Set([TIMBER, 0x5a3a20, 0x6a5040, 0x4a2e16, 0x6a4a2a, 0x5a3a1e]), STONES = new Set([STONE, 0x8e877a, 0x8a8478, 0x7a7268]);
+    const add = (geo, hex, amt, px, py, pz, rx = 0, ry = 0, rz = 0) => { setMat(geo, WOODS.has(hex) ? woodAxis(geo) : STONES.has(hex) ? 5 : 0); parts.push(put(col(geo, hex, amt), px, py, pz, rx, ry, rz)); };
     const big = w * d > 22 || /Bank|Church|Smithy|Palace|Castle|Armoury|Emporium|Rune Shop|Store|Inn|Tavern|Weaponsmith/.test(name);
     const wallC = new THREE.Color(wall), wc = new THREE.Color();
     const paintWall = (geo) => paint(geo, (px, py, pz) => wc.copy(wallC).multiplyScalar(0.88 + 0.12 * snoise(px * 3, py * 3, pz * 3, 7)));
@@ -566,12 +567,12 @@ export function createWorld(scene) {
       const len = a1 - a0, mid = (a0 + a1) / 2;
       if (len < 0.12) return;
       const geo = alongX ? prim.box(len, wh, T) : prim.box(T, wh, len);
-      const mesh = paintWall(geo);
+      const mesh = setMat(paintWall(geo), big ? 5 : 4);
       if (alongX) put(mesh, mid, wy, side * (d / 2 - T / 2)); else put(mesh, side * (w / 2 - T / 2), wy, mid);
       parts.push(mesh);
       // stone plinth along the outside of the segment
       const pl = alongX ? prim.box(len + 0.08, base, T + 0.12) : prim.box(T + 0.12, base, len + 0.08);
-      const plm = paint(pl, (px, py, pz) => fc.copy(footC).multiplyScalar(0.8 + 0.25 * (0.5 + 0.5 * snoise(Math.floor(px * 2.2 + pz * 2.2), Math.floor(py * 4), 0, 3))));
+      setMat(pl, 5); const plm = paint(pl, (px, py, pz) => fc.copy(footC).multiplyScalar(0.8 + 0.25 * (0.5 + 0.5 * snoise(Math.floor(px * 2.2 + pz * 2.2), Math.floor(py * 4), 0, 3))));
       if (alongX) put(plm, mid, base / 2, side * (d / 2 - T / 2)); else put(plm, side * (w / 2 - T / 2), base / 2, mid);
       parts.push(plm);
       if (alongX) colliders.push({ minX: x + a0, maxX: x + a1, minZ: z + side * (d / 2) - T, maxZ: z + side * (d / 2) + T * 0.2 });
@@ -631,7 +632,7 @@ export function createWorld(scene) {
     const rc = new THREE.Color(roof);
     for (const side of [-1, 1]) for (let i = 0; i < rows; i++) {
       const t = (i + 0.5) / rows;
-      const tile = prim.box(alongZ ? slant / rows + 0.06 : len, 0.07, alongZ ? len : slant / rows + 0.06);
+      const tile = setMat(prim.box(alongZ ? slant / rows + 0.06 : len, 0.07, alongZ ? len : slant / rows + 0.06), 6);
       const shadeK = (i % 2 ? 0.86 : 1) * (0.9 + 0.1 * t);
       const c2 = rc.clone().multiplyScalar(shadeK);
       paint(tile, (px, py, pz) => { const k = 0.92 + 0.12 * Math.sin((alongZ ? pz : px) * 9 + i * 1.7); return c2.clone().multiplyScalar(k); });
@@ -702,8 +703,9 @@ export function createWorld(scene) {
       solidUV(-0.8, 0.5, 0.55, 0.4); solidUV(0.8, 0.7, 0.35, 0.16); solidUV(halfWide - 0.35, 0.3, 0.25, 0.25);
       spots.staff = [toWorld(-0.8, 1.15), toWorld(0.8, 1.25)];
     }
-    g.add(bakedMesh(parts));
-    const roofMesh = bakedMesh(roofParts);
+    for (const q of parts.concat(roofParts)) if (!q.attributes.aMat) setMat(q, 0);
+    g.add(bakedMesh(parts, buildMat));
+    const roofMesh = bakedMesh(roofParts, buildMat);
     g.add(roofMesh);
     g.userData.roof = roofMesh;
     g.userData.inner = { minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 };

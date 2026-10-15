@@ -2,7 +2,7 @@
 // meshes, so each tree, rock or building is one draw call. All original art.
 import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { TIME, SWAY, attachNoiseBump } from './gfx.js';
+import { TIME, SWAY, attachNoiseBump, getNoiseTexture } from './gfx.js';
 
 // Smooth pseudo-noise (cheap sum of sines), roughly -1..1.
 export function snoise(x, y, z, s = 0) {
@@ -75,8 +75,10 @@ export function bake(list) {
   let n = 0;
   const parts = list.map(g => { const ng = g.index ? g.toNonIndexed() : g; n += ng.attributes.position.count; return ng; });
   const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3);
+  const hasMat = parts.some(g => g.attributes.aMat), mt = hasMat ? new Float32Array(n) : null;
   let o = 0;
   for (const g of parts) {
+    if (mt && g.attributes.aMat) mt.set(g.attributes.aMat.array, o);
     pos.set(g.attributes.position.array, o * 3);
     nor.set(g.attributes.normal.array, o * 3);
     if (g.attributes.color) col.set(g.attributes.color.array, o * 3); else col.fill(1, o * 3, (o + g.attributes.position.count) * 3);
@@ -86,10 +88,68 @@ export function bake(list) {
   out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
   out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  if (mt) out.setAttribute('aMat', new THREE.BufferAttribute(mt, 1));
   out.computeBoundingSphere();
   out.computeBoundingBox();
   return out;
 }
+
+// Surface tag for the building material (1-3 wood with grain along x/y/z, 4 plaster, 5 stone, 6 roof thatch/shingle).
+export function setMat(geo, id) { geo.setAttribute('aMat', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count).fill(id), 1)); return geo; }
+export function woodAxis(geo) { geo.computeBoundingBox(); const s = new THREE.Vector3(); geo.boundingBox.getSize(s); return s.x >= s.y && s.x >= s.z ? 1 : s.y >= s.z ? 2 : 3; }
+// Building material: world-space procedural detail keyed on aMat. Wood gets grain and knots along its long axis,
+// plaster gets mottling, hairline cracks and rain-darkened bases, stone gets coursed blocks with mortar,
+// roofs get straw/shingle strands down the slope with moss in the low rows. All with bump and roughness.
+export const buildMat = (() => {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.02 });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.tBN = { value: getNoiseTexture() };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aMat; varying float vMat; varying vec3 vBW; varying vec3 vBN;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvMat = aMat; vBW = (modelMatrix * vec4(transformed, 1.0)).xyz; vBN = normalize(mat3(modelMatrix) * objectNormal);');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vMat; varying vec3 vBW; varying vec3 vBN; uniform sampler2D tBN; float bH = 0.0; float bR = -1.0;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        {
+          float fade = 1.0 - smoothstep(35.0, 65.0, length(cameraPosition - vBW));
+          int id = int(vMat + 0.5); vec3 P = vBW; vec3 an = abs(vBN);
+          if (id >= 1 && id <= 3 && fade > 0.0) {
+            // grain runs along the beam: project onto the two cross axes, stretch along the long one
+            vec3 Q = id == 1 ? P.yzx : id == 2 ? P.xzy : P.xyz;   // Q.z = along the grain
+            float w = texture2D(tBN, vec2(Q.x * 1.2 + Q.y * 1.2, Q.z * 0.08)).r;
+            float rings = sin((Q.x + Q.y) * 38.0 + w * 9.0) * 0.5 + 0.5;
+            float knot = smoothstep(0.86, 0.95, texture2D(tBN, Q.xz * 0.9 + Q.yz * 0.7).g);
+            diffuseColor.rgb *= mix(1.0, 0.72 + 0.4 * rings - 0.35 * knot, 0.8 * fade);
+            bH = (rings * 0.5 - knot) * fade; bR = 0.78 + 0.12 * rings;
+          } else if (id == 4 && fade > 0.0) {
+            vec2 uv = an.x > an.z ? P.zy : P.xy;
+            float mot = texture2D(tBN, uv * 0.35).g * 0.6 + texture2D(tBN, uv * 1.7).r * 0.4;
+            float grime = 1.0 - smoothstep(0.5, 1.4, P.y - (texture2D(tBN, uv * 0.6).r - 0.5) * 0.4);
+            diffuseColor.rgb *= mix(1.0, (0.86 + 0.24 * mot) * (1.0 - grime * 0.22), fade);
+            bH = (mot - 0.5) * 0.6 * fade; bR = 0.92;
+          } else if (id == 5 && fade > 0.0) {
+            vec2 uv = an.y > 0.7 ? P.xz : (an.x > an.z ? P.zy : P.xy);
+            vec2 b = uv * vec2(2.2, 4.4); b.x += floor(b.y) * 0.5; vec2 f = fract(b), ci = floor(b);
+            float mortar = smoothstep(0.0, 0.07, f.x) * smoothstep(1.0, 0.93, f.x) * smoothstep(0.0, 0.1, f.y) * smoothstep(1.0, 0.9, f.y);
+            float bv = texture2D(tBN, ci * 0.173).g, chip = texture2D(tBN, uv * 2.5).r;
+            diffuseColor.rgb *= mix(1.0, mix(0.55, 0.82 + 0.35 * bv, mortar) * (0.9 + 0.2 * chip), fade);
+            bH = (mortar * (0.6 + 0.4 * chip) - 0.5) * fade; bR = 0.85;
+          } else if (id == 6 && fade > 0.0) {
+            vec2 down = length(vBN.xz) > 0.05 ? normalize(vBN.xz) : vec2(0.0, 1.0); vec2 across = vec2(-down.y, down.x);
+            float a = dot(P.xz, across), dn = dot(P.xz, down) + P.y * 0.0;
+            float strands = texture2D(tBN, vec2(a * 3.5, dn * 0.25 + P.y * 0.3)).r * 0.6 + texture2D(tBN, vec2(a * 11.0, dn * 0.6)).g * 0.4;
+            float moss = smoothstep(0.55, 0.8, texture2D(tBN, P.xz * 0.3 + P.y * 0.2).b) * (1.0 - smoothstep(0.0, 0.25, vBN.y - 0.55));
+            diffuseColor.rgb *= mix(1.0, 0.7 + 0.5 * strands, fade);
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.2, 0.28, 0.12), moss * 0.35 * fade);
+            bH = (strands - 0.5) * 1.2 * fade; bR = 0.9;
+          }
+        }`)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nif (bR > 0.0) roughnessFactor = bR;')
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        if (abs(bH) > 0.0001) { vec3 sp = -vViewPosition, dpx = dFdx(sp), dpy = dFdy(sp); float h = bH * 0.012, dhx = dFdx(h), dhy = dFdy(h);
+          vec3 r1 = cross(dpy, normal), r2 = cross(normal, dpx); float det = dot(dpx, r1); normal = normalize(abs(det) * normal - sign(det) * (dhx * r1 + dhy * r2)); }`);
+  };
+  m.customProgramCacheKey = () => 'buildmat-v1';
+  return m;
+})();
 
 // Common primitive helpers (all return fresh geometries).
 export const prim = {
