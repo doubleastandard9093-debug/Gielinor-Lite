@@ -250,6 +250,24 @@ const ease = k => k * k * (3 - 2 * k), seg = (t, a, b) => ease(Math.min(1, Math.
 function hipPivot(p, extraY = 0) { const H = 0.9, bx = p.body.rotation.x, bz = p.body.rotation.z;
   p.body.position.set(H * Math.sin(bz), H * (1 - Math.cos(bx) * Math.cos(bz)) + extraY, -H * Math.sin(bx)); }
 const SKILL_POSES = {
+  // melee: step in and plant the lead foot, chamber the blade over the shoulder, cut through with the hips and follow through.
+  // pm.swingVar alternates a diagonal slash (0), a backhand (1) and a thrust (2) so repeated hits do not look identical.
+  melee(p, t, knee, elbow, pm) {
+    const ch = seg(t, 0, 0.3), cut = seg(t, 0.3, 0.5), rec = seg(t, 0.6, 1), v = pm.swingVar || 0, hold = 1 - rec;
+    if (v === 2) { // thrust
+      p.rightArm.rotation.x = -1.0 - 0.4 * ch * (1 - cut) - 0.5 * cut * hold; elbow(p.rightArm).rotation.x = -1.6 * ch * (1 - cut) - 0.1;
+      p.body.rotation.y = 0.35 * ch * (1 - cut) - 0.3 * cut * hold; p.body.rotation.x = 0.05 + 0.22 * cut * hold;
+    } else {
+      const dir = v === 1 ? -1 : 1;
+      p.rightArm.rotation.x = -0.4 - 2.2 * ch + 2.6 * cut * (1 - 0.3 * rec); p.rightArm.rotation.z = dir * (0.5 * ch - 0.9 * cut) * hold;
+      elbow(p.rightArm).rotation.x = -1.2 * ch * (1 - cut) - 0.2;
+      p.body.rotation.y = dir * (-0.45 * ch + 0.85 * cut) * hold; p.body.rotation.x = 0.04 + 0.16 * cut * hold;
+    }
+    p.leftArm.rotation.x = -0.5 * hold - 0.2; p.leftArm.rotation.z = -0.25; elbow(p.leftArm).rotation.x = -0.9;   // guard hand up
+    const lunge = Math.sin(Math.PI * seg(t, 0.1, 0.85));
+    p.leftLeg.rotation.x = -0.45 * lunge; knee(p.leftLeg).rotation.x = 0.35 * lunge; p.rightLeg.rotation.x = 0.3 * lunge; knee(p.rightLeg).rotation.x = 0.2 * lunge;
+    if (p.headG) p.headG.rotation.y = -p.body.rotation.y * 0.8;
+  },
   // two-handed axe: wind back over the right shoulder, drive across into the trunk, follow through
   chop(p, t, knee, elbow) {
     const w = seg(t, 0, 0.35), s = seg(t, 0.35, 0.55), r = seg(t, 0.6, 1);
@@ -426,7 +444,7 @@ export function updatePlayer(pm, keys, dt, running, camYaw) {
     }
     elbow(p.leftArm).rotation.x += (-0.25 - elbow(p.leftArm).rotation.x) * k;
     if (pm.actionAnim > 0) {
-      pm.actionAnim = Math.max(0, pm.actionAnim - dt * (pm.actionKind === 'fish' || pm.actionKind === 'cook' || pm.actionKind === 'craft' ? 0.75 : 2.0));
+      pm.actionAnim = Math.max(0, pm.actionAnim - dt * (pm.actionKind === 'fish' || pm.actionKind === 'cook' || pm.actionKind === 'craft' ? 0.75 : pm.actionKind === 'melee' ? 1.6 : 2.0));
       const t = 1 - pm.actionAnim;
       // wind up then strike, with the body twisting into the swing
       p.rightArm.rotation.x = t < 0.3 ? -(t / 0.3) * 2.4 : -2.4 + ((t - 0.3) / 0.7) * 2.8;
@@ -442,6 +460,14 @@ export function updatePlayer(pm, keys, dt, running, camYaw) {
       p.leftArm.rotation.z += (-0.05 - p.leftArm.rotation.z) * k; p.rightArm.rotation.z += (0.05 - p.rightArm.rotation.z) * k;
     }
   }
+  // reactions layered on top of whatever else is playing: flinch when hit, shield or forearm block when the hit is stopped
+  if (pm.hitT > 0) { pm.hitT = Math.max(0, pm.hitT - dt * 3.2); const h = Math.sin(pm.hitT * Math.PI) * (pm.hitK || 1);
+    p.body.rotation.x -= 0.3 * h; p.body.rotation.z += 0.12 * h * (pm.hitSide || 1); if (p.headG) { p.headG.rotation.x -= 0.35 * h; p.headG.rotation.z = 0.2 * h * (pm.hitSide || 1); }
+    p.leftArm.rotation.z -= 0.35 * h; p.rightArm.rotation.z += 0.35 * h; knee(p.leftLeg).rotation.x += 0.25 * h; knee(p.rightLeg).rotation.x += 0.25 * h; }
+  else if (p.headG) p.headG.rotation.z *= 0.8;
+  if (pm.blockT > 0) { pm.blockT = Math.max(0, pm.blockT - dt * 2.2); const b = Math.min(1, Math.sin(pm.blockT * Math.PI) * 1.6);
+    p.leftArm.rotation.x += (-1.5 - p.leftArm.rotation.x) * b; p.leftArm.rotation.z += (0.55 - p.leftArm.rotation.z) * b; elbow(p.leftArm).rotation.x += (-1.4 - elbow(p.leftArm).rotation.x) * b;
+    p.body.rotation.x -= 0.08 * b; p.body.rotation.y += (-0.3 - p.body.rotation.y) * b * 0.6; knee(p.leftLeg).rotation.x += 0.2 * b; knee(p.rightLeg).rotation.x += 0.2 * b; }
   { const r = p.sword.visible ? 1 : 0.3, l = p.bow.visible ? 1 : p.shield.visible ? 0.85 : 0.3;
     pm.curlL = (pm.curlL ?? 0.3) + (l - (pm.curlL ?? 0.3)) * Math.min(1, dt * 12); pm.curlR = (pm.curlR ?? 0.3) + (r - (pm.curlR ?? 0.3)) * Math.min(1, dt * 12);
     handCurl(p.leftArm, Math.round(pm.curlL * 50) / 50); handCurl(p.rightArm, Math.round(pm.curlR * 50) / 50); }

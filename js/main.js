@@ -1389,7 +1389,7 @@ function playerAttack(mon, now) {
     if (!useArrow()) { log(ammoMsg || (/crossbow/i.test(player.equipment.weapon || '') ? 'You have no bolts left. Equip bolts in your ammo slot.' : 'There is no ammo left in your quiver.'), 'warn'); stopAction(); return; }
     arrowFlight = { from: pm.mesh.position.clone().setY(1.3), mon, t: 0 };
   }
-  pm.actionAnim = 1; pm.actionKind = ranged ? 'bow' : 'melee';
+  pm.actionAnim = 1; pm.actionKind = ranged ? 'bow' : 'melee'; pm.swingVar = ((pm.swingVar ?? -1) + 1 + (Math.random() < 0.3 ? 1 : 0)) % 3;
   const rage = tick < buffs.rageUntil;
   const base = { acc: rage ? 0.2 : 0, dmg: rage ? 0.2 : 0 };
   const swings = [];
@@ -1414,6 +1414,7 @@ function playerAttack(mon, now) {
     const d = rollPlayerHit(player, skills, mon, Math.random, mods);
     mon.hp -= d;
     dmg += d;
+    if (d > 0) { mon.hitT = 1; mon.hitK = Math.min(1.4, 0.6 + d / Math.max(4, mon.maxHp * 0.25)); } else mon.blockT = 1;
     overlays.splat(mon, d, now + i * 150);
     if (mods.procs && mods.procs.includes('bigHit')) log(`${ITEMS[player.equipment.weapon].special.split(':')[0]}!`, 'combat');
     // Unique weapon specials
@@ -1493,6 +1494,8 @@ function monsterAttack(mon, now) {
   if (dmg > 0 && mon.poison && Math.random() < mon.poison.chance && applyPoison(player, mon.poison.dmg, true)) log(`You have been poisoned by the ${mon.name}!`, 'warn');
   player.hp = Math.max(0, player.hp - dmg);
   playerEnt.lastHitAt = now;
+  if (dmg > 0) { pm.hitT = 1; pm.hitK = Math.min(1.4, 0.5 + dmg / Math.max(5, player.maxHp * 0.2)); pm.hitSide = Math.random() < 0.5 ? -1 : 1; }
+  else if (player.equipment.shield || raw > 0) pm.blockT = 1;
   overlays.splat(playerEnt, dmg, now);
   mon.lungeT = 1;
   lastCombatTick = tick;
@@ -1667,11 +1670,20 @@ function updateMonsters(dt, now) {
   for (const m of monsters) {
     const pos = m.mesh.position;
     if (m.dying) {
+      // death: stagger back, knees buckle, topple sideways with a small bounce, lie still, then sink away
       m.deathT += dt;
-      const t = Math.min(1, m.deathT / 0.9);
-      m.mesh.rotation.z = t * Math.PI / 2;
-      pos.y = -t * 0.6;
-      if (t >= 1) { m.dying = false; m.mesh.visible = false; m.respawnAt = now + (m.respawn || 15000); }
+      const D = m.deathT, side = m.deathSide ??= (Math.random() < 0.5 ? -1 : 1), ez = k => 1 - (1 - k) * (1 - k);
+      const stag = Math.min(1, D / 0.35), fall = Math.min(1, Math.max(0, (D - 0.25) / 0.55)), bounce = D > 0.8 && D < 1.05 ? Math.sin((D - 0.8) / 0.25 * Math.PI) * 0.08 : 0;
+      const quad = m.legs && m.legs.length >= 4;
+      m.mesh.rotation.z = side * (ez(fall) * (quad ? 1.45 : 1.5) - bounce);
+      m.mesh.rotation.x = quad ? 0 : -0.25 * Math.sin(stag * Math.PI) * (1 - fall);
+      if (m.body) m.body.position.z = -0.25 * Math.sin(stag * Math.PI * 0.5) * (1 - fall * 0.5);
+      if (m.rigHi) { const u = m.rigHi.userData; if (u && u.legs) { u.legs.forEach(l => { if (l.userData.knee) l.userData.knee.rotation.x = 0.9 * Math.min(1, D / 0.5); }); u.arms?.forEach((a, i) => { a.rotation.z = (i ? 1 : -1) * 0.9 * fall; }); } }
+      m.legs?.forEach((l, i) => { if (l.userData.knee) l.userData.knee.rotation.x = (l.userData.kneeRest || 0) + 0.7 * fall * (i % 2 ? 1 : 0.6); });
+      const sink = Math.max(0, (D - 1.6) / 0.6);
+      pos.y = terrainHeight(pos.x, pos.z) + (quad ? 0.05 : 0.15) * Math.sin(fall * Math.PI * 0.5) - sink * 0.9;
+      const t = Math.min(1, D / 2.2);
+      if (t >= 1) { m.mesh.rotation.x = 0; m.deathSide = null; if (m.body) m.body.position.z = 0; m.dying = false; m.mesh.visible = false; m.respawnAt = now + (m.respawn || 15000); }
       continue;
     }
     if (!m.alive) continue;
@@ -1722,6 +1734,13 @@ function updateMonsters(dt, now) {
     else if (m.lod && m.lod.hi && m.lod.hi.userData.head && moving) m.lod.hi.userData.head.rotation.x = Math.sin(m.walkT * 2) * 0.05;
     if (!hiQuad && m.lod && m.lod.hi && m.lod.hi.userData.wings) { const f = Math.sin(now * 0.003 + m.spawnX) * 0.12; m.lod.hi.userData.wings.forEach((w, k) => { w.rotation.z = (k ? 1 : -1) * (0.25 + f); }); }
     if (m.lungeT > 0) { m.lungeT = Math.max(0, m.lungeT - dt * 3); m.body.position.z = Math.sin(m.lungeT * Math.PI) * 0.35; }
+    // hit react: knocked back and rocked by the blow (scaled by damage); a stopped hit is a quick brace instead
+    if (m.hitT > 0) { m.hitT = Math.max(0, m.hitT - dt * 3.5); const h = Math.sin(m.hitT * Math.PI) * (m.hitK || 1);
+      m.body.position.z = -0.22 * h; m.body.rotation.x = -0.22 * h; m.body.rotation.z = 0.1 * h * Math.sin(m.spawnX);
+      if (m.rigHi) { const u = m.rigHi.userData; if (u && u.head) u.head.rotation.x = -0.4 * h; } }
+    else if (m.blockT > 0) { m.blockT = Math.max(0, m.blockT - dt * 3); const b = Math.sin(m.blockT * Math.PI);
+      m.body.rotation.x = 0.1 * b; if (m.rigHi) { const u = m.rigHi.userData; if (u && u.arms) { u.arms[0].rotation.x = -1.4 * b; u.arms[0].userData.elbow.rotation.x = -1.2 * b; } } }
+    else if (m.body && !m.lungeT) { m.body.rotation.x *= 0.8; m.body.rotation.z *= 0.8; }
   }
 }
 
