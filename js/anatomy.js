@@ -444,7 +444,7 @@ export function gearDetail(m) {
         vec2 uv = vec2(atan(p.x, p.z) * 0.16, p.y);   // wrap around the limb
         if (gk < 0.5) { vec2 w = uv * vec2(260.0, 260.0); float wx = sin(w.x) * 0.5 + 0.5, wy = sin(w.y) * 0.5 + 0.5;
           float h = mix(wx, wy, step(0.5, fract((floor(w.x / 3.1416) + floor(w.y / 3.1416)) * 0.5))) * 0.6 + gNoise(uv * 40.0) * 0.4;
-          return vec4(h * 0.5, 0.88 + 0.16 * h, 0.0, 0.92); }
+          return vec4(h * 0.3, 0.95 + 0.08 * h, 0.0, 0.92); }
         if (gk < 1.5) { vec2 c = uv * vec2(42.0, 48.0); c.x += 0.5 * mod(floor(c.y), 2.0); vec2 f = fract(c) - 0.5;
           float r = length(f * vec2(1.0, 1.25)); float aa = clamp(length(fwidth(c)) * 1.5, 0.0, 1.0); float ring = mix(1.0 - smoothstep(0.06, 0.14, abs(r - 0.3)), 0.55, aa);   // fade to average when rings get sub-pixel
           return vec4(ring, mix(0.25, 1.05, ring), ring, mix(0.8, 0.35, ring)); }

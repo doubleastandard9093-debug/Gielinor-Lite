@@ -93,22 +93,40 @@ export function createSky(scene) {
         float sd = max(dot(d, sunDir), 0.0);
         col += sunCol * (pow(sd, 900.0) * 6.0 + pow(sd, 40.0) * 0.25 + pow(sd, 6.0) * 0.12);
         if (clouds > 0.5 && h > 0.0) {
-          // pseudo-volumetric cumulus: march a few steps through a cloud slab, with one sample toward the sun per step
-          // for self-shadowing, so clouds get bright sunlit crowns, silver edges and grey-blue bellies
+          // volumetric cumulus: ray-march a slab between cloud base (y=1) and top (y=1.38) with jittered steps.
+          // Density = 2D noise coverage shaped by height (flat bellies, rounded crowns) and eroded by a height-shifted
+          // detail octave. Each step marches 3 samples toward the sun (Beer-Lambert with a powder term), so clouds
+          // self-shadow, glow at thin sunlit edges and get dark bellies.
           vec2 wind = vec2(time * 0.0025, time * 0.001); float T = 1.0, c = 0.0; vec3 lit = vec3(0.0);
-          vec3 sunC = mix(vec3(1.0, 0.97, 0.92), sunCol, 0.35), shadeC = mix(horizon, top, 0.5) * vec3(0.62, 0.66, 0.78);
-          for (int i = 0; i < 6; i++) {
-            float lay = float(i) / 5.0;
-            vec2 uv = d.xz / (h + 0.12 + lay * 0.05) * 0.16 + wind + lay * 0.013;
-            float n = texture2D(tNoise, uv).r * 0.6 + texture2D(tNoise, uv * 2.3 + 0.3).g * 0.28 + texture2D(tNoise, uv * 5.1 + 0.7).b * 0.12;
-            float bulge = 1.0 - abs(lay - 0.4) * 1.4;                // thickest in the middle of the slab
-            float den = smoothstep(0.44, 0.7, n * (0.85 + 0.25 * bulge)) * 0.5;
-            if (den > 0.001) {
-              vec2 uvL = uv + sunDir.xz * 0.02;
-              float nL = texture2D(tNoise, uvL).r * 0.6 + texture2D(tNoise, uvL * 2.3 + 0.3).g * 0.4;
-              float sh = exp(-smoothstep(0.5, 0.78, nL) * 2.2) * (0.55 + 0.45 * lay);
-              vec3 Lc = mix(shadeC, sunC, sh) + sunCol * pow(sd, 8.0) * (1.0 - den) * 0.8;   // forward scattering rims
-              lit += T * den * Lc; T *= 1.0 - den;
+          vec3 sunC = mix(vec3(1.0, 0.97, 0.92), sunCol, 0.35) * 1.08, shadeC = mix(horizon, top, 0.5) * vec3(0.6, 0.65, 0.78);
+          const float HB = 1.0, HT = 1.38; const int NS = 14;
+          float t0 = HB / max(h, 0.04), t1 = min(HT / max(h, 0.04), t0 + 3.0), dt = (t1 - t0) / float(NS);
+          float jit = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+          float hg = mix(1.0, 1.0 + 1.6 * pow(sd, 6.0), 0.8);   // forward-scattering phase toward the sun
+          for (int i = 0; i < NS; i++) {
+            vec3 p = d * (t0 + (float(i) + jit) * dt);
+            float yf = (p.y - HB) / (HT - HB);
+            vec2 uv = p.xz * 0.16 + wind;
+            float n = texture2D(tNoise, uv).r * 0.62 + texture2D(tNoise, uv * 2.3 + 0.3).g * 0.38;
+            float shape = smoothstep(0.0, 0.12, yf) * (1.0 - smoothstep(0.35, 1.0, yf) * 0.9);
+            float den = smoothstep(0.54, 0.68, n * (0.72 + 0.35 * shape) + (shape - 0.6) * 0.2);
+            den -= texture2D(tNoise, uv * 6.0 + yf * 0.25 + 0.7).b * 0.25 * (1.0 - den);   // wispy eroded edges
+            den = clamp(den, 0.0, 1.0) * dt * 7.0;
+            if (den > 0.002) {
+              float od = 0.0;
+              for (int k = 1; k <= 3; k++) {
+                vec3 q = p + sunDir * (0.05 * float(k)); float yq = (q.y - HB) / (HT - HB);
+                vec2 uq = q.xz * 0.16 + wind;
+                float nq = texture2D(tNoise, uq).r * 0.62 + texture2D(tNoise, uq * 2.3 + 0.3).g * 0.38;
+                float sq = smoothstep(0.0, 0.12, yq) * (1.0 - smoothstep(0.35, 1.0, yq) * 0.9) * step(yq, 1.0);
+                od += smoothstep(0.54, 0.68, nq * (0.72 + 0.35 * sq) + (sq - 0.6) * 0.2) * sq;
+              }
+              float beer = exp(-od * 1.4), powder = 1.0 - exp(-den * 6.0);
+              float sh = beer * mix(1.0, powder, 0.5) * (0.6 + 0.4 * yf);
+              vec3 Lc = mix(shadeC, sunC * hg, sh) + sunCol * pow(sd, 8.0) * beer * 0.5;
+              float a = 1.0 - exp(-den * 2.5);
+              lit += T * a * Lc; T *= 1.0 - a;
+              if (T < 0.03) break;
             }
           }
           c = (1.0 - T) * smoothstep(0.0, 0.2, h);
