@@ -169,13 +169,18 @@ function leafColorFn(base, rng, light = 0.35) {
   };
 }
 function trunkGeo(h, r, bark, rng) {
-  const g = prim.cyl(r * 0.55, r, h, 9);
-  const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) { const y = p.getY(i); const k = 1 + 0.08 * snoise(p.getX(i) * 4, y * 2, p.getZ(i) * 4, 2); p.setX(i, p.getX(i) * k); p.setZ(i, p.getZ(i) * k); }
+  // bark: more segments so vertical ridges and furrows are real geometry (lit by the sun), plus a slight twist
+  const g = new THREE.CylinderGeometry(r * 0.55, r, h, 16, 8);
+  const p = g.attributes.position, ridge = (a, y) => Math.abs(Math.sin(a * 6.5 + y * 0.6 + 0.8 * snoise(a, y * 1.5, 0, 3)));
+  for (let i = 0; i < p.count; i++) { const x0 = p.getX(i), z0 = p.getZ(i), y = p.getY(i), a = Math.atan2(z0, x0);
+    const k = 1 + 0.08 * snoise(x0 * 4, y * 2, z0 * 4, 2) + 0.07 * ridge(a, y) - 0.035; p.setX(i, x0 * k); p.setZ(i, z0 * k); }
   g.computeVertexNormals();
   place(g, 0, h / 2, 0);
-  const bc = new THREE.Color(bark), c = new THREE.Color();
-  paint(g, (x, y, z) => c.copy(bc).multiplyScalar(0.75 + 0.3 * (0.5 + 0.5 * Math.sin(Math.atan2(z, x) * 7 + y * 2))));
+  const bc = new THREE.Color(bark), c = new THREE.Color(), moss = new THREE.Color(0x4a6a2a);
+  paint(g, (x, y, z, nx, ny, nz) => { const a = Math.atan2(z, x), rr = ridge(a, y - h / 2);
+    c.copy(bc).multiplyScalar(0.55 + 0.5 * rr + 0.12 * snoise(x * 20, y * 8, z * 20, 4));   // dark furrows, lighter ridges
+    if (y < h * 0.35 && nz + nx * 0.3 > 0.35) c.lerp(moss, 0.35 * (1 - y / (h * 0.35)));        // moss on the shady lower side
+    return c; });
   const parts = [g];
   // root flare
   for (let i = 0; i < 4; i++) {
@@ -200,7 +205,8 @@ export function treeGeometry(kind, rng) {
   const leafFn = leafColorFn(L.leaf, rng);
   const top = L.h + 0.4;
   const S = L.size;
-  const addLeaf = (rx, ry, rz, x, y, z, detail = 2) => parts.push(paint(place(blob(rx, ry, rz, { detail, lump: 0.22, seed: rng() * 10, flat: 0.35 }), x, y, z), leafFn));
+  const clumps = [];
+  const addLeaf = (rx, ry, rz, x, y, z, detail = 2) => { clumps.push([rx, ry, rz, x, y, z]); parts.push(paint(place(blob(rx, ry, rz, { detail, lump: 0.22, seed: rng() * 10, flat: 0.35 }), x, y, z), leafFn)); };
   // a couple of branches reaching into the canopy
   for (let i = 0; i < 3; i++) {
     const a = rng() * Math.PI * 2;
@@ -234,6 +240,20 @@ export function treeGeometry(kind, rng) {
         const f = paint(place(prim.cone(0.2, len, 5), Math.cos(a) * d, top + S * 0.35 - len / 2, Math.sin(a) * d, Math.PI, 0, 0), leafFn);
         parts.push(f);
       }
+    }
+  }
+  // layered foliage: small leaf sprays standing off each clump's surface break up the blob outline and add depth.
+  // Upper sprays catch more light, inner/lower ones are darker, so the crown reads as layers of leaves.
+  const lb = new THREE.Color(L.leaf), lc = new THREE.Color();
+  for (const [rx, ry, rz, x, y, z] of clumps) {
+    const n = Math.round(10 + 10 * Math.min(1.6, rx));
+    for (let i = 0; i < n; i++) {
+      const u = rng() * 2 - 1, a = rng() * Math.PI * 2, q = Math.sqrt(1 - u * u), dx = q * Math.cos(a), dy = u * 0.85 + 0.15, dz = q * Math.sin(a);
+      const off = 0.88 + rng() * 0.2, sz = 0.16 + rng() * 0.14;
+      const spray = prim.cone(sz, sz * 2.2, 4).scale(1, 1, 0.22);
+      const shade = 0.72 + 0.45 * (0.5 + 0.5 * dy) + (rng() - 0.5) * 0.18;
+      lc.copy(lb).offsetHSL((rng() - 0.5) * 0.04, (rng() - 0.5) * 0.1, 0).multiplyScalar(shade);
+      parts.push(col(place(spray, x + dx * rx * off, y + dy * ry * off, z + dz * rz * off, Math.acos(Math.max(-1, Math.min(1, dy))) + (rng() - 0.5) * 0.8, a + rng(), (rng() - 0.5) * 0.8), lc.getHex(), 0.15));
     }
   }
   return bake(parts);
