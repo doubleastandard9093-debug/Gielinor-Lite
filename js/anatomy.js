@@ -3,6 +3,8 @@
 // and a distance LOD (cheap baked mesh far away, detailed rig built on demand up close).
 import * as THREE from 'three';
 import { getNoiseTexture } from './gfx.js';
+import { DAY } from './daycycle.js';
+const CHAR_LIGHT = { dir: { value: DAY.lightDir }, col: { value: DAY.lightCol }, k: { get value() { return DAY.dirK; } } };
 import { prim, place, paint, col, kit, snoise, blob, vcMat, humanoidParts, npcExtras } from './models.js';
 
 // Character skin/cloth material (no world-xz bump: it flattens vertical surfaces).
@@ -13,7 +15,7 @@ export const CHAR = { q: { value: 1 } };
 export function makeCharMat({ rough = 0.68, metal = 0.02, bump = 0.35, freq = 9, rim = 0.35, sss = 1, sheen = 0 } = {}) {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: metal });
   m.onBeforeCompile = sh => {
-    sh.uniforms.tCharNoise = { value: getNoiseTexture() }; sh.uniforms.charQ = CHAR.q;
+    sh.uniforms.tCharNoise = { value: getNoiseTexture() }; sh.uniforms.charQ = CHAR.q; sh.uniforms.cLDir = CHAR_LIGHT.dir; sh.uniforms.cLCol = CHAR_LIGHT.col; sh.uniforms.cLK = CHAR_LIGHT.k;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vCW; varying vec3 vCN;')
       .replace('#include <project_vertex>', `#include <project_vertex>
@@ -24,7 +26,10 @@ export function makeCharMat({ rough = 0.68, metal = 0.02, bump = 0.35, freq = 9,
         vCW = (modelMatrix * cwp).xyz; vCN = normalize(mat3(modelMatrix) * objectNormal);`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        varying vec3 vCW; varying vec3 vCN; uniform sampler2D tCharNoise; uniform float charQ;`)
+        varying vec3 vCW; varying vec3 vCN; uniform sampler2D tCharNoise; uniform float charQ, cLK; uniform vec3 cLDir, cLCol;`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        float skinR = smoothstep(0.06, 0.2, vColor.r - vColor.b) * smoothstep(0.02, 0.12, vColor.g - vColor.b) * ${sss.toFixed(2)};
+        roughnessFactor = mix(roughnessFactor, 0.5, skinR * charQ);   // skin has a soft oily sheen, cloth stays matte`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         float cfade = charQ * (1.0 - smoothstep(10.0, 28.0, length(cameraPosition - vCW)));
         if (cfade > 0.01) {
@@ -44,6 +49,16 @@ export function makeCharMat({ rough = 0.68, metal = 0.02, bump = 0.35, freq = 9,
           // warm light scattering through skin (reddish-tan vertex colours)
           float skinK = smoothstep(0.06, 0.2, vColor.r - vColor.b) * smoothstep(0.02, 0.12, vColor.g - vColor.b) * ${sss.toFixed(2)};
           reflectedLight.indirectDiffuse += diffuseColor.rgb * vec3(1.0, 0.42, 0.28) * skinK * (0.18 + 0.25 * fr);
+          vec3 Lv = normalize((viewMatrix * vec4(cLDir, 0.0)).xyz); float nl = dot(normal, Lv);
+          // skin: wrapped diffuse softens the light/shadow edge with a red-orange band, and thin edges glow when backlit
+          float wrap = max(0.0, (nl + 0.45) / 1.45) - max(0.0, nl);
+          float back = pow(max(0.0, dot(vv, Lv)), 4.0) * fr;
+          reflectedLight.directDiffuse += diffuseColor.rgb * cLCol * cLK * skinK * (vec3(0.9, 0.35, 0.22) * wrap * 0.55 + vec3(1.0, 0.45, 0.3) * back * 0.6);
+          ${sheen ? `// fur: strand highlight along the hair direction (Kajiya-Kay), shifted toward the root colour
+          vec3 Tv = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz); Tv = normalize(Tv - normal * dot(Tv, normal) + 1e-4);
+          vec3 Hh = normalize(Lv + vv); float th = dot(Tv, Hh); float kk = pow(sqrt(max(0.0, 1.0 - th * th)), 24.0);
+          reflectedLight.directSpecular += cLCol * cLK * diffuseColor.rgb * kk * 0.35 * max(0.0, nl + 0.3);` : `// cloth: soft velvet-like sheen at grazing angles on non-skin surfaces
+          reflectedLight.directDiffuse += diffuseColor.rgb * cLCol * cLK * (1.0 - skinK) * fr * max(0.0, nl + 0.25) * 0.35;`}
         }`);
   };
   m.customProgramCacheKey = () => 'char-' + [rough, metal, bump, freq, rim, sss, sheen].join(',');

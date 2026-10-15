@@ -27,6 +27,7 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>Skin, fur and cloth that look the part.</b> Skin now softens where light turns to shadow with a warm red edge, glows at thin edges when the sun is behind someone, and has a soft natural sheen. Fur on wolves and other animals shows a streak of highlight along the hair, and clothing picks up a gentle velvet-like sheen at its edges. All of it follows the time of day.</p>
 <p><b>Leafier trees.</b> Tree crowns are now covered in layers of small leaf sprays that break up their outline, lit brighter on top and darker underneath. Trunks have real ridged, furrowed bark with a slight twist, and moss creeps up the shady side near the roots.</p>
 <p><b>Things that follow through.</b> Capes now hang from your shoulders and stream out behind you when you run, flutter at speed, swing out when you turn and settle when you stop. Wolf and cow tails are now loose and springy: they trail behind when the animal runs, swing out on turns, bob with each stride and swish or wag while it stands, tucking low when a wolf is fighting.</p>
 <p><b>Softer, more natural shadows.</b> Shadows are now crisp where something touches the ground, like feet, fence posts and tree trunks, and soften the further they stretch from it, so tree crowns and roof edges cast gentle, blurry shapes instead of hard cut-outs.</p>
