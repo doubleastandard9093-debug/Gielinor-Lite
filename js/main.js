@@ -7,6 +7,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { updateDay, DAY, dayLabel } from './daycycle.js';
 import { poseGait, tailSway } from './gait.js';
+import { initVfx, updateVfx, addFire, removeFireVfx, burst, setVfxQuality } from './vfx.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, SUN_DIR, createWaterReflection } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
@@ -75,6 +76,7 @@ composer.addPass(gradePass);
 document.body.prepend(renderer.domElement);
 const lightsRef = createLights(scene);
 const waterRefl = createWaterReflection(renderer, scene, camera);
+initVfx(scene);
 const { dirLight } = lightsRef;
 const sky = createSky(scene);
 const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);
@@ -160,7 +162,7 @@ function applyGfx() {
   renderer.toneMappingExposure = gfx.quality === 'low' ? 1.12 : 1.18;
   gradePass.uniforms.sat.value = gfx.quality === 'low' ? 1.12 : 1.5;
   sky.setQuality(gfx.quality);
-  setDecorQuality(gfx.quality);
+  setDecorQuality(gfx.quality); setVfxQuality(gfx.quality);
   SWAY.value = gfx.quality === 'low' ? 0 : 1;
   setLodRange(gfx.quality);
   // High: thinner fog and a longer view so the northern mountains read clearly from town
@@ -1170,7 +1172,7 @@ function lightFire(a) {
   scene.add(g);
   const fire = { mesh: g, flame: fl, type: 'station', kind: 'range', name: 'Fire', isFire: true, alive: true, x, z, radius: 0.5, expires: performance.now() + 60000 };
   g.userData.entity = fire;
-  fires.push(fire);
+  fires.push(fire); fl.scale.setScalar(0.55); addFire(g, 0.9);
   log('The fire catches and the logs begin to burn.', 'game');
   // step aside like RuneScape
   for (const [dx, dz] of [[-1, 0], [1, 0], [0, 1], [0, -1]]) if (!blockedAt(x + dx, z + dz)) { walkTo(x + dx, z + dz); break; }
@@ -1178,7 +1180,7 @@ function lightFire(a) {
   markDirty();
 }
 function removeFire(f) {
-  scene.remove(f.mesh);
+  removeFireVfx(f.mesh); scene.remove(f.mesh);
   const i = fires.indexOf(f);
   if (i >= 0) fires.splice(i, 1);
 }
@@ -1417,6 +1419,7 @@ function playerAttack(mon, now) {
     dmg += d;
     if (d > 0) { mon.hitT = 1; mon.hitK = Math.min(1.4, 0.6 + d / Math.max(4, mon.maxHp * 0.25)); } else mon.blockT = 1;
     overlays.splat(mon, d, now + i * 150);
+    { const mp = mon.mesh.position; if (d > 0) burst('hit', mp.x, mp.y + 1.0, mp.z, 10 + Math.min(20, d)); else burst('dust', mp.x, mp.y, mp.z, 6); }
     if (mods.procs && mods.procs.includes('bigHit')) log(`${ITEMS[player.equipment.weapon].special.split(':')[0]}!`, 'combat');
     // Unique weapon specials
     const pr = weaponProcs(player, d);
@@ -1773,7 +1776,7 @@ function flyArrow(f, mesh, target, dt) {
 function updateArrow(dt) {
   if (arrowFlight && !flyArrow(arrowFlight, arrowMesh, arrowFlight.mon.mesh, dt)) arrowFlight = null;
   if (enemyArrow && !flyArrow(enemyArrow, enemyArrowMesh, pm.mesh, dt)) enemyArrow = null;
-  if (spellFlight && !flyArrow(spellFlight, spellMesh, spellFlight.mon.mesh, dt)) spellFlight = null;
+  if (spellFlight && !flyArrow(spellFlight, spellMesh, spellFlight.mon.mesh, dt)) { const mp = spellFlight.mon.mesh.position; burst('magic', mp.x, mp.y + 1.1, mp.z, 26); spellFlight = null; }
 }
 
 const ACTION_LABEL = {
@@ -2040,6 +2043,7 @@ function animate(now) {
   updateCave(dt);
   followLight(dirLight, rig.fx, rig.fz, DAY.lightDir);
   sky.follow(camera);
+  updateVfx(dt, pm.mesh.position.x, pm.mesh.position.z, camera, now);
   if (gfx.quality === 'low') { waterRefl.update(false); renderer.render(scene, camera); } else { updateShafts(); waterRefl.update(true); composer.render(); }
 
   overlays.update(camera, barEnts, now);

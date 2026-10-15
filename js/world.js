@@ -3,6 +3,7 @@ import { makeRng } from './rng.js';
 import { MONSTER_TYPES, AGILITY_COURSES, RUNE_ALTARS, BOUNTIES } from './gameplay.js';
 import { agilityStyle, swingGeom } from './agilityAnim.js';
 import { QUEST_NPCS } from './questnpcs.js';
+import { addFire } from './vfx.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise, WATER_MESHES } from './gfx.js';
 import { buildHumanoidRig, apronGeo, varyLook, hashStr, contactShadow } from './anatomy.js';
 import { buildCreatureRig, rollVariant, namedVariant } from './creatures.js';
@@ -743,6 +744,7 @@ export function createWorld(scene) {
         [prim.cyl(0.25, 0.32, 1.4, 10), 0x5a524a, 0, 1.7, -0.2], [prim.cyl(0.3, 0.3, 0.12, 10), 0x48423c, 0, 2.42, -0.2],
         [prim.box(0.75, 0.55, 0.1), 0x2a2420, 0, 0.6, 0.7, 0, 0, 0, 0]]));
       const glow = new THREE.Mesh(prim.box(0.55, 0.4, 0.05), glowMat(0xff8a2a)); glow.position.set(0, 0.6, 0.76); g.add(glow);
+      const mouth = new THREE.Object3D(); mouth.position.set(0, 0.1, 0.7); g.add(mouth); addFire(mouth, 0.6, 'forge');
     } else if (kind === 'anvil') {
       name = 'Anvil';
       g.add(kit([[prim.cyl(0.32, 0.38, 0.5, 10), 0x6a4a2a, 0, 0.25, 0], [prim.box(0.32, 0.2, 0.26), 0x34343c, 0, 0.6, 0, 0, 0, 0, 0.1],
@@ -1294,6 +1296,7 @@ export function createWorld(scene) {
       const e = prop(x, z, parts, 'Campfire', 'A crackling campfire. You could cook on it.', 0, { type: 'station', kind: 'range' });
       const fl = new THREE.Mesh(prim.cone(0.25, 0.7, 8), glowMat(0xff8a2a)); fl.position.y = 0.45; e.mesh.add(fl);
       const fl2 = new THREE.Mesh(prim.cone(0.14, 0.45, 7), glowMat(0xffd060)); fl2.position.y = 0.35; e.mesh.add(fl2);
+      fl.scale.setScalar(0.55); fl2.scale.setScalar(0.6); addFire(e.mesh, 1.1); // particles carry the flame; cones are the hot core
       e.name = 'Campfire'; return e;
     };
     const tent = (x, z, ry, hex) => {
