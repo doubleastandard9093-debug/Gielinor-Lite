@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { shapes, contactShadow } from './anatomy.js';
+import { shapes, contactShadow, gearDetail } from './anatomy.js';
 import { terrainHeight } from './world.js';
 import { WORLD_HALF, waterAt, colliders } from './world.js';
 
 export const WALK_SPEED = 3.3;  // world units per second
 export const RUN_SPEED = 6.2;
 
-const METAL = { Bronze: 0xb87333, Iron: 0x9a9a9a, Steel: 0xd0d8e0, Mithril: 0x5a6ad0, Adamant: 0x3a9a5a, Rune: 0x3ab8d0, Wooden: 0x8a5a2a, Oak: 0xc49a5a, Willow: 0x9aaa5a, Maple: 0xc0702a, Yew: 0x6a4a2a, Magic: 0x5a8ae0, Leather: 0x7a4a24, Hard: 0x5a3a1a, Shortbow: 0x8a5a2a };
+const METAL = { Bronze: 0xb87333, Iron: 0x9a9a9a, Steel: 0xd0d8e0, Mithril: 0x5a6ad0, Adamant: 0x3a9a5a, Rune: 0x3ab8d0, Dragon: 0xb83a34, Wooden: 0x8a5a2a, Oak: 0xc49a5a, Willow: 0x9aaa5a, Maple: 0xc0702a, Yew: 0x6a4a2a, Magic: 0x5a8ae0, Leather: 0x7a4a24, Hard: 0x5a3a1a, Shortbow: 0x8a5a2a };
 
 // Hand with a palm, four fingers of three jointed segments and a two-segment thumb.
 // Origin at the wrist (sits at the end of the forearm). hand.userData.curl(c) closes it: 0 open, 1 fist/grip.
@@ -52,13 +52,13 @@ export function createPlayer(scene) {
   const sphere = (r, w = 16, h = 12) => new THREE.SphereGeometry(r, w, h);
 
   // Torso (tinted by body armour), hips and belt
-  const bodyMat = std(0x6b4423, 0.65);
+  const bodyMat = gearDetail(std(0x6b4423, 0.65));
   const body = new THREE.Group();
   playerGroup.add(body);
   const chest = mesh(shapes.torso(1.02, 1.05, 28), bodyMat, 0, 0, 0, body);
   for (const sx of [-1, 1]) { mesh(shapes.pec(1.02), bodyMat, sx * 0.1, 1.3, 0.095, body); const tr = mesh(shapes.trap(1.02), bodyMat, sx * 0.1, 1.45, -0.02, body); tr.rotation.z = sx * -0.25; }
   mesh(new THREE.TorusGeometry(0.1, 0.022, 6, 18), bodyMat, 0, 1.5, 0, body).rotation.x = Math.PI / 2 - 0.2;
-  const legMat = std(0x3a2a1a, 0.7);
+  const legMat = gearDetail(std(0x3a2a1a, 0.7));
   const hips = mesh(sphere(0.25, 14, 8), legMat, 0, 0.8, 0, body); hips.scale.set(1.08, 0.6, 0.8);
   mesh(new THREE.CylinderGeometry(0.262, 0.262, 0.08, 16), std(0x3a2414, 0.5), 0, 0.88, 0, body);
   mesh(new THREE.BoxGeometry(0.1, 0.08, 0.04), std(0xc9a227, 0.35, 0.6), 0, 0.88, 0.25, body);
@@ -134,7 +134,7 @@ export function createPlayer(scene) {
   bow.visible = false;
   handOf(leftArm).add(bow);
 
-  const shieldMat = std(0x8a5a2a, 0.5, 0.3);
+  const shieldMat = gearDetail(std(0x8a5a2a, 0.5, 0.3));
   const shield = new THREE.Group();
   const disc = mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.06, 20), shieldMat, 0, 0, 0, shield); disc.rotation.z = Math.PI / 2;
   const rim = mesh(new THREE.TorusGeometry(0.34, 0.025, 6, 20), std(0x6a6a70, 0.35, 0.7), 0, 0, 0, shield); rim.rotation.y = Math.PI / 2;
@@ -143,7 +143,7 @@ export function createPlayer(scene) {
   shield.visible = false;
   handOf(leftArm).add(shield);
 
-  const helmMat = std(0xb87333, 0.35, 0.6);
+  const helmMat = gearDetail(std(0xb87333, 0.35, 0.6));
   const helm = new THREE.Group();
   mesh(new THREE.SphereGeometry(0.295, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.58), helmMat, 0, 0.26, 0, helm);
   mesh(new THREE.BoxGeometry(0.05, 0.2, 0.05), helmMat, 0, 0.22, 0.28, helm);
@@ -180,6 +180,19 @@ export function createPlayer(scene) {
   };
 }
 
+// which surface pattern an equipped item gets (see gearDetail): 0 cloth, 1 chain, 2 plate, 3 leather
+function gearKind(item) {
+  if (!item) return 0;
+  if (/chain/i.test(item)) return 1;
+  if (/leather|cowl|chaps|Wooden|Oak|Willow|Maple|Yew/i.test(item)) return 3;
+  if (/^(Bronze|Iron|Steel|Mithril|Adamant|Rune|Dragon)/.test(item)) return 2;
+  return 0;
+}
+function setGear(mat, item, rough, metal) {
+  const k = gearKind(item); mat.userData.gk.value = k;
+  mat.roughness = k === 2 ? 0.35 : k === 1 ? 0.45 : rough; mat.metalness = k === 2 ? 0.75 : k === 1 ? 0.6 : metal;
+}
+
 function metalColor(item, fallback) {
   if (!item) return fallback;
   const k = Object.keys(METAL).find(m => item.startsWith(m));
@@ -198,6 +211,8 @@ export function applyEquipmentLook(pm, equipment) {
   if (equipment.shield) p.shieldMat.color.setHex(metalColor(equipment.shield, 0x8a5a2a));
   p.bodyMat.color.setHex(equipment.body ? metalColor(equipment.body, 0x6b4423) : 0x6b4423);
   p.legMat.color.setHex(equipment.legs ? metalColor(equipment.legs, 0x3a2a1a) : 0x3a2a1a);
+  setGear(p.bodyMat, equipment.body, 0.65, 0.05); setGear(p.legMat, equipment.legs, 0.7, 0.05);
+  setGear(p.helmMat, equipment.head, 0.35, 0.6); setGear(p.shieldMat, equipment.shield, 0.5, 0.3);
   p.helm.visible = !!equipment.head;
   p.hair.visible = !equipment.head;
   if (equipment.head) p.helmMat.color.setHex(metalColor(equipment.head, 0x7a4a24));

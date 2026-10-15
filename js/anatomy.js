@@ -424,3 +424,49 @@ export function contactShadow(r = 0.5, k = 1) {
   m.userData.contact = true;
   return m;
 }
+
+// Armour and clothing surface detail for the player's equipment materials. Pattern is chosen per material by
+// mat.userData.gk.value: 0 woven cloth, 1 chainmail rings, 2 plate (bands, rivets, brushed streaks), 3 leather (grain and stitches).
+// Object-space coordinates keep the pattern stuck to the limb as it animates; bump uses screen derivatives. High only (CHAR.q).
+export function gearDetail(m) {
+  const gk = { value: 0 }; m.userData.gk = gk;
+  m.onBeforeCompile = sh => {
+    sh.uniforms.gk = gk; sh.uniforms.charQ = CHAR.q;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vGP; varying vec3 vGW;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvGP = transformed; vGW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+      varying vec3 vGP; varying vec3 vGW; uniform float gk, charQ;
+      float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(gHash(i), gHash(i + vec2(1, 0)), f.x), mix(gHash(i + vec2(0, 1)), gHash(i + vec2(1, 1)), f.x), f.y); }
+      // returns height in .x, albedo multiplier in .y, metal mask in .z, roughness in .w
+      vec4 gearPat(vec3 p) {
+        vec2 uv = vec2(atan(p.x, p.z) * 0.16, p.y);   // wrap around the limb
+        if (gk < 0.5) { vec2 w = uv * vec2(260.0, 260.0); float wx = sin(w.x) * 0.5 + 0.5, wy = sin(w.y) * 0.5 + 0.5;
+          float h = mix(wx, wy, step(0.5, fract((floor(w.x / 3.1416) + floor(w.y / 3.1416)) * 0.5))) * 0.6 + gNoise(uv * 40.0) * 0.4;
+          return vec4(h * 0.5, 0.88 + 0.16 * h, 0.0, 0.92); }
+        if (gk < 1.5) { vec2 c = uv * vec2(42.0, 48.0); c.x += 0.5 * mod(floor(c.y), 2.0); vec2 f = fract(c) - 0.5;
+          float r = length(f * vec2(1.0, 1.25)); float aa = clamp(length(fwidth(c)) * 1.5, 0.0, 1.0); float ring = mix(1.0 - smoothstep(0.06, 0.14, abs(r - 0.3)), 0.55, aa);   // fade to average when rings get sub-pixel
+          return vec4(ring, mix(0.25, 1.05, ring), ring, mix(0.8, 0.35, ring)); }
+        if (gk < 2.5) { float band = fract(p.y * 6.0); float edge = smoothstep(0.0, 0.08, band) * (1.0 - smoothstep(0.9, 1.0, band));
+          vec2 rv = vec2(fract(uv.x * 18.0) - 0.5, band - 0.5 / 1.0 + 0.42); float rivet = 1.0 - smoothstep(0.05, 0.11, length(rv * vec2(1.0, 2.5)));
+          float brush = gNoise(vec2(uv.x * 600.0, p.y * 6.0));
+          return vec4(edge * 0.6 + rivet * 0.6 + brush * 0.03, (0.8 + 0.2 * edge) * (0.96 + 0.08 * brush) + rivet * 0.15, 1.0, 0.28 + 0.18 * brush + 0.3 * (1.0 - edge)); }
+        float gr = gNoise(uv * 90.0) * 0.6 + gNoise(uv * 22.0) * 0.4;
+        float st = step(0.5, fract(uv.x * 40.0)) * (1.0 - smoothstep(0.004, 0.009, abs(fract(p.y * 4.0) - 0.5)));
+        return vec4(gr * 0.5 - st * 0.5, 0.8 + 0.3 * gr - st * 0.25, 0.0, 0.6 + 0.25 * gr); }`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+      float gF = charQ * (1.0 - smoothstep(8.0, 22.0, length(cameraPosition - vGW)));
+      vec4 gP = gearPat(vGP);
+      if (gF > 0.01) { diffuseColor.rgb *= mix(1.0, gP.y, gF); roughnessFactor = mix(roughnessFactor, gP.w, gF); }`)
+      .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
+      if (gk > 0.5 && gk < 2.5) metalnessFactor = mix(metalnessFactor, mix(0.15, 0.85, gP.z), gF);`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+      if (gF > 0.01) { float hh = gP.x * (gk > 1.5 && gk < 2.5 ? 0.012 : 0.006) * gF;
+        vec3 dpx = dFdx(-vViewPosition), dpy = dFdy(-vViewPosition); float dhx = dFdx(hh), dhy = dFdy(hh);
+        vec3 r1 = cross(dpy, normal), r2 = cross(normal, dpx); float det = dot(dpx, r1);
+        vec3 grad = sign(det) * (dhx * r1 + dhy * r2); normal = normalize(abs(det) * normal - grad); }`);
+  };
+  m.customProgramCacheKey = () => 'gear';
+  return m;
+}
