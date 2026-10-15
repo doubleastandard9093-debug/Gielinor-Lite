@@ -50,12 +50,21 @@ const camera = createCamera();
 const renderer = createRenderer();
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
+// NaN/Inf guard: one bad pixel from any material (e.g. a degenerate normal on a mobile GPU) gets smeared by the
+// bloom blur chain into a large black rectangle. Scrub non-finite and negative values before GTAO/bloom see them.
+const NAN_GUARD = { uniforms: { tDiffuse: { value: null } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+    float ok(float v){ return (v >= 0.0 && v < 1e4) ? v : 0.0; }   // NaN fails both tests, Inf fails the second
+    void main(){ vec4 c = texture2D(tDiffuse, vUv); gl_FragColor = vec4(ok(c.r), ok(c.g), ok(c.b), clamp(ok(c.a), 0.0, 1.0)); }` };
+composer.addPass(new ShaderPass(NAN_GUARD));
 // Ground-truth ambient occlusion (High only): contact darkening where walls meet ground, under eaves, in folds.
 const gtao = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight);
 gtao.output = GTAOPass.OUTPUT.Default; gtao.blendIntensity = 0.85;
 gtao.updateGtaoMaterial({ radius: 0.9, distanceExponent: 1.6, thickness: 1.4, scale: 1.0, samples: 16, distanceFallOff: 1.0 });
 gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
 composer.addPass(gtao);
+const nanGuard2 = new ShaderPass(NAN_GUARD); composer.addPass(nanGuard2);   // GTAO can also emit NaN at depth discontinuities
 const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.3, 0.45, 0.9);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());

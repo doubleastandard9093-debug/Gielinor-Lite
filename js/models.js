@@ -148,7 +148,7 @@ export const buildMat = (() => {
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nif (bR > 0.0) roughnessFactor = bR;')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         if (abs(bH) > 0.0001) { vec3 sp = -vViewPosition, dpx = dFdx(sp), dpy = dFdy(sp); float h = bH * 0.012, dhx = dFdx(h), dhy = dFdy(h);
-          vec3 r1 = cross(dpy, normal), r2 = cross(normal, dpx); float det = dot(dpx, r1); normal = normalize(abs(det) * normal - sign(det) * (dhx * r1 + dhy * r2)); }`);
+          vec3 r1 = cross(dpy, normal), r2 = cross(normal, dpx); float det = dot(dpx, r1); vec3 bn = abs(det) * normal - sign(det) * (dhx * r1 + dhy * r2); if (dot(bn, bn) > 1e-12) normal = normalize(bn); }`);
   };
   m.customProgramCacheKey = () => 'buildmat-v1';
   return m;

@@ -211,11 +211,11 @@ export function terrainMaterial(maskTex, maskSize) {
         col = mix(col, stone, smoothstep(0.4, 0.6, mk.b + edge * 0.4));
         // hills beyond the playable area: grass to rock with height
         // elevation: steep slopes and high ground turn to rock, peaks get snow
-        vec3 fwn = normalize(cross(dFdx(vWPos), dFdy(vWPos)));
+        vec3 fwc = cross(dFdx(vWPos), dFdy(vWPos)); vec3 fwn = dot(fwc, fwc) > 1e-12 ? normalize(fwc) : vec3(0.0, 1.0, 0.0);
         float slope = 1.0 - abs(fwn.y);
         float hrock = max(smoothstep(11.0, 19.0, vWPos.y + (n2 - 0.5) * 6.0), smoothstep(0.32, 0.5, slope + (n3 - 0.5) * 0.15));
         // triplanar rock: project the noise along all three axes and blend by the surface normal so cliffs do not stretch
-        vec3 tw = pow(abs(fwn), vec3(4.0)); tw /= (tw.x + tw.y + tw.z);
+        vec3 tw = pow(abs(fwn), vec3(4.0)); tw /= max(tw.x + tw.y + tw.z, 1e-4);
         float r3 = texture2D(tNoise, vWPos.zy * 0.45).b * tw.x + texture2D(tNoise, vWPos.xz * 0.45).b * tw.y + texture2D(tNoise, vWPos.xy * 0.45).b * tw.z;
         float r4 = texture2D(tNoise, vWPos.zy * 1.9).r * tw.x + n4 * tw.y + texture2D(tNoise, vWPos.xy * 1.9).r * tw.z;
         float r2 = texture2D(tNoise, vWPos.zy * 0.07).g * tw.x + n2 * tw.y + texture2D(tNoise, vWPos.xy * 0.07).g * tw.z;
@@ -243,7 +243,7 @@ export function terrainMaterial(maskTex, maskSize) {
           float bh = tHeight * 0.14, dhx = dFdx(bh), dhy = dFdy(bh);
           vec3 r1 = cross(dpy, normal), rr2 = cross(normal, dpx); float det = dot(dpx, r1);
           vec3 grad = sign(det) * (dhx * r1 + dhy * rr2);
-          normal = normalize(abs(det) * normal - grad);
+          vec3 bn = abs(det) * normal - grad; if (dot(bn, bn) > 1e-12) normal = normalize(bn);
         }`);
   };
   return m;
@@ -278,9 +278,11 @@ export function createWaterReflection(renderer, scene, camera) {
       WATER_REFL.mat.value.copy(bias).multiply(cam.projectionMatrix).multiply(cam.matrixWorldInverse);
       for (const m of WATER_MESHES) m.visible = false;
       const prevRT = renderer.getRenderTarget(), prevClip = renderer.clippingPlanes, prevSh = renderer.shadowMap.autoUpdate;
+      const prevSc = renderer.getScissor(new THREE.Vector4()), prevVp = renderer.getViewport(new THREE.Vector4()), prevScT = renderer.getScissorTest();
       renderer.shadowMap.autoUpdate = false; renderer.clippingPlanes = clip;
       renderer.setRenderTarget(rt); renderer.clear(); renderer.render(scene, cam);
       renderer.setRenderTarget(prevRT); renderer.clippingPlanes = prevClip; renderer.shadowMap.autoUpdate = prevSh;
+      renderer.setViewport(prevVp); renderer.setScissor(prevSc); renderer.setScissorTest(prevScT);
       for (const m of WATER_MESHES) m.visible = true;
     }
   };
@@ -325,7 +327,7 @@ export function waterMaterial(cx, cz, radius) {
           vec3 rcol = texture2D(reflTex, clamp(ruv, 0.001, 0.999)).rgb;
           col = mix(col, rcol * 0.9, (0.18 + 0.62 * fres) * (1.0 - shallowK * 0.5));
         } else col = mix(col, sky * 0.7, 0.05 + 0.4 * fres);
-        vec3 H = normalize(sunDir + V);
+        vec3 H = normalize(sunDir + V + vec3(0.0, 1e-4, 0.0));
         float spec = pow(max(dot(N, H), 0.0), 220.0) * 3.0 + pow(max(dot(N, H), 0.0), 30.0) * 0.08;
         col += sunCol * spec;
         float fn = texture2D(tNoise, p * 0.6 + time * 0.03).b;
