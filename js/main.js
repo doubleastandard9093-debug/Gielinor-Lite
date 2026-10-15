@@ -8,7 +8,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { updateDay, DAY, dayLabel } from './daycycle.js';
 import { poseGait } from './gait.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, SUN_DIR } from './gfx.js';
+import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, SUN_DIR, createWaterReflection } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
 import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from './chunk.js';
 import { terrainHeight, insideLake, WORLD_HALF, TOWNS, CAVE, inCave } from './world.js';
@@ -74,6 +74,7 @@ const gradePass = new ShaderPass({
 composer.addPass(gradePass);
 document.body.prepend(renderer.domElement);
 const lightsRef = createLights(scene);
+const waterRefl = createWaterReflection(renderer, scene, camera);
 const { dirLight } = lightsRef;
 const sky = createSky(scene);
 const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);
@@ -2039,7 +2040,7 @@ function animate(now) {
   updateCave(dt);
   followLight(dirLight, rig.fx, rig.fz, DAY.lightDir);
   sky.follow(camera);
-  if (gfx.quality === 'low') renderer.render(scene, camera); else { updateShafts(); composer.render(); }
+  if (gfx.quality === 'low') { waterRefl.update(false); renderer.render(scene, camera); } else { updateShafts(); waterRefl.update(true); composer.render(); }
 
   overlays.update(camera, barEnts, now);
   if (frame % 10 === 4) { if (player.settings.nameplates === false) overlays.setPlates([]); else refreshPlates(); }

@@ -210,9 +210,41 @@ export function terrainMaterial(maskTex, maskSize) {
 // Water: gentle vertex waves, scrolling ripple normals, sky reflection with
 // fresnel, sun glints and foam at the shore. Single cheap shader.
 // ---------------------------------------------------------------------------
+// Planar reflection shared by every water surface (all sit at y = WATER_Y). High only.
+export const WATER_Y = 0.05;
+export const WATER_REFL = { tex: { value: null }, mat: { value: new THREE.Matrix4() }, on: { value: 0 } };
+export const WATER_MESHES = [];
+export function createWaterReflection(renderer, scene, camera) {
+  const rt = new THREE.WebGLRenderTarget(256, 256, { type: THREE.HalfFloatType });
+  const cam = new THREE.PerspectiveCamera(), clip = [new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_Y + 0.01)];
+  const fwd = new THREE.Vector3(), tgt = new THREE.Vector3(), near = new THREE.Vector3();
+  const bias = new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
+  WATER_REFL.tex.value = rt.texture;
+  return {
+    update(enabled) {
+      // only when some water is on screen nearby
+      let vis = false;
+      if (enabled) for (const w of WATER_MESHES) { if (w.parent && near.copy(w.position).distanceTo(camera.position) < 140) { vis = true; break; } }
+      WATER_REFL.on.value = vis ? 1 : 0; if (!vis || camera.position.y <= WATER_Y) return;
+      const sz = renderer.getDrawingBufferSize(new THREE.Vector2()); const w = Math.max(2, sz.x >> 1), h = Math.max(2, sz.y >> 1);
+      if (rt.width !== w || rt.height !== h) rt.setSize(w, h);
+      cam.fov = camera.fov; cam.aspect = camera.aspect; cam.near = camera.near; cam.far = camera.far; cam.updateProjectionMatrix();
+      camera.getWorldDirection(fwd); tgt.copy(camera.position).add(fwd);
+      cam.position.set(camera.position.x, 2 * WATER_Y - camera.position.y, camera.position.z);
+      cam.up.set(0, 1, 0); cam.lookAt(tgt.x, 2 * WATER_Y - tgt.y, tgt.z); cam.updateMatrixWorld();
+      WATER_REFL.mat.value.copy(bias).multiply(cam.projectionMatrix).multiply(cam.matrixWorldInverse);
+      for (const m of WATER_MESHES) m.visible = false;
+      const prevRT = renderer.getRenderTarget(), prevClip = renderer.clippingPlanes, prevSh = renderer.shadowMap.autoUpdate;
+      renderer.shadowMap.autoUpdate = false; renderer.clippingPlanes = clip;
+      renderer.setRenderTarget(rt); renderer.clear(); renderer.render(scene, cam);
+      renderer.setRenderTarget(prevRT); renderer.clippingPlanes = prevClip; renderer.shadowMap.autoUpdate = prevSh;
+      for (const m of WATER_MESHES) m.visible = true;
+    }
+  };
+}
 export function waterMaterial(cx, cz, radius) {
   return new THREE.ShaderMaterial({
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { reflOn: WATER_REFL.on, reflMat: WATER_REFL.mat,
       time: { value: 0 }, center: { value: new THREE.Vector2(cx, cz) }, radius: { value: radius },
       sunDir: { value: SUN_DIR }, sunCol: { value: SKY.sun }, skyCol: { value: SKY.horizon }, skyTop: { value: SKY.top }
     }]),
@@ -227,7 +259,7 @@ export function waterMaterial(cx, cz, radius) {
         gl_Position = projectionMatrix * mvPosition;
         #include <fog_vertex>
       }`,
-    fragmentShader: `uniform float time, radius; uniform vec2 center; uniform vec3 sunDir, sunCol, skyCol, skyTop; uniform sampler2D tNoise; varying vec3 vW;
+    fragmentShader: `uniform float time, radius, reflOn; uniform vec2 center; uniform vec3 sunDir, sunCol, skyCol, skyTop; uniform sampler2D tNoise, reflTex; uniform mat4 reflMat; varying vec3 vW;
       #include <fog_pars_fragment>
       void main(){
         vec2 p = vW.xz;
@@ -241,14 +273,25 @@ export function waterMaterial(cx, cz, radius) {
         vec3 col = mix(deep, shallow, smoothstep(0.55, 1.0, r));
         vec3 R = reflect(-V, N);
         vec3 sky = mix(skyCol, skyTop, clamp(R.y, 0.0, 1.0));
-        col = mix(col, sky * 0.7, 0.05 + 0.4 * fres);
+        // refraction-style depth: shallows turn clear and pick up the sandy bed tint, rippling with the surface
+        float shallowK = smoothstep(0.7, 0.98, r + (a.x + b.x) * 0.15);
+        col = mix(col, vec3(0.32, 0.36, 0.26) * (0.8 + 0.4 * texture2D(tNoise, p * 0.8 + N.xz * 0.6).g), shallowK * 0.45);
+        if (reflOn > 0.5) {
+          // planar reflection of trees, buildings, hills and sky, warped by the ripple normal
+          vec4 rc = reflMat * vec4(vW, 1.0); vec2 ruv = rc.xy / rc.w + N.xz * 0.045;
+          vec3 rcol = texture2D(reflTex, clamp(ruv, 0.001, 0.999)).rgb;
+          col = mix(col, rcol * 0.9, (0.18 + 0.62 * fres) * (1.0 - shallowK * 0.5));
+        } else col = mix(col, sky * 0.7, 0.05 + 0.4 * fres);
         vec3 H = normalize(sunDir + V);
         float spec = pow(max(dot(N, H), 0.0), 220.0) * 3.0 + pow(max(dot(N, H), 0.0), 30.0) * 0.08;
         col += sunCol * spec;
         float fn = texture2D(tNoise, p * 0.6 + time * 0.03).b;
         float foam = smoothstep(0.93, 1.0, r + (fn - 0.5) * 0.08 + sin(time * 1.6 + r * 40.0) * 0.008);
-        col = mix(col, vec3(0.8, 0.86, 0.9), foam * 0.7);
-        gl_FragColor = vec4(col, 0.92);
+        // lapping shoreline: bands of foam that roll in toward the bank and break up with noise
+        float lap = fract(r * 9.0 - time * 0.35); float band = smoothstep(0.0, 0.08, lap) * smoothstep(0.35, 0.1, lap) * smoothstep(0.82, 0.97, r);
+        foam = max(foam, band * smoothstep(0.45, 0.75, fn + 0.2 * texture2D(tNoise, p * 2.3 - time * 0.05).r));
+        col = mix(col, vec3(0.86, 0.9, 0.93), foam * 0.75);
+        gl_FragColor = vec4(col, mix(1.0, 0.72, shallowK));
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         #include <fog_fragment>
@@ -256,7 +299,7 @@ export function waterMaterial(cx, cz, radius) {
     transparent: true, fog: true, depthWrite: false
   });
 }
-export function hookWaterNoise(mat) { mat.uniforms.tNoise = { value: getNoiseTexture() }; mat.uniforms.time = TIME; return mat; }
+export function hookWaterNoise(mat) { mat.uniforms.tNoise = { value: getNoiseTexture() }; mat.uniforms.reflTex = WATER_REFL.tex; mat.uniforms.reflOn = WATER_REFL.on; mat.uniforms.reflMat = WATER_REFL.mat; mat.uniforms.time = TIME; return mat; }
 
 // ---------------------------------------------------------------------------
 // Per-frame update.

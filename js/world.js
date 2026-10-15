@@ -3,7 +3,7 @@ import { makeRng } from './rng.js';
 import { MONSTER_TYPES, AGILITY_COURSES, RUNE_ALTARS, BOUNTIES } from './gameplay.js';
 import { agilityStyle, swingGeom } from './agilityAnim.js';
 import { QUEST_NPCS } from './questnpcs.js';
-import { terrainMaterial, waterMaterial, hookWaterNoise } from './gfx.js';
+import { terrainMaterial, waterMaterial, hookWaterNoise, WATER_MESHES } from './gfx.js';
 import { buildHumanoidRig, apronGeo, varyLook, hashStr, contactShadow } from './anatomy.js';
 import { buildCreatureRig, rollVariant, namedVariant } from './creatures.js';
 import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap } from './models.js';
@@ -301,7 +301,7 @@ export function createWorld(scene) {
   // Lake: animated water with shore foam (sand is painted into the ground).
   const water = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r + 0.25, 64), hookWaterNoise(waterMaterial(LAKE.x, LAKE.z, LAKE.r + 0.25)));
   water.rotation.x = -Math.PI / 2; water.position.set(LAKE.x, 0.05, LAKE.z);
-  scene.add(water);
+  scene.add(water); WATER_MESHES.push(water);
   // Darker lake bed so the edge reads as depth
   const bed = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r + 0.3, 40), new THREE.MeshBasicMaterial({ color: 0x0c2a3a }));
   bed.rotation.x = -Math.PI / 2; bed.position.set(LAKE.x, 0.015, LAKE.z);
@@ -1440,7 +1440,7 @@ export function createWorld(scene) {
     }
     // 7) Mountain pond with fishing spots (north-east foothills)
     { const P = PONDS[0]; flat(P.x, P.z, P.r + 5);
-      const w = new THREE.Mesh(new THREE.CircleGeometry(P.r + 0.25, 48), hookWaterNoise(waterMaterial(P.x, P.z, P.r + 0.25))); w.rotation.x = -Math.PI / 2; w.position.set(P.x, 0.05, P.z); scene.add(w);
+      const w = new THREE.Mesh(new THREE.CircleGeometry(P.r + 0.25, 48), hookWaterNoise(waterMaterial(P.x, P.z, P.r + 0.25))); w.rotation.x = -Math.PI / 2; w.position.set(P.x, 0.05, P.z); scene.add(w); WATER_MESHES.push(w);
       const b = new THREE.Mesh(new THREE.CircleGeometry(P.r + 0.3, 32), new THREE.MeshBasicMaterial({ color: 0x0c2a3a })); b.rotation.x = -Math.PI / 2; b.position.set(P.x, 0.015, P.z); scene.add(b);
       ['Lure', 'Net', 'Cage'].forEach((k, i) => { const a = i * 2.1; nodes.push(createFish(P.x + Math.cos(a) * (P.r - 0.6), P.z + Math.sin(a) * (P.r - 0.6), k)); });
       npcAt(P.x + P.r + 1.5, P.z, 'angler', 'Old Angler', { body: 0x3a5a6a, legs: 0x3a3a2a, hat: 0x6a8a3a, hatW: 0.7, hatH: 0.1 }, "Quiet up here. Trout and salmon bite on the lure, and there's lobster if you've a cage.");
