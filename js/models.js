@@ -73,12 +73,14 @@ export function place(geo, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, 
 // Merge many coloured geometries into one (all need position, normal, color).
 export function bake(list) {
   let n = 0;
-  const parts = list.map(g => { const ng = g.index ? g.toNonIndexed() : g; n += ng.attributes.position.count; return ng; });
+  const parts = list.map(g => { const ng = g.index ? g.toNonIndexed() : g; ng.userData = g.userData; n += ng.attributes.position.count; return ng; });
   const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3);
   const hasMat = parts.some(g => g.attributes.aMat), mt = hasMat ? new Float32Array(n) : null;
+  const hasUv = parts.some(g => g.userData.cardUv), uvs = hasUv ? new Float32Array(n * 2).fill(0.1) : null;
   let o = 0;
   for (const g of parts) {
     if (mt && g.attributes.aMat) mt.set(g.attributes.aMat.array, o);
+    if (uvs && g.userData.cardUv && g.attributes.uv) uvs.set(g.attributes.uv.array, o * 2);
     pos.set(g.attributes.position.array, o * 3);
     nor.set(g.attributes.normal.array, o * 3);
     if (g.attributes.color) col.set(g.attributes.color.array, o * 3); else col.fill(1, o * 3, (o + g.attributes.position.count) * 3);
@@ -89,6 +91,7 @@ export function bake(list) {
   out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
   out.setAttribute('color', new THREE.BufferAttribute(col, 3));
   if (mt) out.setAttribute('aMat', new THREE.BufferAttribute(mt, 1));
+  if (uvs) out.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   out.computeBoundingSphere();
   out.computeBoundingBox();
   return out;
@@ -217,6 +220,26 @@ function swayShader(sh, amount, ring = false) {
         { float rd = max(abs(wo.x - pushers[0].x), abs(wo.z - pushers[0].y)); transformed *= 1.0 - smoothstep(10.0, 16.0, rd); }` : '') : '').replace(/AMT/g, amount.toFixed(2)).replace('transformed.y - 0.9', amount > 1 ? 'transformed.y' : 'transformed.y - 0.9'));
 }
 export const foliageMat = makeFoliageMat();
+// Leaf atlas painted in code: the left half is solid white (trunks and branches sample it, so they are unchanged);
+// the right half is a cluster of leaves with stems on transparent ground, in greys so vertex colours tint them.
+function leafAtlas() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128; const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, 128, 128);
+  let sd = 7; const R = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  x.strokeStyle = 'rgba(120,110,90,1)'; x.lineWidth = 2; x.beginPath(); x.moveTo(192, 124); x.lineTo(192, 30); x.stroke();
+  for (let i = 0; i < 34; i++) {
+    const t = R(), px = 192 + (R() - 0.5) * 100 * (0.4 + t), py = 118 - t * 100 - R() * 8, a = Math.atan2(py - 124, px - 192) + Math.PI / 2 + (R() - 0.5) * 0.6;
+    const L = 12 + R() * 10, W = L * (0.38 + R() * 0.15), g = Math.round(170 + R() * 85);
+    x.save(); x.translate(px, py); x.rotate(a);
+    x.fillStyle = `rgb(${g},${g},${g})`; x.beginPath(); x.moveTo(0, L * 0.5); x.quadraticCurveTo(W, 0, 0, -L * 0.5); x.quadraticCurveTo(-W, 0, 0, L * 0.5); x.fill();
+    x.strokeStyle = `rgba(${g - 60},${g - 60},${g - 60},0.8)`; x.lineWidth = 1; x.beginPath(); x.moveTo(0, L * 0.5); x.lineTo(0, -L * 0.45); x.stroke();
+    x.restore();
+  }
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4; return tex;
+}
+export const treeMat = (typeof document !== 'undefined') ? makeFoliageMat({ map: leafAtlas(), alphaTest: 0.5, side: THREE.DoubleSide }) : foliageMat;
+// One leaf card: a quad whose UVs cover the leaf half of the atlas
+function leafCard(size) { const g = new THREE.PlaneGeometry(size, size); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setX(i, 0.5 + uv.getX(i) * 0.5); g.userData.cardUv = true; return g; }
 
 export function bakedMesh(geos, material = vcMat, shadow = true) {
   const m = new THREE.Mesh(bake(geos), material);
@@ -319,10 +342,13 @@ export function treeGeometry(kind, rng) {
     for (let i = 0; i < n; i++) {
       const u = rng() * 2 - 1, a = rng() * Math.PI * 2, q = Math.sqrt(1 - u * u), dx = q * Math.cos(a), dy = u * 0.85 + 0.15, dz = q * Math.sin(a);
       const off = 0.88 + rng() * 0.2, sz = 0.16 + rng() * 0.14;
-      const spray = prim.cone(sz, sz * 2.2, 4).scale(1, 1, 0.22);
+      const spray = leafCard(sz * 3.8);
       const shade = 0.72 + 0.45 * (0.5 + 0.5 * dy) + (rng() - 0.5) * 0.18;
       lc.copy(lb).offsetHSL((rng() - 0.5) * 0.04, (rng() - 0.5) * 0.1, 0).multiplyScalar(shade);
-      parts.push(col(place(spray, x + dx * rx * off, y + dy * ry * off, z + dz * rz * off, Math.acos(Math.max(-1, Math.min(1, dy))) + (rng() - 0.5) * 0.8, a + rng(), (rng() - 0.5) * 0.8), lc.getHex(), 0.15));
+      const placed = col(place(spray, x + dx * rx * off, y + dy * ry * off, z + dz * rz * off, Math.acos(Math.max(-1, Math.min(1, dy))) + (rng() - 0.5) * 0.8, a + rng(), (rng() - 0.5) * 0.8), lc.clone().multiplyScalar(1.15).getHex(), 0.1);
+      // foliage normals: point away from the clump centre so cards shade like the crown's volume, not like flat paper
+      { const nm = placed.attributes.normal; for (let k = 0; k < nm.count; k++) nm.setXYZ(k, dx, dy, dz); }
+      parts.push(placed);
     }
   }
   return bake(parts);

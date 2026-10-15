@@ -7,7 +7,7 @@ import { addFire } from './vfx.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise, WATER_MESHES } from './gfx.js';
 import { buildHumanoidRig, apronGeo, varyLook, hashStr, contactShadow } from './anatomy.js';
 import { buildCreatureRig, rollVariant, namedVariant } from './creatures.js';
-import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap, setMat, woodAxis, buildMat } from './models.js';
+import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap, treeMat, setMat, woodAxis, buildMat } from './models.js';
 
 // The world is about 440 x 440. Chunked decor + instance packing keep phones smooth.
 export const WORLD_HALF = 300;
@@ -414,7 +414,7 @@ export function createWorld(scene) {
     }
   }
   function flushTreesAndRocks() {
-    flushInstances(pendingTrees, (key) => treeGeoCache[key], foliageMat, true);
+    flushInstances(pendingTrees, (key) => treeGeoCache[key], treeMat, true);
     flushInstances(pendingRocks, (key) => rockGeoCache[key], vcMat, true);
     pendingTrees.length = 0; pendingRocks.length = 0;
   }

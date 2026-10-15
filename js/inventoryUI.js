@@ -27,6 +27,7 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>Leaves you can see through.</b> Tree crowns are now fringed with real cut-out leaf sprays, with individual leaves and stems and sky showing between them. They sway in the wind with the rest of the tree and cast leafy shadows.</p>
 <p><b>Buildings made of real stuff.</b> Timber beams and posts now show wood grain and knots running along their length. Plaster walls are mottled and rain-darkened near the ground. Stone plinths and the big stone halls are laid in coursed blocks with mortar. Roofs have strands running down the slope, with moss in the damp lower rows. All of it catches the light with small bumps.</p>
 <p><b>Walk through thick grass.</b> On High the ground around you is now carpeted in dense meadow grass in many shades of green. It parts and flattens around your feet as you walk, and around nearby animals and monsters too.</p>
 <p><b>Painted skies and colour.</b> Clouds now have depth: sunlit crowns, bright silver edges toward the sun and soft grey-blue undersides. The whole picture gets a hand-painted palette on High, with cool, slightly blue shadows and warm highlights.</p>
