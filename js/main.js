@@ -8,7 +8,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { updateDay, DAY, dayLabel } from './daycycle.js';
 import { poseGait, tailSway } from './gait.js';
 import { PUSH } from './models.js';
-import { initVfx, updateVfx, addFire, removeFireVfx, burst, setVfxQuality } from './vfx.js';
+import { initVfx, updateVfx, addFire, removeFireVfx, burst, setVfxQuality, setLeafSources } from './vfx.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, SUN_DIR, createWaterReflection } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
@@ -84,6 +84,7 @@ initVfx(scene);
 const { dirLight } = lightsRef;
 const sky = createSky(scene);
 const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);
+setLeafSources(nodes.filter(n => n.type === 'tree'));
 const pm = createPlayer(scene);
 // Chunk streaming: static props, buildings and NPC stalls attach only near the player.
 scene.updateMatrixWorld(true);
@@ -2055,7 +2056,7 @@ function animate(now) {
   followLight(dirLight, rig.fx, rig.fz, DAY.lightDir);
   sky.follow(camera);
   updatePushers(); updateLocalGrass(scene, pm.mesh.position.x, pm.mesh.position.z, gfx.quality !== 'low' && !inCave(pm.mesh.position.x, pm.mesh.position.z));
-  updateVfx(dt, pm.mesh.position.x, pm.mesh.position.z, camera, now);
+  updateVfx(dt, pm.mesh.position.x, pm.mesh.position.z, camera, now, Math.max(DAY.night, caveK), inCave(pm.mesh.position.x, pm.mesh.position.z));
   if (gfx.quality === 'low') { waterRefl.update(false); renderer.render(scene, camera); } else { updateShafts(); waterRefl.update(true); composer.render(); }
 
   overlays.update(camera, barEnts, now);

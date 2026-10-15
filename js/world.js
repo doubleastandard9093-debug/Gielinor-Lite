@@ -598,6 +598,15 @@ export function createWorld(scene) {
     add(alongXdoor ? prim.box(DOOR + 0.2, 0.14, T + 0.04) : prim.box(T + 0.04, 0.14, DOOR + 0.2), TIMBER, 0.1, fx, 1.95, fz);
     add(alongXdoor ? prim.box(0.1, 1.7, T + 0.02) : prim.box(T + 0.02, 1.9, 0.1), TIMBER, 0.1, fx + (alongXdoor ? -DOOR / 2 : 0), 0.95, fz + (alongXdoor ? 0 : -DOOR / 2));
     add(alongXdoor ? prim.box(0.1, 1.7, T + 0.02) : prim.box(T + 0.02, 1.9, 0.1), TIMBER, 0.1, fx + (alongXdoor ? DOOR / 2 : 0), 0.95, fz + (alongXdoor ? 0 : DOOR / 2));
+    // wall torches either side of the door: bracket, stick and a burning head (VFX + flicker light)
+    const oc = [-toCentre[0], -toCentre[1]];
+    for (const s2 of [-1, 1]) {
+      const ox = fx + (alongXdoor ? s2 * (DOOR / 2 + 0.35) : 0) + oc[0] * 0.2, oz = fz + (alongXdoor ? 0 : s2 * (DOOR / 2 + 0.35)) + oc[1] * 0.2;
+      add(prim.box(0.08, 0.08, 0.08), 0x2a2a2e, 0.1, ox - oc[0] * 0.08, 1.85, oz - oc[1] * 0.08);
+      add(prim.cyl(0.035, 0.03, 0.45, 6), 0x4a2e16, 0.1, ox, 2.0, oz, oc[1] * 0.35, 0, -oc[0] * 0.35);
+      add(prim.cyl(0.06, 0.045, 0.1, 7), 0x2a1a0e, 0.1, ox + oc[0] * 0.07, 2.22, oz + oc[1] * 0.07);
+      const head = new THREE.Object3D(); head.position.set(ox + oc[0] * 0.08, 2.27, oz + oc[1] * 0.08); g.add(head); addFire(head, 0.45, 'torch');
+    }
     add(alongXdoor ? prim.box(DOOR + 0.15, 0.06, 0.55) : prim.box(0.55, 0.06, DOOR + 0.15), 0x8a8478, 0.2, fx + toCentre[0] * 0.35, 0.03, fz + toCentre[1] * 0.35);
     if (!big) {
       for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(prim.box(0.2, wh, 0.2), TIMBER, 0.2, sx * (w / 2), wy, sz * (d / 2));
@@ -1407,6 +1416,7 @@ export function createWorld(scene) {
       // exit: a rope up to the light
       parts.push([prim.cyl(0.035, 0.035, 7.5, 6), 0xc8b088, 0, 3.75, R - 3], [blob(1.2, 0.3, 1.0, { detail: 1, lump: 0.2, seed: 50 }), 0x5a5048, 0, 0.1, R - 3]);
       const deco = new THREE.Group(); deco.add(kit(parts)); cave.add(deco);
+      for (const sx of [-1, 1]) { const h = new THREE.Object3D(); h.position.set(sx * 1.8, 1.97, R - 1.4); deco.add(h); addFire(h, 0.5, 'torch'); }
       { // webs: radial spokes and spiral threads
         const wm = new THREE.LineBasicMaterial({ color: 0xe8e8e0, transparent: true, opacity: 0.55 }), v = [];
         for (let k = 0; k < 8; k++) { const t = k / 8 * Math.PI * 2; v.push(0, 0, 0, Math.cos(t) * 1.2, Math.sin(t) * 1.2, 0); }
