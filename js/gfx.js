@@ -187,7 +187,7 @@ export function terrainMaterial(maskTex, maskSize) {
         diffuseColor.rgb *= lin(col);
         // procedural height for bump shading and per-surface roughness
         float isStone = smoothstep(0.4, 0.6, mk.b + edge * 0.4) * (1.0 - hrock), isDirt = smoothstep(0.38, 0.62, mk.r + edge) * (1.0 - hrock);
-        tHeight = mix(n4 * 0.6 + n3 * 0.4, (1.0 - grout) * -1.0 + n4 * 0.3, isStone);
+        tHeight = mix(n4 * 0.6 + n3 * 0.4, (1.0 - grout) * -0.55 + n4 * 0.3, isStone);
         tHeight = mix(tHeight, r4 * 0.6 + r3 * 0.6 + strata * 0.3 * slope, hrock) * (1.0 - snow * 0.7) * fineK;
         tRough = mix(mix(mix(0.95, 0.88, isDirt), 0.72, isStone), 0.8 - 0.15 * r4, hrock);
         tRough = mix(tRough, 0.55, snow) * (1.0 - smoothstep(-0.3, -2.5, vWPos.y) * 0.12);
