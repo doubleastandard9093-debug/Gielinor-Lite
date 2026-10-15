@@ -346,7 +346,7 @@ export function createWorld(scene) {
     if (!group) return;
     let n = 0;
     for (const e of group.ents) {
-      if (!e.alive || e.mesh.userData.culled) continue;
+      if (!e.alive || e.mesh.userData.culled || e.camHidden) continue;
       writeInstance(group.mesh, n++, e.x, terrainHeight(e.x, e.z) - 0.05, e.z, e.instRy, e.instScale, e.instScale, e.instScale);
     }
     group.mesh.count = n;
@@ -418,6 +418,10 @@ export function createWorld(scene) {
     pendingTrees.length = 0; pendingRocks.length = 0;
   }
   // Exposed so the main loop can re-pack after distance cull flips.
+  // Camera occlusion during agility: which tree/rock is instance i of this mesh (packing order), and repack.
+  scene.userData.instanceEntAt = (mesh, i) => { const g = instanceGroups.find(g => g.mesh === mesh); if (!g) return null;
+    let n = 0; for (const e of g.ents) { if (!e.alive || e.mesh.userData.culled || e.camHidden) continue; if (n++ === i) return { e, g }; } return null; };
+  scene.userData.repackInstance = g => packGroup(g);
   scene.userData.packGatherInstances = () => { for (const g of instanceGroups) packGroup(g); };
 
   // ---- Fishing spots ----

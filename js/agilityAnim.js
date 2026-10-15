@@ -513,3 +513,96 @@ export function releaseRig(pm) {
   for (const l of [p.leftArm, p.rightArm, p.leftLeg, p.rightLeg]) { l.rotation.y = 0; l.rotation.z = 0; }
   setGrip(p.leftArm, 0); setGrip(p.rightArm, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Stage-3 contact locks: hands and feet stay planted through mantles, rolls, take-offs,
+// landings, the pipe crawl and the fail fall (targets in obstacle space, see STYLES2).
+// ---------------------------------------------------------------------------
+// Plant both feet on a surface at height y under the root (rotated with the body's extra yaw).
+function plantFeet(o, y, w, spread = 0.13, ahead = 0.04) {
+  if (!(w > 0)) return;
+  o.ik = o.ik || {};
+  const z = o.u * o._L, c = Math.cos(o.yaw || 0), s = Math.sin(o.yaw || 0), x0 = o.s || 0;
+  o.ik.lf = [x0 - spread * c + ahead * s, y + 0.09, z + spread * s + ahead * c];
+  o.ik.rf = [x0 + spread * c + ahead * s, y + 0.09, z - spread * s + ahead * c];
+  o.ik.wf = Math.max(o.ik.wf && o.ik.lf ? o.ik.wf : 0, clamp01(w));
+}
+const wrapL = fn => (t, L, v) => { const o = fn(t, L, v); o._L = L; o.ik = o.ik || {}; return o; };
+const S3 = {}, BASE = { ...STYLES };
+S3.wall = (t, L, v) => {
+  const o = wrapL(BASE.wall)(t, L, v), H = 2.2, face = L / 2 - 0.3;
+  if (t >= 0.55 && t < 0.78) { // mantle: lead foot steps from the top hold onto the wall top, trailing foot follows
+    const k = seg(t, 0.55, 0.78);
+    o.ik.rf = [0.15, lerp(1.0, H + 0.09, seg(k, 0.25, 0.6)), lerp(face - 0.17, face + 0.12, seg(k, 0.35, 0.65))];
+    o.ik.lf = [-0.15, lerp(0.9, H + 0.09, seg(k, 0.55, 0.95)), lerp(face - 0.17, face + 0.05, seg(k, 0.6, 0.95))];
+    o.ik.wf = 1;
+    // palms press down on the top as the hips rise past them
+    o.ik.lh = [-0.24, H + 0.02, face + 0.08 + 0.12 * seg(k, 0.4, 0.8)]; o.ik.rh = [0.24, H + 0.02, face + 0.08 + 0.12 * seg(k, 0.4, 0.8)];
+    o.ik.wh = 1 - seg(k, 0.8, 1);
+  } else if (t >= 0.78) { const k = (t - 0.78) / 0.22; if (k < 0.12) plantFeet(o, H, 1 - k / 0.12); plantFeet(o, 0, seg(k, 0.38, 0.5)); }
+  return o;
+};
+S3.net = (t, L, v) => {
+  const o = wrapL(BASE.net)(t, L, v), nz = L / 2;
+  if (t >= 0.45 && t < 0.6) { // feet stay in the mesh while the torso rolls over the bar
+    const k = seg(t, 0.45, 0.6), far = k > 0.5, sx = far ? -1 : 1;
+    o.ik.lf = [-0.18 * sx, 1.0 + 0.2 * Math.sin(Math.PI * k), nz + (far ? 0.13 : -0.13)]; o.ik.rf = [0.18 * sx, 1.0 + 0.2 * Math.sin(Math.PI * k), nz + (far ? 0.13 : -0.13)];
+    o.ik.wf = Math.abs(Math.cos(Math.PI * k)) * 0.9 + 0.1;
+  } else if (t >= 0.88) { const k = seg(t, 0.88, 1); plantFeet(o, 0, seg(k, 0.15, 0.3)); }
+  return o;
+};
+S3.gap = (t, L, v) => {
+  const o = wrapL(BASE.gap)(t, L, v), H = 0.8;
+  if (t >= 0.14 && t < 0.32) plantFeet(o, H, seg(t, 0.14, 0.17));
+  else if (t >= 0.32 && t < 0.62) { const k = (t - 0.32) / 0.3; if (k < 0.12) plantFeet(o, H, 1 - k / 0.12); } // toes push off the edge
+  else if (t >= 0.62 && t < 0.8) plantFeet(o, H, seg(t, 0.62, 0.64));
+  else if (t >= 0.8) plantFeet(o, 0, seg(t, 0.93, 0.97));
+  else if (t < 0.14) plantFeet(o, 0, 1 - seg(t, 0.0, 0.03));
+  return o;
+};
+S3.monkey = (t, L, v) => {
+  const o = wrapL(BASE.monkey)(t, L, v);
+  if (t < 0.12) { const k = t / 0.12; plantFeet(o, 0, k < 0.45 ? 1 : 1 - seg(k, 0.45, 0.55)); }
+  else if (t >= 0.86) { const k = (t - 0.86) / 0.14; plantFeet(o, 0, seg(k, 0.4, 0.5)); }
+  else { const sw = Math.sin((t - 0.12) * 9); o.llz = 0.05 + sw * 0.04; o.rlz = -0.05 + sw * 0.04; } // legs trail together, ankles loosely crossed
+  return o;
+};
+S3.swing = (t, L, v) => {
+  const o = wrapL(BASE.swing)(t, L, v), G = swingGeom(L);
+  if (t < 0.12) plantFeet(o, 0, 1 - seg(t, 0.06, 0.11));
+  else if (t >= 0.82) { const k = (t - 0.82) / 0.18; plantFeet(o, k < 0.6 ? G.PH : 0, k < 0.6 ? seg(k, 0.08, 0.16) * (1 - seg(k, 0.55, 0.6)) : seg(k, 0.9, 0.97)); }
+  else if (t >= 0.3) { o.lkx += 0.1; o.rkx += 0.15; o.llz = 0.04; o.rlz = -0.04; } // feet pressed together on the swing
+  return o;
+};
+S3.pipe = (t, L, v) => {
+  const o = wrapL(BASE.pipe)(t, L, v), F = 0.13; // inner floor of the pipe
+  const on = seg(t, 0.12, 0.22) * (1 - seg(t, 0.82, 0.9));
+  if (on > 0) {
+    const z = o.u * L, c = z / 0.32;
+    o.ik.lh = [-0.17, F + 0.04 + liftT(c, 0) * 0.07, 1.3 + 0.32 * stepT(c, 0) - z + z];
+    o.ik.lh[2] = z + 1.18 + 0.32 * (stepT(c, 0) - c); o.ik.rh = [0.17, F + 0.04 + liftT(c, 0.5) * 0.07, z + 1.18 + 0.32 * (stepT(c, 0.5) - c) + 0.16];
+    // knees on the floor: the ankle trails flat behind the knee
+    o.ik.lf = [-0.13, F + 0.12 + liftT(c, 0.5) * 0.05, z + 0.42 + 0.32 * (stepT(c, 0.5) - c) - 0.16]; o.ik.rf = [0.13, F + 0.12 + liftT(c, 0) * 0.05, z + 0.42 + 0.32 * (stepT(c, 0) - c)];
+    o.ik.wh = on; o.ik.wf = on;
+  } else plantFeet(o, 0, 1);
+  return o;
+};
+for (const k in S3) STYLES[k] = S3[k];
+// Fail fall: after the impact the palms and heels are planted on the ground beside the obstacle.
+const _failPose = failPose;
+function failPose3(style, t, L, v) {
+  const r = _failPose(style, t, L, v);
+  if (t < 0.4) return r;
+  const k = (t - 0.4) / 0.6, sit = seg(k, 0.42, 0.7), up = seg(k, 0.7, 1), o = r.pose;
+  const w = sit * (1 - up);
+  if (w > 0) {
+    o._L = L; o.ik = { ...(o.ik || {}) }; const z = o.u * L, x = o.s || 0;
+    o.ik.lh = [x - 0.3, 0.05, z - 0.3]; o.ik.rh = [x + 0.3, 0.05, z - 0.3]; o.ik.wh = w;
+    o.ik.lf = [x - 0.17, 0.08, z + 0.7]; o.ik.rf = [x + 0.15, 0.1, z + 0.45]; o.ik.wf = w;
+  } else if (up >= 1 || k > 0.95) { o._L = L; plantFeet(o, 0, 1); }
+  return r;
+}
+export function agilityPose3(style, t, L, v, failed) {
+  if (failed) return failPose3(style, t, L, v);
+  return { pose: (STYLES[style] || STYLES.gap)(t, L, v), impact: false };
+}

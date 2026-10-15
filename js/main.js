@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { agilityStyle, agilityDuration, agilityVariation, agilityPose, snapshotRig, applyRigPose, releaseRig, mixPose, smooth, solveLimb } from './agilityAnim.js';
+import { agilityStyle, agilityDuration, agilityVariation, agilityPose3 as agilityPose, snapshotRig, applyRigPose, releaseRig, mixPose, smooth, solveLimb } from './agilityAnim.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -488,7 +488,8 @@ function setting(act) {
   else if (act === 'retaliate') s.autoRetaliate = !s.autoRetaliate;
   else if (act === 'run') toggleRun();
   else if (act === 'autoloot') s.autoLoot = !s.autoLoot;
-  else if (act === 'camera') { rig.targetYaw = 0; rig.targetPitch = 0.9; rig.targetDist = window.innerHeight > window.innerWidth ? 19 : 17; }
+  else if (act === 'camera') { rig.targetYaw = 0; rig.targetPitch = 0.9; applyCamFraming(true); }
+  else if (act === 'zoomlimit') { const opts = [18, 30, 45]; player.settings.zoomLimit = opts[(opts.indexOf(player.settings.zoomLimit || 30) + 1) % opts.length]; applyCamFraming(false); }
   markDirty();
 }
 function finishImport(ok) {
@@ -638,7 +639,7 @@ function doAgility(a) {
   if (n.rope && !swingRopes.includes(n.rope)) swingRopes.push(n.rope);
   // frame the obstacle: come in closer and lower for the crossing, then hand the old view back
   if (!camSaved) camSaved = { dist: rig.targetDist, pitch: rig.targetPitch };
-  rig.targetDist = Math.min(camSaved.dist, 9.5); rig.targetPitch = Math.min(camSaved.pitch, 0.5);
+  rig.targetDist = Math.min(camSaved.dist, window.innerHeight > window.innerWidth ? 7 : 9.5); rig.targetPitch = Math.min(camSaved.pitch, 0.5);
   pickCrossingCamera(true);
   if (res.ok) {
     log(res.msg, 'skill');
@@ -688,6 +689,36 @@ function pickCrossingCamera(force) {
     if (score < bestScore) { bestScore = score; best = rig.targetYaw + wrap(yaw - rig.targetYaw); }
   }
   rig.targetYaw = best;
+  hideOccluders();
+}
+// Anything still between the camera and the player during a crossing (low bushes, branches, props) is hidden
+// for the duration: single meshes are toggled off, instanced ones have that one instance collapsed.
+const _hidden = new Map(), _m4 = new THREE.Matrix4(), _zero = new THREE.Matrix4().makeScale(0, 0, 0);
+function hideOccluders() {
+  const P = pm.mesh.position, keep = new Set();
+  if (crossing && camOccluders) for (const h of [0.5, 1.0, 1.7, 2.6]) {
+    _pp.set(P.x, P.y + h, P.z); _cp.copy(camera.position);
+    const cp2 = Math.cos(rig.targetPitch); _cp.set(P.x + Math.sin(rig.targetYaw) * cp2 * rig.targetDist, P.y + 1 + Math.sin(rig.targetPitch) * rig.targetDist, P.z + Math.cos(rig.targetYaw) * cp2 * rig.targetDist);
+    for (const cam of [camera.position, _cp]) {
+      const dir = _pp.clone().sub(cam), len = dir.length(); _ray.set(cam, dir.divideScalar(len)); _ray.far = len - 0.5;
+      for (const hit of _ray.intersectObjects(camOccluders, false)) {
+        { let a = hit.object, own = false; while (a) { if (a === crossing.node?.mesh || a === crossing.rope) { own = true; break; } a = a.parent; } if (own) continue; }
+        const key = hit.object.isInstancedMesh ? hit.object.uuid + ':' + hit.instanceId : hit.object.uuid; keep.add(key);
+        if (_hidden.has(key)) continue;
+        if (hit.object.isInstancedMesh) {
+          const f = scene.userData.instanceEntAt?.(hit.object, hit.instanceId);
+          if (f) { f.e.camHidden = true; scene.userData.repackInstance(f.g); _hidden.set(key, { ent: f.e, g: f.g }); keep.add('E' + f.e.x + ',' + f.e.z); _hidden.set('E' + f.e.x + ',' + f.e.z, _hidden.get(key)); }
+          else { hit.object.getMatrixAt(hit.instanceId, _m4); _hidden.set(key, { o: hit.object, i: hit.instanceId, m: _m4.clone() }); hit.object.setMatrixAt(hit.instanceId, _zero); hit.object.instanceMatrix.needsUpdate = true; }
+        }
+        else { _hidden.set(key, { o: hit.object, v: hit.object.visible }); hit.object.visible = false; }
+      }
+    }
+  }
+  for (const [key, h] of _hidden) if (!crossing) { // stay hidden for the whole crossing (no flicker), restore after
+    if (h.ent) { if (h.ent.camHidden) { h.ent.camHidden = false; scene.userData.repackInstance(h.g); } }
+    else if (h.m) { h.o.setMatrixAt(h.i, h.m); h.o.instanceMatrix.needsUpdate = true; } else h.o.visible = h.v;
+    _hidden.delete(key);
+  }
 }
 const swingRopes = [];
 const lerp3 = (a, b, k) => a + (b - a) * k;
@@ -723,7 +754,7 @@ function updateCrossing(dt) {
   }
   pickCrossingCamera(false);
   if (c.rope) { c.rope.rotation.x = -(pose.ropeA ?? 0); c.rope.userData.a = pose.ropeA ?? 0; c.rope.userData.v = 0; }
-  if (c.t >= 1) { crossing = null; releaseRig(pm); if (camSaved) { rig.targetDist = camSaved.dist; rig.targetPitch = camSaved.pitch; camSaved = null; } pm.facing = c.yaw; pm.mesh.position.y = terrainHeight(pm.mesh.position.x, pm.mesh.position.z); }
+  if (c.t >= 1) { crossing = null; hideOccluders(); releaseRig(pm); if (camSaved) { rig.targetDist = camSaved.dist; rig.targetPitch = camSaved.pitch; camSaved = null; } pm.facing = c.yaw; pm.mesh.position.y = terrainHeight(pm.mesh.position.x, pm.mesh.position.z); }
 }
 function hurtPlayer(dmg) {
   if (dmg <= 0) return;
@@ -1774,7 +1805,15 @@ window.addEventListener('resize', () => {
   bloom.resolution.set(window.innerWidth, window.innerHeight);
   updateViewOffset();
 });
-if (window.innerHeight > window.innerWidth) { rig.dist = rig.targetDist = 19; }
+// Narrow (portrait) screens frame the player closer; the zoom-out limit is a setting (Close / Normal / Far).
+function applyCamFraming(reset) {
+  const portrait = window.innerHeight > window.innerWidth, lim = player.settings?.zoomLimit || 30;
+  rig.minDist = portrait ? 4 : 5; rig.maxDist = portrait ? Math.min(lim, 24) : lim;
+  if (reset) rig.dist = rig.targetDist = portrait ? 11 : 15;
+  rig.targetDist = Math.max(rig.minDist, Math.min(rig.maxDist, rig.targetDist));
+}
+applyCamFraming(true);
+window.addEventListener('resize', () => applyCamFraming(false));
 
 const barEnts = [...monsters, playerEnt];
 // Nearby monsters (and close townsfolk) get floating nameplates.
