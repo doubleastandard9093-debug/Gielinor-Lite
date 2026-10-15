@@ -27,6 +27,7 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>Painted skies and colour.</b> Clouds now have depth: sunlit crowns, bright silver edges toward the sun and soft grey-blue undersides. The whole picture gets a hand-painted palette on High, with cool, slightly blue shadows and warm highlights.</p>
 <p><b>Fire that lives.</b> Campfires, the fires you light and furnace mouths now burn with real flickering flames, drifting embers and curling smoke, and they cast warm, flickering light on the ground and the people around them. That really shows at dusk and night. Hits now throw off sparks, misses kick up dust, and spells burst into magic on impact.</p>
 <p><b>Skin, fur and cloth that look the part.</b> Skin now softens where light turns to shadow with a warm red edge, glows at thin edges when the sun is behind someone, and has a soft natural sheen. Fur on wolves and other animals shows a streak of highlight along the hair, and clothing picks up a gentle velvet-like sheen at its edges. All of it follows the time of day.</p>
 <p><b>Leafier trees.</b> Tree crowns are now covered in layers of small leaf sprays that break up their outline, lit brighter on top and darker underneath. Trunks have real ridged, furrowed bark with a slight twist, and moss creeps up the shady side near the roots.</p>

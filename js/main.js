@@ -70,7 +70,10 @@ const gradePass = new ShaderPass({
         float fall = 1.0 - smoothstep(0.0, 0.75, length((vUv - sunUV) * vec2(1.6, 1.0)));
         c.rgb += shaftCol * acc / 28.0 * shaftK * fall; }
       float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
-      c.rgb = mix(vec3(l), c.rgb, sat); c.rgb = mix(c.rgb, smoothstep(0.0, 1.0, c.rgb), (sat - 1.12) * 0.9); vec2 d = vUv - 0.5; c.rgb *= 1.0 - vig * smoothstep(0.25, 0.85, dot(d, d) * 2.2); gl_FragColor = c; }`
+      c.rgb = mix(vec3(l), c.rgb, sat); c.rgb = mix(c.rgb, smoothstep(0.0, 1.0, c.rgb), (sat - 1.12) * 0.9);
+      // painterly split-tone: cool, slightly lifted shadows and warm highlights, like a hand-painted palette
+      float lum = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+      c.rgb += vec3(-0.012, 0.0, 0.03) * (1.0 - smoothstep(0.0, 0.45, lum)) + vec3(0.03, 0.012, -0.02) * smoothstep(0.45, 1.0, lum); vec2 d = vUv - 0.5; c.rgb *= 1.0 - vig * smoothstep(0.25, 0.85, dot(d, d) * 2.2); gl_FragColor = c; }`
 });
 composer.addPass(gradePass);
 document.body.prepend(renderer.domElement);

@@ -93,12 +93,28 @@ export function createSky(scene) {
         float sd = max(dot(d, sunDir), 0.0);
         col += sunCol * (pow(sd, 900.0) * 6.0 + pow(sd, 40.0) * 0.25 + pow(sd, 6.0) * 0.12);
         if (clouds > 0.5 && h > 0.0) {
-          vec2 uv = d.xz / (h + 0.18) * 0.18 + vec2(time * 0.0025, time * 0.001);
-          float c = texture2D(tNoise, uv).r * 0.65 + texture2D(tNoise, uv * 2.7 + 0.3).g * 0.35;
-          c = smoothstep(0.52, 0.78, c) * smoothstep(0.0, 0.22, h);
-          vec3 cc = mix(vec3(0.86, 0.88, 0.94), vec3(1.0, 0.98, 0.93), clamp(sd * 1.4, 0.0, 1.0));
+          // pseudo-volumetric cumulus: march a few steps through a cloud slab, with one sample toward the sun per step
+          // for self-shadowing, so clouds get bright sunlit crowns, silver edges and grey-blue bellies
+          vec2 wind = vec2(time * 0.0025, time * 0.001); float T = 1.0, c = 0.0; vec3 lit = vec3(0.0);
+          vec3 sunC = mix(vec3(1.0, 0.97, 0.92), sunCol, 0.35), shadeC = mix(horizon, top, 0.5) * vec3(0.62, 0.66, 0.78);
+          for (int i = 0; i < 6; i++) {
+            float lay = float(i) / 5.0;
+            vec2 uv = d.xz / (h + 0.12 + lay * 0.05) * 0.16 + wind + lay * 0.013;
+            float n = texture2D(tNoise, uv).r * 0.6 + texture2D(tNoise, uv * 2.3 + 0.3).g * 0.28 + texture2D(tNoise, uv * 5.1 + 0.7).b * 0.12;
+            float bulge = 1.0 - abs(lay - 0.4) * 1.4;                // thickest in the middle of the slab
+            float den = smoothstep(0.44, 0.7, n * (0.85 + 0.25 * bulge)) * 0.5;
+            if (den > 0.001) {
+              vec2 uvL = uv + sunDir.xz * 0.02;
+              float nL = texture2D(tNoise, uvL).r * 0.6 + texture2D(tNoise, uvL * 2.3 + 0.3).g * 0.4;
+              float sh = exp(-smoothstep(0.5, 0.78, nL) * 2.2) * (0.55 + 0.45 * lay);
+              vec3 Lc = mix(shadeC, sunC, sh) + sunCol * pow(sd, 8.0) * (1.0 - den) * 0.8;   // forward scattering rims
+              lit += T * den * Lc; T *= 1.0 - den;
+            }
+          }
+          c = (1.0 - T) * smoothstep(0.0, 0.2, h);
+          vec3 cc = lit / max(1.0 - T, 1e-3);
           cc *= mix(vec3(1.0), vec3(0.16, 0.2, 0.32), night);
-          col = mix(col, cc, c * 0.85);
+          col = mix(col, cc, c * 0.92);
           // stars and a moon at night (the moon sits opposite the sun)
           vec3 sp = floor(d * 260.0); float r = fract(sin(dot(sp, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
           col += vec3(0.9, 0.95, 1.0) * step(0.9965, r) * night * smoothstep(0.05, 0.3, h) * (1.0 - c);
