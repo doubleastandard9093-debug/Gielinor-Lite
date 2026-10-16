@@ -14,3 +14,8 @@ The WebGL game at the site root is untouched.
 2. **Tiled lighting:** on WebGPU a 160-light pool (`?lights=N`) covers every fire, forge and torch within ~110 m plus spell and hit flashes. The fallback keeps 12 lights.
 3. **Dense GPU grass:** one instanced draw with 90,000 blades on WebGPU (32,400 on the fallback) in a grid that follows the player. The vertex shader places each blade from a world hash and a baked height and grass mask (no roads, sand, cobbles, water, buildings or cave), then adds wind and bends blades away from the player and nearby mobs. Off on Low and in the cave. `?nograss` turns it off.
 4. **Cascaded shadow maps:** `CSMShadowNode` splits the sun's shadow into 4 cascades out to 300 m on WebGPU (3 out to 200 m on the fallback), with fading between them. `?nocsm` turns it off.
+5. **Atmosphere, effects and life** (`webgpu/js/stage5.js`):
+   - **Volumetric height fog:** density falls off with height and drifts slowly. It's integrated along each view ray so valleys fill with mist, and it glows gold looking into the sun. Thicker in rain. `?nofog` turns it off.
+   - **Compute particles (WebGPU only):** a 65,536-particle storage-buffer pool simulated in a compute shader. Embers and sparks stream from the 64 nearest fires, and 16 burst slots handle hit sparks and magic. `?particles=N`, `?nocompute`. The fallback keeps the CPU particles.
+   - **Weather:** rain streaks or snowflakes that wrap around the camera, with clear spells and showers alternating. It snows in the northern mountains, and rain dims the sun. `?weather=rain|snow|clear|off`.
+   - **Crowds:** 120 instanced townsfolk on WebGPU (48 on the fallback) in 8 looks, strolling town streets with a GPU walk cycle. They're scenery only. `?crowd=N`, `?nocrowd`.
