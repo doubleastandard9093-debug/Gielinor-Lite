@@ -1,0 +1,10 @@
+# Gielinor: WebGPU release
+
+A second build of the same game at `/Gielinor-Lite/webgpu/`, rendered with three.js `WebGPURenderer` and TSL node materials.
+The WebGL game at the site root is untouched.
+
+- **Backend:** WebGPU when the browser has it, otherwise three's WebGL2 backend. A badge at the top of the screen shows which one is running. Add `?backend=webgl` to force the fallback.
+- **Shared code:** game logic, world, models, UI and saves come straight from `../js/`. Saves are shared with the main game (same `localStorage` key on the same site), so progress carries both ways.
+- **What is swapped** (in `webgpu/js/`): `scene.js` (renderer, node height fog), `gfx.js` (sky, clouds, terrain, water with a reflector node), `vfx.js` (instanced sprite particles, glow pools), `post.js` (NaN guard, GTAO, bloom, AgX/ACES, light shafts and grade as one node graph), `nodeMats.js` (TSL versions of foliage sway and trampling, building wood/stone/plaster/thatch, noise bump, skin/fur/cloth and armour patterns), `extras.js` (WebGPU-only features).
+- The import map in `webgpu/index.html` redirects the three shared-module URLs (`../js/scene.js`, `gfx.js`, `vfx.js`) to these versions.
+- `webgpu/js/main.js` is generated from `js/main.js` by `node webgpu/tools/build-main.mjs`. Re-run that after changing the main game so both stay in step.
