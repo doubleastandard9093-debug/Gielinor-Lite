@@ -9,7 +9,9 @@ const pos = new Float32Array(MAX * 3), vel = new Float32Array(MAX * 3), life = n
 const aLife = new Float32Array(MAX), aSize = new Float32Array(MAX), aKind = new Float32Array(MAX), aSeed = new Float32Array(MAX);
 let SCALE = null;
 let cursor = 0, quality = 'high', inited = false, points = null;
-const FIRES = [];     // { obj, k, spawn, kind }
+export const FIRES = [];
+// WebGPU tiled lighting (extras.js) takes over fire lights when it is active; burst() also reports to it for spell/hit flashes.
+export const GPU_LIGHTS = { active: false, onBurst: null };     // { obj, k, spawn, kind }
 const LIGHTS = [];
 const NL_HI = 12, NL_LO = 2, GLOW_MAX = 256, GLOW = {}; const _m4 = new THREE.Matrix4(), _q4 = new THREE.Quaternion(), _s4 = new THREE.Vector3(), _p4 = new THREE.Vector3(), _up = new THREE.Vector3(0, 0, 1);
 const _v = new THREE.Vector3();
@@ -20,7 +22,7 @@ export function setLeafSources(list) { LEAF_SRC = list; }
 
 export function addFire(obj, k = 1, kind = 'fire', opts = {}) { const f = { obj, k, spawn: Math.random(), kind, ground: opts.ground ?? 0, wall: opts.wall || null }; FIRES.push(f); return f; }
 export function removeFireVfx(obj) { const i = FIRES.findIndex(f => f.obj === obj); if (i >= 0) FIRES.splice(i, 1); }
-export function setVfxQuality(q) { quality = q; LIGHTS.forEach((L, i) => { L.visible = i < (q === 'low' ? NL_LO : NL_HI); }); }
+export function setVfxQuality(q) { quality = q; LIGHTS.forEach((L, i) => { L.visible = !GPU_LIGHTS.active && i < (q === 'low' ? NL_LO : NL_HI); }); }
 
 function emit(kind, x, y, z, vx, vy, vz, d, size) {
   const i = cursor; cursor = (cursor + 1) % MAX;
@@ -30,6 +32,7 @@ function emit(kind, x, y, z, vx, vy, vz, d, size) {
 // one-off bursts: 'hit' sparks, 'magic' (with colour hue via kind), 'dust'
 export function burst(type, x, y, z, n = 14, color = null) {
   if (!inited) return; const R = Math.random;
+  if (GPU_LIGHTS.onBurst) GPU_LIGHTS.onBurst(type, x, y, z, color);
   const m = quality === 'low' ? 0.5 : 1;
   for (let i = 0; i < n * m; i++) {
     if (type === 'hit') emit(KIND.spark, x, y, z, (R() - 0.5) * 5, R() * 3.5 + 0.5, (R() - 0.5) * 5, 0.35 + R() * 0.3, 0.07 + R() * 0.05);
