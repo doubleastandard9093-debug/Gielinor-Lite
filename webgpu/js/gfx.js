@@ -161,7 +161,9 @@ export function createSky(scene) {
 // ---------------------------------------------------------------------------
 // Terrain (TSL): splat mask + noise detail, slope/height rock with triplanar strata, snow, procedural bump and roughness.
 // ---------------------------------------------------------------------------
+export const TERRAIN_MASK = { tex: null, size: 1 };
 export function terrainMaterial(maskTex, maskSize) {
+  TERRAIN_MASK.tex = maskTex; TERRAIN_MASK.size = maskSize;
   const m = new THREE.MeshStandardNodeMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0.0 });
   const W = positionWorld, wp = W.xz;
   const mk = texture(maskTex, wp.div(maskSize).add(0.5));

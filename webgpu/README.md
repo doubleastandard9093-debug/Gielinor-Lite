@@ -8,3 +8,9 @@ The WebGL game at the site root is untouched.
 - **What is swapped** (in `webgpu/js/`): `scene.js` (renderer, node height fog), `gfx.js` (sky, clouds, terrain, water with a reflector node), `vfx.js` (instanced sprite particles, glow pools), `post.js` (NaN guard, GTAO, bloom, AgX/ACES, light shafts and grade as one node graph), `nodeMats.js` (TSL versions of foliage sway and trampling, building wood/stone/plaster/thatch, noise bump, skin/fur/cloth and armour patterns), `extras.js` (WebGPU-only features).
 - The import map in `webgpu/index.html` redirects the three shared-module URLs (`../js/scene.js`, `gfx.js`, `vfx.js`) to these versions.
 - `webgpu/js/main.js` is generated from `js/main.js` by `node webgpu/tools/build-main.mjs`. Re-run that after changing the main game so both stay in step.
+
+## Stages
+1. **Renderer and materials:** `WebGPURenderer` with WebGL2 fallback, TSL materials and the node post chain.
+2. **Tiled lighting:** on WebGPU a 160-light pool (`?lights=N`) covers every fire, forge and torch within ~110 m plus spell and hit flashes. The fallback keeps 12 lights.
+3. **Dense GPU grass:** one instanced draw with 90,000 blades on WebGPU (32,400 on the fallback) in a grid that follows the player. The vertex shader places each blade from a world hash and a baked height and grass mask (no roads, sand, cobbles, water, buildings or cave), then adds wind and bends blades away from the player and nearby mobs. Off on Low and in the cave. `?nograss` turns it off.
+4. **Cascaded shadow maps:** `CSMShadowNode` splits the sun's shadow into 4 cascades out to 300 m on WebGPU (3 out to 200 m on the fallback), with fading between them. `?nocsm` turns it off.

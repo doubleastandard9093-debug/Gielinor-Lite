@@ -70,7 +70,6 @@ export function followLight(dirLight, x, z, dir) {
   if (dir) dirLight.position.set(x + dir.x * 60, dir.y * 60, z + dir.z * 60);
   else dirLight.position.set(x + 33, 37.2, z + 25.2);
   dirLight.target.position.set(x, 0, z);
-  if (CASCADE.csm && dir) CASCADE.csm.lightDir.set(-dir.x, -dir.y, -dir.z).normalize();
 }
 
 export function setShadows(renderer, dirLight, on, quality = 'high') {
