@@ -58,7 +58,9 @@ export function initGpuExtras(c) {
       L.shadow.shadowNode = csm; CASCADE.csm = csm; GPU_STATS.cascades = csm.cascades;
     } catch (e) { console.warn('[webgpu] CSM unavailable', e); }
   }
-  badge.textContent = (BACKEND.name === 'WebGPU' ? 'WebGPU' : 'WebGL2 fallback') + (tiled ? ' · tiled lights' : '') + (CASCADE.csm ? ' · CSM' : '');
+  const narrow = innerWidth < 520;
+  badge.style.whiteSpace = 'nowrap';
+  badge.textContent = (BACKEND.name === 'WebGPU' ? 'WebGPU' : narrow ? 'WebGL2' : 'WebGL2 fallback') + (tiled ? (narrow ? ' · tiled' : ' · tiled lights') : '') + (CASCADE.csm ? ' · CSM' : '');
 }
 export function setGpuQuality(q) { quality = q; }
 
@@ -124,7 +126,7 @@ function bakeGround() {
 function bladeGeometry() {
   // 7-vertex tapered blade with a slight curve, 0..1 in height
   const g = new THREE.BufferGeometry(), P = [], U = [], I = [];
-  const rows = [[0, 0.05], [0.35, 0.042], [0.7, 0.026], [1, 0]];
+  const rows = [[0, 0.075], [0.35, 0.062], [0.7, 0.038], [1, 0]];
   rows.forEach(([y, w], r) => { const bend = y * y * 0.18; if (w > 0) { P.push(-w, y, bend, w, y, bend); U.push(0, y, 1, y); } else { P.push(0, y, bend); U.push(0.5, y); } });
   I.push(0, 1, 2, 2, 1, 3, 2, 3, 4, 4, 3, 5, 4, 5, 6);
   g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); g.setIndex(I);
@@ -148,7 +150,7 @@ function initGrass() {
   const dC = length(p.sub(G_ORIGIN));
   const fade = float(1).sub(smoothstep(HALF * 0.62, HALF * 0.98, dC));
   const k = smoothstep(0.35, 0.8, g.y).mul(fade).mul(step(g.x, 16.0)).mul(G_ON);
-  const ht = h3.mul(0.45).add(0.3).mul(k).mul(smoothstep(0.0, 0.25, k).mul(0.5).add(0.5));
+  const ht = h3.mul(0.6).add(0.55).mul(k).mul(smoothstep(0.0, 0.25, k).mul(0.5).add(0.5));
   const yaw = h1.mul(6.2832), cy = cos(yaw), sy = sin(yaw);
   const pos = Fn(() => {
     const v = vec3(raw.x.mul(cy).sub(raw.z.mul(sy)), raw.y.mul(ht), raw.x.mul(sy).add(raw.z.mul(cy))).toVar();
@@ -169,7 +171,7 @@ function initGrass() {
   const m = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, roughness: 0.85, metalness: 0 });
   m.positionNode = pos;
   const yv = uvNode().y, tone = hash(wc.x.mul(31).add(wc.y.mul(57)).add(5));
-  const base = mix(vec3(0.05, 0.13, 0.02), vec3(0.09, 0.19, 0.03), tone), tipC = mix(vec3(0.24, 0.42, 0.08), vec3(0.42, 0.5, 0.14), tone.mul(tone));
+  const base = mix(vec3(0.09, 0.2, 0.035), vec3(0.13, 0.26, 0.05), tone), tipC = mix(vec3(0.24, 0.42, 0.08), vec3(0.42, 0.5, 0.14), tone.mul(tone));
   m.colorNode = mix(base, tipC, yv.pow(0.8));
   m.emissiveNode = vec3(0.35, 0.5, 0.12).mul(yv.pow(3)).mul(0.04);   // a hint of light through the tips
   if (/gdbg/.test(location.search)) { m.colorNode = varying(vec3(g.y, 0, 0)); m.positionNode = Fn(() => vec3(p.x, g.x.add(0.05), p.y).add(raw.mul(vec3(4, 0.6, 4))))(); }
