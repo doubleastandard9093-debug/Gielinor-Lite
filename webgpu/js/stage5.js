@@ -274,7 +274,7 @@ function updateCrowds(dt, p) {
 
 export function initStage5(c) {
   ctx = c;
-  for (const [name, f] of [['fog', initFog], ['particles', initParticles]]) {
+  for (const [name, f] of [['fog', initFog], ['particles', initParticles], ['weather', initWeather]]) {
     try { f(); } catch (e) { console.warn('[webgpu] stage 5 ' + name + ' unavailable', e); }
   }
   window.gpuStage5 = S5;
