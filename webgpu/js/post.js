@@ -35,7 +35,7 @@ export function createPost(renderer, scene, camera) {
   const lit = clean.rgb.mul(mix(1.0, aoV, aoOn.mul(0.85)));
   let litV = lit;
   const Qs = new URLSearchParams(location.search);
-  if (BACKEND.name === 'WebGPU' && Qs.has('vol'))   // opt-in: currently washes the scene blue and costs ~45% frame time {
+  if (BACKEND.name === 'WebGPU' && Qs.has('vol')) {   // opt-in: currently washes the scene blue and costs ~45% frame time
     try {
       const vm = new THREE.VolumeNodeMaterial();
       vm.steps = +(Qs.get('volsteps') || 12);
