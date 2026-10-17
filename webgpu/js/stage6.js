@@ -7,7 +7,7 @@ import { VOL } from './post.js';
 import { DAY } from '../../js/daycycle.js';
 import { Fn, uniform, uniformArray, instancedArray, instanceIndex, float, vec3, vec4, dot, length, max, smoothstep, positionLocal, select, If, lights } from 'three/tsl';
 import { markUpgraded } from './nodeMats.js';
-import { terrainHeight, TOWNS, PATHS, insideLake, inCave, CHUNK_SIZE, WORLD_HALF } from '../../js/world.js';
+import { terrainHeight, TOWNS, PATHS, insideLake, inCave, CHUNK_SIZE, WORLD_HALF, inBuilding } from '../../js/world.js';
 import { treeMat } from '../../js/models.js';
 import { blockedAt } from '../../js/player.js';
 
@@ -96,7 +96,7 @@ const frustum = new THREE.Frustum(), pm = new THREE.Matrix4();
 function rngOf(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 function clearSpot(x, z, pad) {
   if (Math.abs(x) > WORLD_HALF - 3 || Math.abs(z) > WORLD_HALF - 3) return false;
-  if (insideLake(x, z, pad + 0.5) || (inCave && inCave(x, z)) || blockedAt(x, z)) return false;
+  if (insideLake(x, z, pad + 0.5) || (inCave && inCave(x, z)) || blockedAt(x, z) || inBuilding(x, z, pad + 0.3)) return false;
   for (const k in TOWNS) { const t = TOWNS[k]; if (Math.hypot(x - t.x, z - t.z) < 22 + pad) return false; }
   for (const s of PATHS) { const [x1, z1, x2, z2] = s, dx = x2 - x1, dz = z2 - z1, L = dx * dx + dz * dz || 1;
     const t = Math.max(0, Math.min(1, ((x - x1) * dx + (z - z1) * dz) / L)); if (Math.hypot(x - x1 - dx * t, z - z1 - dz * t) < 2.2 + pad) return false; }

@@ -81,6 +81,12 @@ function nearestTown(x, z) {
 }
 // Solid areas the player can't walk through (filled in by createWorld).
 export const colliders = [];
+// Building footprints (outer wall rectangles): no grass, flowers or other ground clutter grows inside these.
+export const footprints = [];
+export function inBuilding(x, z, pad = 0) {
+  for (const f of footprints) if (x > f.minX - pad && x < f.maxX + pad && z > f.minZ - pad && z < f.maxZ + pad) return f;
+  return null;
+}
 // Extra spots to keep level (points of interest added later register here).
 export const FLAT_SPOTS = [];
 
@@ -726,6 +732,7 @@ export function createWorld(scene) {
     scene.add(g);
     pickables.push(g);
     occupied.push({ x, z, r: Math.max(w, d) * 0.75 + 1 });
+    footprints.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, name });
     return tag(g, { mesh: g, type: 'building', name, examine, alive: true, x, z, radius: Math.max(w, d) / 2, door: { x: x + toCentre[0] * (w / 2), z: z + toCentre[1] * (d / 2), nx: toCentre[0], nz: toCentre[1] }, inner: g.userData.inner, spots });
   }
 
@@ -1582,6 +1589,7 @@ function scatterDecor(scene, rng, occupied) {
     for (const t of Object.values(TOWNS)) if (Math.hypot(x - t.x, z - t.z) < 6) return false;
     if (Math.hypot(x - 132, z + 22) < 6) return false;
     if (insideLake(x, z, 2.6)) return false;
+    if (inBuilding(x, z, pad + 0.25)) return false; // no grass through the floorboards
     for (const p of PATHS) if (distToSeg(x, z, ...p) < 1.4) return false;
     for (const b of colliders) if (x > b.minX - pad && x < b.maxX + pad && z > b.minZ - pad && z < b.maxZ + pad) return false;
     for (const o of occupied) if (o.r < 3 && Math.hypot(o.x - x, o.z - z) < o.r * 0.6 + pad) return false;

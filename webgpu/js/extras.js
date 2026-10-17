@@ -12,7 +12,7 @@ import { DAY } from '../../js/daycycle.js';
 import { initStage5, updateStage5, S5 } from './stage5.js';
 import { initStage6, updateStage6 } from './stage6.js';
 import './stage7.js';
-import { terrainHeight, insideLake, WORLD_HALF, inCave } from '../../js/world.js';
+import { terrainHeight, insideLake, WORLD_HALF, inCave, inBuilding } from '../../js/world.js';
 import { blockedAt } from '../../js/player.js';
 import { PUSH } from '../../js/models.js';
 import { TERRAIN_MASK, TIME, SWAY } from './gfx.js';
@@ -122,7 +122,7 @@ function bakeGround() {
   for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) {
     const x = (i + 0.5) / R * 2 * H - H, z = (j + 0.5) / R * 2 * H - H, o = (j * R + i) * 4;
     const bare = bareAt(x, z);
-    const ok = bare < 0.3 && Math.hypot(x, z) > 8.8 && Math.hypot(x - 50, z + 24) > 6 && !insideLake(x, z, 0.6) && !inCave(x, z) && !blockedAt(x, z) && Math.abs(x) < H - 3 && Math.abs(z) < H - 3;
+    const ok = bare < 0.3 && Math.hypot(x, z) > 8.8 && Math.hypot(x - 50, z + 24) > 6 && !insideLake(x, z, 0.6) && !inCave(x, z) && !blockedAt(x, z) && !inBuilding(x, z, 0.5) && Math.abs(x) < H - 3 && Math.abs(z) < H - 3;
     data[o] = toH(terrainHeight(x, z)); data[o + 1] = toH(ok ? 1 - Math.max(0, bare - 0.1) * 4 : 0); data[o + 2] = 0; data[o + 3] = toH(1);
   }
   const tex = new THREE.DataTexture(data, R, R, THREE.RGBAFormat, THREE.HalfFloatType);
