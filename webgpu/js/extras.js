@@ -11,6 +11,7 @@ import { TiledLighting } from 'three/addons/lighting/TiledLighting.js';
 import { DAY } from '../../js/daycycle.js';
 import { initStage5, updateStage5, S5 } from './stage5.js';
 import { initStage6, updateStage6 } from './stage6.js';
+import './stage7.js';
 import { terrainHeight, insideLake, WORLD_HALF, inCave } from '../../js/world.js';
 import { blockedAt } from '../../js/player.js';
 import { PUSH } from '../../js/models.js';
