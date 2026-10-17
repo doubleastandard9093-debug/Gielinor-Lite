@@ -15,7 +15,7 @@ import { getNoiseTexture, TIME } from './gfx.js';
 // Stage 6 volumetric light: a VolumeNodeMaterial box that follows the camera is raymarched (dithered, 1/4 resolution,
 // then blurred) against every light on VOL.layer, sampling their shadow maps, so sun shafts through trees and roofs and
 // torch halos are true 3D in-scattering that keeps working when the sun is off-screen. Occluded by the scene depth.
-export const VOL = { layer: 10, mesh: null, on: false, intensity: uniform(0.55), density: uniform(1) };
+export const VOL = { layer: 10, mesh: null, on: false, intensity: uniform(0.22), density: uniform(1), tint: uniform(new THREE.Color(1.0, 0.92, 0.8)) };
 
 const okc = (v) => select(v.greaterThanEqual(0.0).and(v.lessThan(1e4)), v, float(0));   // NaN fails both tests, Inf the second
 const guard = (c) => vec4(okc(c.r), okc(c.g), okc(c.b), okc(c.a).clamp(0, 1));
@@ -35,15 +35,15 @@ export function createPost(renderer, scene, camera) {
   const lit = clean.rgb.mul(mix(1.0, aoV, aoOn.mul(0.85)));
   let litV = lit;
   const Qs = new URLSearchParams(location.search);
-  if (BACKEND.name === 'WebGPU' && Qs.has('vol')) {   // opt-in: currently washes the scene blue and costs ~45% frame time
+  if (BACKEND.name === 'WebGPU' && !Qs.has('novol')) {   // on by default (hidden on Low by stage6); ?novol disables
     try {
       const vm = new THREE.VolumeNodeMaterial();
-      vm.steps = +(Qs.get('volsteps') || 12);
+      vm.steps = +(Qs.get('volsteps') || 8); vm.fog = false;
       vm.offsetNode = bayer16(screenCoordinate);
       vm.scatteringNode = Fn(({ positionRay }) => {
         const n = texture(getNoiseTexture(), positionRay.xz.mul(0.035).add(vec2(TIME.mul(0.006), TIME.mul(0.003)))).level(0).r;
         const h = exp(max(positionRay.y, 0.0).mul(-0.09));   // thick in valleys and at ground level, thin up high
-        return h.mul(n.mul(0.8).add(0.4)).mul(VOL.density).mul(0.06);
+        return h.mul(n.mul(0.8).add(0.4)).mul(VOL.density).mul(0.035);
       });
       vm.depthNode = depth.sample(screenUV);
       const box = new THREE.Mesh(new THREE.BoxGeometry(140, 40, 140), vm);
@@ -51,10 +51,25 @@ export function createPost(renderer, scene, camera) {
       box.layers.disableAll(); box.layers.enable(VOL.layer);
       scene.add(box); VOL.mesh = box;
       const layers = new THREE.Layers(); layers.disableAll(); layers.enable(VOL.layer);
-      const vPass = pass(scene, camera, { depthBuffer: false });
+      // The blue wash was the sky background being drawn into the volume pass and added on top of the frame.
+      // The volume pass gets its own camera; when the scene renders through it the background is suppressed.
+      const volCam = camera.clone(); VOL.cam = volCam;
+      const prevB = scene.onBeforeRender, prevA = scene.onAfterRender; let savedBg = null;
+      scene.onBeforeRender = function (r, s, cam, rt) {
+        if (cam === volCam) { volCam.copy(camera, false); volCam.matrixWorld.copy(camera.matrixWorld); volCam.matrixWorldInverse.copy(camera.matrixWorldInverse); volCam.projectionMatrix.copy(camera.projectionMatrix); volCam.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
+          savedBg = s.background; s.background = null; }
+        if (prevB) prevB.apply(this, arguments);
+      };
+      scene.onAfterRender = function (r, s, cam) {
+        if (cam === volCam) s.background = savedBg;
+        if (prevA) prevA.apply(this, arguments);
+      };
+      const vPass = pass(scene, volCam, { depthBuffer: false });
       vPass.setLayers(layers); vPass.setResolution(+(Qs.get('volres') || 0.25));
-      const vol = gaussianBlur(vPass, 0.6);
-      litV = lit.add(guard(vol).rgb.mul(VOL.intensity));
+      const vol = guard(gaussianBlur(vPass, 1.0)).rgb;
+      // keep the in-scatter warm/neutral: drive it by luminance, tinted by the light's own hue, so no colour cast leaks in
+      const vl = dot(vol, vec3(0.2126, 0.7152, 0.0722));
+      litV = lit.add(mix(vec3(vl), vol, 0.35).mul(VOL.tint).mul(VOL.intensity));
       VOL.on = true;
     } catch (e) { console.warn('[webgpu] volumetric light unavailable', e); }
   }
