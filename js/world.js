@@ -6,7 +6,7 @@ import { QUEST_NPCS } from './questnpcs.js';
 import { addFire } from './vfx.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise, WATER_MESHES } from './gfx.js';
 import { buildHumanoidRig, apronGeo, varyLook, hashStr, contactShadow, plateCharMat, chainCharMat } from './anatomy.js';
-import { buildCreatureRig, rollVariant, namedVariant } from './creatures.js';
+import { buildCreatureRig, rollVariant, namedVariant, loColours } from './creatures.js';
 import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap, treeMat, treeDepthMat, setMat, woodAxis, buildMat } from './models.js';
 
 // The world is about 440 x 440. Chunked decor + instance packing keep phones smooth.
@@ -878,7 +878,8 @@ export function createWorld(scene) {
     } else {
       const skin = v.tint;
       const bald = /Giant|Ogre|Grumsh|Skeleton|Zombie|Demon|Goblin/.test(typeName);
-      const h = humanoidParts({ body: c, skin, legs: new THREE.Color(c).multiplyScalar(0.55).getHex(), hair: bald ? null : 0x3a2a1a, sleeve: c });
+      const lc = loColours(typeName, t, seed);
+      const h = humanoidParts({ body: c, skin, legs: new THREE.Color(c).multiplyScalar(0.55).getHex(), hair: bald ? null : 0x3a2a1a, sleeve: c, ...(lc || {}) });
       const ex = monsterExtras(typeName, skin, c);
       // detailed rig: head-height extras ride on the head, the rest on the torso
       const keep = typeName === 'Goblin' ? ex.slice(3) : /Skeleton|Zombie/.test(typeName) ? ex.slice(2) : ex;

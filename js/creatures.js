@@ -266,6 +266,14 @@ const HUMANOID_LOOK = {
   Guard: v => ({ body: v.tint, build: 1.05 * v.k, legs: 0x2a2a3a, boots: 0x1e1a16, hair: null, bootH: 0.25 })
 };
 const CLAWED = /Goblin|Ogre|Grumsh|Demon|Zombie|Skeleton/;
+// Body/leg colours of the far (cheap) LOD mesh so it matches the detailed rig it swaps with:
+// bare-chested monsters (giants, ogres, goblins, demons) show skin, not a shirt.
+export function loColours(typeName, t, seed) {
+  const f = HUMANOID_LOOK[typeName]; if (!f) return null;
+  const look = f(rollVariant(typeName, t, seed));
+  if (!look.bare) return null;
+  return { body: look.skin, sleeve: look.skin, legs: look.legs, belt: look.belt };
+}
 
 // Variation for one spawn. seed: 0..1. Returns tinted colour, scale factor and type-specific traits.
 export function rollVariant(typeName, t, seed) {

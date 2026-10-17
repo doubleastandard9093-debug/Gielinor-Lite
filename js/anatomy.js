@@ -56,11 +56,15 @@ ${GEAR_GLSL}` : ''}`)
         if (charQ > 0.5) {
           vec3 vv = normalize(vViewPosition);
           float fr = pow(1.0 - clamp(dot(normal, vv), 0.0, 1.0), 3.0);
+          // light actually arriving at this pixel (sun/moon, sky, torches): the rim and skin scatter below scale with it,
+          // so they fade with the light at night instead of glowing on their own
+          vec3 litD = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse;
+          float litY = dot(litD, vec3(0.2126, 0.7152, 0.0722)), litK = clamp(litY / max(0.04, dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722))) * 1.4, 0.0, 1.0);
           // sky-tinted rim (sheen on fur, edge light on everything)
-          reflectedLight.indirectSpecular += vec3(0.85, 0.92, 1.0) * fr * ${rim.toFixed(2)} * (0.4 + diffuseColor.rgb * ${sheen ? '1.6' : '0.6'});
-          // warm light scattering through skin (reddish-tan vertex colours)
+          reflectedLight.indirectSpecular += vec3(0.85, 0.92, 1.0) * fr * ${rim.toFixed(2)} * (0.4 + diffuseColor.rgb * ${sheen ? '1.6' : '0.6'}) * litK;
+          // warm light scattering through skin (reddish-tan vertex colours), a share of the light the skin already receives
           float skinK = smoothstep(0.06, 0.2, vColor.r - vColor.b) * smoothstep(0.02, 0.12, vColor.g - vColor.b) * ${sss.toFixed(2)};
-          reflectedLight.indirectDiffuse += diffuseColor.rgb * vec3(1.0, 0.42, 0.28) * skinK * (0.18 + 0.25 * fr);
+          reflectedLight.indirectDiffuse += litD * vec3(1.0, 0.42, 0.28) * skinK * (0.22 + 0.32 * fr);
           vec3 Lv = normalize((viewMatrix * vec4(cLDir, 0.0)).xyz); float nl = dot(normal, Lv);
           // skin: wrapped diffuse softens the light/shadow edge with a red-orange band, and thin edges glow when backlit
           float wrap = max(0.0, (nl + 0.45) / 1.45) - max(0.0, nl);
