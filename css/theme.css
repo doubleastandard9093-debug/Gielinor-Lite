@@ -112,6 +112,8 @@ button.on, .style.on, .subtabs button.on, .chips button.on, .qtybar button.on, #
   box-shadow: 0 0 0 2px #0a0a0a, 0 0 0 3px var(--c-gold-mid), 0 0 0 4px #000, inset 0 -4px 8px rgba(0, 0, 0, .55), inset 0 3px 6px rgba(255, 255, 255, .2);
   transition: background .4s ease; }
 .orb .orb-ico { position: absolute; left: 6px; top: 3px; font-size: 14px; z-index: 1; filter: drop-shadow(0 1px 1px #000); }
+/* the value never slides under the glass sphere (iOS's SF digits are wider than Roboto's, which clipped the 1 of 100) */
+.orb > b { position: relative; z-index: 2; white-space: nowrap; font-variant-numeric: tabular-nums; }
 #hpOrb { --liq: #e0362a; --liq-lo: #3a0a08; background: linear-gradient(180deg, #2a2c32, #121317); }
 #prayOrb { --liq: #3aa8ec; --liq-lo: #0a2032; background: linear-gradient(180deg, #2a2c32, #121317); }
 #prayOrb.on::before { box-shadow: 0 0 0 2px #0a0a0a, 0 0 0 3px #8ad0ff, 0 0 10px #8ad0ff, inset 0 -4px 8px rgba(0, 0, 0, .55); }
@@ -179,7 +181,7 @@ button.on, .style.on, .subtabs button.on, .chips button.on, .qtybar button.on, #
   #targetPanel { top: calc(26px + var(--st)); width: 170px; }
   #effects { top: calc(84px + var(--st)); }
   #xpTracker { top: calc(122px + var(--st)); width: 160px; }
-  .orb { width: 50px; height: 22px; padding-left: 26px; font-size: 11px; }
+  .orb { width: 58px; height: 22px; padding: 0 4px 0 26px; font-size: 11px; letter-spacing: -0.2px; }
   .orb::before { width: 24px; height: 24px; top: -2px; }
   .orb .orb-ico { font-size: 11px; left: 4px; top: 2px; }
   #orbs { gap: 4px; }
