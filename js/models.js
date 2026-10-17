@@ -155,6 +155,14 @@ export const buildMat = (() => {
 })();
 
 // Common primitive helpers (all return fresh geometries).
+// Mirror a geometry across x and keep its faces pointing outward (a negative scale alone
+// flips the triangle winding, so the mirrored copy would be culled from the outside).
+export function mirrorX(g) {
+  g.scale(-1, 1, 1);
+  if (g.index) { const a = g.index.array; for (let i = 0; i < a.length; i += 3) { const t = a[i + 1]; a[i + 1] = a[i + 2]; a[i + 2] = t; } g.index.needsUpdate = true; }
+  else for (const k in g.attributes) { const at = g.attributes[k], n = at.itemSize, a = at.array; for (let i = 0; i < at.count; i += 3) for (let j = 0; j < n; j++) { const t = a[(i + 1) * n + j]; a[(i + 1) * n + j] = a[(i + 2) * n + j]; a[(i + 2) * n + j] = t; } at.needsUpdate = true; }
+  return g;
+}
 export const prim = {
   box: (w, h, d) => new THREE.BoxGeometry(w, h, d),
   cyl: (rt, rb, h, seg = 10) => new THREE.CylinderGeometry(rt, rb, h, seg, 1),
@@ -167,7 +175,7 @@ export const prim = {
   wing(side) {
     const s = new THREE.Shape(); s.moveTo(0, 0); s.lineTo(0.9, 0.5); s.lineTo(1.0, -0.1); s.lineTo(0.6, -0.4); s.lineTo(0.3, -0.25); s.closePath();
     const g = new THREE.ExtrudeGeometry(s, { depth: 0.03, bevelEnabled: false }); g.deleteAttribute('uv');
-    if (side < 0) g.scale(-1, 1, 1);
+    if (side < 0) mirrorX(g);
     g.rotateY(side * 0.5);
     return g;
   },
@@ -605,7 +613,7 @@ export function creatureParts(shape, c, typeName) {
     const wing = (side) => {
       const s = new THREE.Shape(); s.moveTo(0, 0); s.lineTo(1.6, 0.5); s.lineTo(1.9, -0.2); s.lineTo(1.2, -0.5); s.lineTo(0.6, -0.4); s.closePath();
       const g = new THREE.ExtrudeGeometry(s, { depth: 0.04, bevelEnabled: false }); g.deleteAttribute('uv');
-      g.rotateX(-Math.PI / 2); if (side < 0) g.scale(-1, 1, 1);
+      g.rotateX(-Math.PI / 2); if (side < 0) mirrorX(g);
       return [g, darker, side * 0.35, 1.55, -0.1, 0, 0, side * 0.35, 0.15];
     };
     return {

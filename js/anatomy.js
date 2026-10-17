@@ -92,9 +92,13 @@ export const hideMat = makeCharMat({ rough: 0.85, bump: 0.4, freq: 18, rim: 0.3,
 
 // ---- small helpers ----------------------------------------------------------
 const V2 = THREE.Vector2;
-// Lathe a radius profile [[r, y], ...] (top to bottom) into a closed limb.
+// Lathe a radius profile [[r, y], ...] into a closed limb. LatheGeometry only faces
+// outward when its points run bottom to top, so the profile is ordered by y here whichever
+// way it was written (a top-down profile used to come out inside-out: culled from the
+// camera side, showing the inside of the far wall, e.g. the see-through torso back).
 export function lathe(profile, seg = 16) {
-  const pts = profile.map(([r, y]) => new V2(Math.max(r, 0.0001), y)).reverse();
+  const pts = profile.map(([r, y]) => new V2(Math.max(r, 0.0001), y));
+  if (pts[0].y > pts[pts.length - 1].y) pts.reverse();
   const g = new THREE.LatheGeometry(pts, seg);
   g.deleteAttribute('uv');
   g.computeVertexNormals();
