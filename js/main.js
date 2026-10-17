@@ -1324,6 +1324,7 @@ function updateCave(dt) {
   caveK += ((inside ? 1 : 0) - caveK) * Math.min(1, dt * 3);
   if (!lightBase) lightBase = { hemi: lightsRef.hemi.intensity, dir: dirLight.intensity, fill: lightsRef.fill.intensity, exp: renderer.toneMappingExposure };
   updateDay(player.settings.timeOfDay || 'cycle', window.__dayT);
+  nightNeutral();
   lightsRef.hemi.intensity = lightBase.hemi * DAY.hemiK * (1 - 0.6 * caveK);
   lightsRef.hemi.color.copy(DAY.hemiCol);
   dirLight.intensity = lightBase.dir * DAY.dirK * (1 - 0.8 * caveK);
@@ -1335,6 +1336,23 @@ function updateCave(dt) {
   scene.background.copy(scene.fog.color);
 }
 const _caveFog = new THREE.Color(0x0c0a10);
+// At night all three lights were saturated blue (moon 0x7f9cff, sky fill 0x5a6fa8, cool fill 0x9ab8ff). Saturated
+// blue surfaces, above all the pale-blue Magic tree leaves (0x5aa0f0), reflected nearly all of it while green and grey
+// surfaces absorbed it, so a Magic tree read as a glowing neon-blue tree in the dark. Pull the night lights toward their
+// own luminance with only a slight cool tint (as the WebGPU release does); brightness is unchanged. ?bluenight keeps the old look.
+const _nn = new THREE.Color(), NN_TINT = [0.92, 0.98, 1.1];
+let fillBase = null;
+function nightNeutral() {
+  const k = DAY.night || 0, off = /bluenight/.test(location.search);
+  if (!fillBase) fillBase = lightsRef.fill.color.clone();
+  lightsRef.fill.color.copy(fillBase);
+  if (k <= 0 || off) return;
+  for (const c of [DAY.lightCol, DAY.hemiCol, lightsRef.fill.color]) {
+    const L = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    _nn.setRGB(L * NN_TINT[0], L * NN_TINT[1], L * NN_TINT[2]);
+    c.lerp(_nn, 0.8 * k);
+  }
+}
 const _shaftV = new THREE.Vector3();
 function updatePushers() {
   const P = PUSH.value, p = pm.mesh.position; P[0].set(p.x, p.z, 0.9, 1);

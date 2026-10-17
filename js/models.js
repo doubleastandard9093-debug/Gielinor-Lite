@@ -292,7 +292,7 @@ export const TREE_LOOK = {
   Willow: { bark: 0x6a5634, leaf: 0x86ad45, h: 2.1, r: 0.3, canopy: 'willow', size: 1.35 },
   Maple:  { bark: 0x5a3a20, leaf: 0xd0622a, h: 1.9, r: 0.28, canopy: 'round', size: 1.4 },
   Yew:    { bark: 0x3e2a18, leaf: 0x245a32, h: 2.2, r: 0.38, canopy: 'tiered', size: 1.45 },
-  Magic:  { bark: 0x8a8aa0, leaf: 0x5aa0f0, h: 2.2, r: 0.26, canopy: 'tiered', size: 1.2 }
+  Magic:  { bark: 0x8a8aa0, leaf: 0x5f92c8, h: 2.2, r: 0.26, canopy: 'tiered', size: 1.2 }
 };
 export function treeGeometry(kind, rng) {
   const L = TREE_LOOK[kind] || TREE_LOOK.Tree;
