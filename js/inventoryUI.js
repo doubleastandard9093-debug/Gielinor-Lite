@@ -93,6 +93,7 @@ export const WHATS_NEW = `
 <li><b>Skeletons are made of bones:</b> a skull with eye sockets, jaw and teeth, a spine of vertebrae, a curved ribcage with sternum, collarbones and shoulder blades, a pelvis, and jointed arm, hand, finger, leg and foot bones.</li>
 <li><b>Aprons and hats fit.</b> Aprons wrap the body with a bib, waist tie and draped skirt. Chef's hats, straw hats and caps sit on the head and turn with it.</li>
 <li><b>Bounties in the quest tab.</b> All three repeatable bounties show at the top of the Quests tab, with where to find the giver, your progress bar and the reward.</li>
+<li><b>Solid walls.</b> Building walls hold even when the game stutters or you run into them at a low frame rate, so the only way in is through the door. Grass no longer grows through the floorboards.</li>
 <li><b>Solid furniture.</b> Counters, shelves, crates, bank windows, forges and anvils inside buildings are solid now. Doorways stay open, and you can still talk, bank and trade across the counter.</li>
 <li><b>Ammo matters.</b> Crossbows need bolts and bows need arrows. If the wrong ammo is equipped, the chat tells you what you need. Thrown weapons still need no ammo.</li>
 <li><b>Clearer mountains.</b> On High, the fog is lighter and the view distance is longer, so the snow-capped northern range reads clearly from town. Low keeps the shorter, foggier view for phones.</li>

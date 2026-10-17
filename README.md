@@ -126,7 +126,7 @@ The game saves itself every 15 seconds and whenever you leave the app. Old saves
 
 - **Ammo:** crossbows fire bolts and bows fire arrows. Thrown daggers and throwing axes need no ammo.
 - **Bounties:** three repeatable bounties (Ruins Warden, Captain Brann, Rhea the Hunter) are listed in the Quests tab with their progress. The data is `BOUNTIES` in gameplay.js.
-- **Collision:** building walls, counters, shelves, bank windows, forges and anvils are solid colliders. NPC walk spots stay clear of them.
+- **Collision:** building walls, counters, shelves, bank windows, forges and anvils are solid colliders. NPC walk spots stay clear of them. Movement is swept and sub-stepped (8 cm slices, each push leaves through the face it entered, walls never flip you to the far side), so lag spikes and low frame rates can't tunnel through a wall. `tools/collision-check.js` walks into every wall of every building and fails any crossing that isn't through the door. No grass or clutter grows inside building footprints.
 
 - **Toolbelt tiers:** bronze, iron, steel, mithril, adamant, rune axes and pickaxes. Each tier gathers 5% more often. Get them from Bob's Tool Shop, smithing or monster drops. New and old characters get bronze starter tools.
 - **Perks:** every skill unlocks a perk every 5 levels (5 … 95) and at 99, 20 per skill. The small ones stack (+1% gathering, +1 max hit, +2% less burning, +0.5% damage reduction and so on). The ★ milestones at 25, 50, 75 and 99 change how the skill plays:
