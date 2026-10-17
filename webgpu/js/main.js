@@ -1288,6 +1288,7 @@ function updateCave(dt) {
   caveK += ((inside ? 1 : 0) - caveK) * Math.min(1, dt * 3);
   if (!lightBase) lightBase = { hemi: lightsRef.hemi.intensity, dir: dirLight.intensity, fill: lightsRef.fill.intensity, exp: renderer.toneMappingExposure };
   updateDay(player.settings.timeOfDay || 'cycle', window.__dayT);
+  nightNeutral();
   lightsRef.hemi.intensity = lightBase.hemi * DAY.hemiK * (1 - 0.6 * caveK);
   lightsRef.hemi.color.copy(DAY.hemiCol);
   dirLight.intensity = lightBase.dir * DAY.dirK * (1 - 0.8 * caveK);
@@ -1299,6 +1300,19 @@ function updateCave(dt) {
   scene.background.copy(scene.fog.color);
 }
 const _caveFog = new THREE.Color(0x0c0a10);
+// The shared day cycle lights the night with a saturated blue moon (0x7f9cff) and a blue sky fill (0x5a6fa8). Under the
+// WebGPU release's physically based shading, grey stone (town-square cobbles, well rims, walls) took that colour almost
+// unfiltered and read as bright blue paving. Pull both lights toward their own luminance with only a slight cool tint,
+// so moonlit stone stays grey; brightness is unchanged. ?bluenight keeps the old colours.
+const _nn = new THREE.Color(), NN_TINT = [0.92, 0.98, 1.1];
+function nightNeutral() {
+  const k = DAY.night || 0; if (k <= 0 || /bluenight/.test(location.search)) return;
+  for (const c of [DAY.lightCol, DAY.hemiCol]) {
+    const L = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    _nn.setRGB(L * NN_TINT[0], L * NN_TINT[1], L * NN_TINT[2]);
+    c.lerp(_nn, 0.8 * k);
+  }
+}
 const _shaftV = new THREE.Vector3();
 function updatePushers() {
   const P = PUSH.value, p = pm.mesh.position; P[0].set(p.x, p.z, 0.9, 1);
@@ -2072,6 +2086,7 @@ window.gielinor = {
   gfx, terrainHeight, applyLook() { applyEquipmentLook(pm, player.equipment); }, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
   renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   get queued() { return queuedAbility; }, cooldowns, buffs,
+  get inCaveNow() { return caveK > 0.5; }, get caveK() { return caveK; }, get indoorsNow() { const p = pm.mesh.position; return !!insideOf(p.x, p.z); },
   get action() { return action; }, get tick() { return tick; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
