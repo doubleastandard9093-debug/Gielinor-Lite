@@ -8,7 +8,8 @@ export const DEFAULT_SETTINGS = {
   showDpad: false,
   autoLoot: false,   // send drops straight to the pack instead of the ground
   shadows: null,     // null = pick automatically (off on phones)
-  gfx: null,         // graphics quality: null = auto, 'high' or 'low'
+  gfx: 'low',        // graphics quality: null = auto, 'high' or 'low'. New players start on Low.
+  gfxV: 2,           // graphics-default version: saves below 2 that were on Auto are moved to Low once (see save.js)
   autocast: null,    // spell id cast by Attack (Magic)
   chatFilter: 'all',
   chatCollapsed: false

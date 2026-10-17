@@ -62,7 +62,14 @@ export function migrateSave(saved) {
   p.bank = cleanBag(p.bank);
   p.equipment = Object.assign({ weapon: null, body: null, legs: null, shield: null, head: null, ammo: null, neck: null, ring: null, cape: null }, p.equipment || {});
   if (!p.equipment.ammo) p.ammoCount = 0;
-  p.settings = Object.assign({}, DEFAULT_SETTINGS, p.settings || {});
+  // Graphics default (settings v2): the game now starts on Low. A save still on Auto (null/missing) moves to Low once;
+  // an explicit High or Low is kept, and whatever the player picks afterwards (including Auto) is remembered.
+  const rawS = (p.settings && typeof p.settings === 'object') ? p.settings : {};
+  if (!(Number(rawS.gfxV) >= 2)) {
+    if (rawS.gfx !== 'high' && rawS.gfx !== 'low') { rawS.gfx = 'low'; notes.push('Graphics now start on Low for a smoother game. For more detail, switch Graphics quality to High or Auto in Settings.'); }
+    rawS.gfxV = 2;
+  }
+  p.settings = Object.assign({}, DEFAULT_SETTINGS, rawS);
   if (typeof p.runEnergy !== 'number') p.runEnergy = 100;
   if (typeof p.attackStyle !== 'number') p.attackStyle = 0;
   if (typeof p.gold !== 'number') p.gold = Number(p.gold) || 0;
