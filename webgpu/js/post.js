@@ -6,6 +6,7 @@ import { pass, mrt, output, normalView, directionToColor, colorToDirection, samp
   uv, Fn, Loop, renderOutput, max } from 'three/tsl';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+export const POSTFX = { bloom: null };
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { bayer16 } from 'three/addons/tsl/math/Bayer.js';
 import { screenUV, screenCoordinate, positionWorld, exp, texture } from 'three/tsl';
@@ -74,6 +75,7 @@ export function createPost(renderer, scene, camera) {
     } catch (e) { console.warn('[webgpu] volumetric light unavailable', e); }
   }
   const bl = bloom(vec4(litV, 1), 0.3, 0.45, 0.9);
+  POSTFX.bloom = bl;   // strength/threshold are retuned per frame by stage7.js (day/night, cave)
   const hdr = vec4(litV.add(guard(bl).rgb), 1);
   const GRADE = { sat: uniform(1.12), vig: uniform(0.32), sunUV: uniform(new THREE.Vector2(0.5, 0.8)), shaftK: uniform(0), shaftCol: uniform(new THREE.Color(1, 0.9, 0.7)) };
   const graded = Fn(() => {

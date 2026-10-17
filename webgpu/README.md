@@ -19,3 +19,10 @@ The WebGL game at the site root is untouched.
    - **Compute particles (WebGPU only):** a 65,536-particle storage-buffer pool simulated in a compute shader. Embers and sparks stream from the 64 nearest fires, and 16 burst slots handle hit sparks and magic. `?particles=N`, `?nocompute`. The fallback keeps the CPU particles.
    - **Weather:** rain streaks or snowflakes that wrap around the camera, with clear spells and showers alternating. It snows in the northern mountains, and rain dims the sun. `?weather=rain|snow|clear|off`.
    - **Crowds:** 120 instanced townsfolk on WebGPU (48 on the fallback) in 8 looks, strolling town streets with a GPU walk cycle. They're scenery only. `?crowd=N`, `?nocrowd`.
+6. **Round 2 graphics** (`webgpu/js/stage6.js`, `stage7.js`, engine comparison in `ENGINE_NOTES.md`):
+   - **Procedural PBR:** stochastic-tiled terrain detail, parallax occlusion on cobbles (High), cavity AO and roughness variation, overlapping roof tiles, close-up detail normals on characters.
+   - **Water:** Gerstner waves, depth absorption, screen-space refraction, Fresnel reflection, shore foam, caustics and player ripples.
+   - **Volumetric light:** raymarched sun and nearest-torch in-scatter at 1/4 resolution, on by default on High. `?novol` turns it off.
+   - **Compute culling and density:** a compute-shader frustum/distance mask drives ~83k extra decor instances, and distant trees cross-fade to a lighter LOD at 90 m (`?treenear=M`). `?nodense` turns it off.
+   - **Building detail:** shutters, stone sills, timber lintels, diagonal braces, fascia and barge boards, gable finials, chimney flashing and pots. Roof details hide with the roof indoors. `?nobdetail` turns it off.
+   - **Bloom tuning:** bloom threshold drops and strength rises at night so fires, torches and spells glow. `?nobloomtune` turns it off.

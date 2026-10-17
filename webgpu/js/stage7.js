@@ -4,6 +4,8 @@
 // with the roof when you walk inside. ?nobdetail turns it off.
 import * as THREE from 'three';
 import { addStage6, S6 } from './stage6.js';
+import { POSTFX } from './post.js';
+import { DAY } from '../../js/daycycle.js';
 import { prim, col, place as put, setMat, woodAxis, bake } from '../../js/models.js';
 
 const Q = new URLSearchParams(location.search);
@@ -107,4 +109,15 @@ addStage6('buildings', (c) => {
 }, (dt) => {
   if (Q.has('nobdetail') || !addStage6.ctxScene) return;
   scanT += dt; if (scanT < 1.5) return; scanT = 0; scan(addStage6.ctxScene);
+});
+
+// bloom tuning: by day a high threshold keeps only the sun glints and spell cores blooming; at night and in the cave the
+// threshold drops and strength rises so fires, torches, forges and spell effects throw a soft halo. ?nobloomtune
+let bk = 0;
+addStage6('bloomtune', () => {}, (dt) => {
+  const b = POSTFX.bloom; if (!b || Q.has('nobloomtune')) return;
+  const cave = window.gielinor && window.gielinor.inCaveNow ? 1 : 0;
+  const k = Math.max(DAY.night || 0, cave);
+  bk += (k - bk) * Math.min(1, dt * 2);
+  b.strength.value = 0.28 + 0.32 * bk; b.threshold.value = 0.92 - 0.3 * bk; b.radius.value = 0.45 + 0.15 * bk;
 });
