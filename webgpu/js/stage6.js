@@ -66,6 +66,30 @@ addStage6('volumetric', (c) => {
 // nothing pops. three r180 has indirect draw buffers but no instance compaction path for InstancedMesh yet, so this is
 // the "GPU-written instance mask" route. ?dense=N sets the multiplier, ?nodense turns it off.
 const DENS = Math.max(0, Math.min(3, +(Q.get('dense') ?? 2)));
+// Tree geometry LOD: background trees use the full mesh up to TREE_NEAR m, then cross-fade (shrink band) to a
+// thinned, shadow-less copy out to KIND_FAR.tree. ?treenear=N tunes the switch distance.
+const TREE_NEAR = +(Q.get('treenear') || 90);
+const lodGeoCache = new Map();
+function lodGeometry(g) {
+  // trees are alpha-cut leaf cards on a trunk, so edge-collapse decimation would shred the atlas UVs. Instead the far
+  // twin keeps the whole trunk and drops every third leaf-card quad in the canopy (cards are 2-triangle pairs).
+  if (lodGeoCache.has(g)) return lodGeoCache.get(g);
+  let out = g;
+  try {
+    const src = g.index ? g.toNonIndexed() : g, pos = src.attributes.position, triN = pos.count / 3;
+    src.computeBoundingBox(); const y0 = src.boundingBox.min.y, yc = y0 + (src.boundingBox.max.y - y0) * 0.38;
+    const keep = [];
+    for (let t = 0; t < triN; t++) { const cy = (pos.getY(t * 3) + pos.getY(t * 3 + 1) + pos.getY(t * 3 + 2)) / 3; if (cy < yc || ((t >> 1) % 3) !== 2) keep.push(t); }
+    if (keep.length < triN) {
+      const ng = new THREE.BufferGeometry();
+      for (const name in src.attributes) { const at = src.attributes[name], is = at.itemSize, arr = new at.array.constructor(keep.length * 3 * is);
+        keep.forEach((t, k) => { for (let v = 0; v < 3 * is; v++) arr[k * 3 * is + v] = at.array[t * 3 * is + v]; });
+        ng.setAttribute(name, new THREE.BufferAttribute(arr, is, at.normalized)); }
+      ng.computeBoundingSphere(); out = ng;
+    }
+  } catch (e) { console.warn('[webgpu] tree LOD skipped', e && e.message); }
+  lodGeoCache.set(g, out); return out;
+}
 const KIND_FAR = { grass: 42, flower: 50, bush: 120, pebble: 38, tree: 260 };
 let cullCompute = null; const planesU = uniformArray(new Array(6).fill(0).map(() => new THREE.Vector4()), 'vec4'), camU = uniform(new THREE.Vector3());
 const frustum = new THREE.Frustum(), pm = new THREE.Matrix4();
@@ -140,7 +164,8 @@ addStage6('density', (c) => {
   if (!total) return;
   const centres = new Float32Array(total * 4), kindFar = new Float32Array(total);
   const mask = instancedArray(total, 'vec4'), info = instancedArray(centres, 'vec4'), far = instancedArray(kindFar, 'float');
-  let off = 0, added = { grass: 0, flower: 0, bush: 0, pebble: 0, tree: 0 };
+  const maskFar = instancedArray(total, 'vec4');
+  let off = 0, added = { grass: 0, flower: 0, bush: 0, pebble: 0, tree: 0 }, lodTris = [0, 0];
   for (const e of meshes) {
     const n = e.list.length, inst = new THREE.InstancedMesh(e.src.geometry, maskedMaterial(e.src.material, mask, off), n);
     e.list.forEach((it, i) => {
@@ -150,7 +175,15 @@ addStage6('density', (c) => {
     inst.castShadow = e.kind === 'tree' || (e.kind === 'bush' && DENS < 3); inst.receiveShadow = true;
     if (e.src.customDepthMaterial) inst.customDepthMaterial = undefined;
     inst.computeBoundingSphere(); inst.frustumCulled = true; inst.name = 'dense:' + e.kind;
-    e.parent.add(inst); off += n; added[e.kind] += n;
+    e.parent.add(inst);
+    if (e.kind === 'tree') {   // far LOD twin: same instances, decimated geometry, no shadow casting
+      const lg = lodGeometry(e.src.geometry), far2 = new THREE.InstancedMesh(lg, maskedMaterial(e.src.material, maskFar, off), n);
+      for (let i = 0; i < n; i++) far2.setMatrixAt(i, e.list[i].m);
+      far2.castShadow = false; far2.receiveShadow = true; far2.computeBoundingSphere(); far2.frustumCulled = true; far2.name = 'dense:treeLOD';
+      e.parent.add(far2);
+      const tc = (gg) => (gg.index ? gg.index.count : gg.attributes.position.count) / 3; lodTris[0] = tc(e.src.geometry); lodTris[1] = tc(lg);
+    }
+    off += n; added[e.kind] += n;
   }
   info.value.needsUpdate = true; far.value.needsUpdate = true;
   // the compute pass: frustum sphere test + distance LOD with a 15% shrink-in band
@@ -160,9 +193,11 @@ addStage6('density', (c) => {
     for (let k = 0; k < 6; k++) { const pl = planesU.element(k); If(dot(pl.xyz, p).add(pl.w).lessThan(r.negate()), () => { vis.assign(0); }); }
     const d = length(p.sub(camU));
     vis.mulAssign(float(1).sub(smoothstep(fd.mul(0.85), fd, d)));
-    mask.element(instanceIndex).assign(vec4(p, vis));
+    const isTree = fd.greaterThan(200.0), nb = smoothstep(TREE_NEAR * 0.85, TREE_NEAR, d);
+    mask.element(instanceIndex).assign(vec4(p, select(isTree, vis.mul(float(1).sub(nb)), vis)));
+    maskFar.element(instanceIndex).assign(vec4(p, select(isTree, vis.mul(nb), float(0))));
   })().compute(total);
-  S6.stats.dense = added; S6.stats.denseTotal = total; S6.stats.cull = 'compute mask';
+  S6.stats.dense = added; S6.stats.denseTotal = total; S6.stats.cull = 'compute mask'; S6.stats.treeLOD = { near: TREE_NEAR, tris: lodTris };
 }, (dt, now, p, q) => {
   if (!cullCompute) return;
   const cam = ctx.camera; cam.updateMatrixWorld();
