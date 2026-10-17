@@ -9,7 +9,8 @@ import { agilityStyle, agilityDuration, agilityVariation, agilityPose3 as agilit
 import { updateDay, DAY, dayLabel } from '../../js/daycycle.js';
 import { poseGait, tailSway } from '../../js/gait.js';
 import { PUSH } from '../../js/models.js';
-import { initVfx, updateVfx, addFire, removeFireVfx, burst, setVfxQuality, setLeafSources } from './vfx.js';
+import { initVfx, updateVfx, addFire, removeFireVfx, burst, setVfxQuality, setLeafSources, spellTrail } from './vfx.js';
+import { Fn, uniform, mix, vec3, vec4, float, length, smoothstep, uv as tslUv } from 'three/tsl';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, SUN_DIR, createWaterReflection } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
 import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from '../../js/chunk.js';
@@ -606,6 +607,16 @@ const SPELL_COLOR = { '💨': 0xe8f4ff, '💧': 0x3a8aff, '🪨': 0x9a7a40, '�
 const spellMesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
 spellMesh.visible = false;
 scene.add(spellMesh);
+// stage 9 glow: the bolt is an HDR core (well above the bloom threshold) inside an additive halo sprite of its own
+// colour, and sheds motes as it flies (vfx.spellTrail). ?noglow keeps the flat sphere.
+const SPELL_GLOW = !/noglow/.test(location.search);
+if (SPELL_GLOW) {
+  const sc = uniform(new THREE.Color(0xffffff));
+  const cm = new THREE.MeshBasicNodeMaterial({ fog: false }); cm.colorNode = mix(sc, vec3(1.0), 0.45).mul(6.0); spellMesh.material = cm; spellMesh.userData.sc = sc;
+  const hm = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending });
+  hm.colorNode = Fn(() => { const r = length(tslUv().sub(0.5)).mul(2.0); return vec4(sc.mul(float(1).sub(smoothstep(0.0, 1.0, r)).pow(2.0).mul(2.2)), 1.0); })();
+  const halo = new THREE.Sprite(hm); halo.scale.setScalar(0.9); spellMesh.add(halo);
+}
 let spellFlight = null;
 function doMagicTick(a, now) {
   const mon = a.mon;
@@ -613,6 +624,8 @@ function doMagicTick(a, now) {
   const res = castSpell(spell, skills, player, mon);
   if (res.error) { log(res.error, 'warn'); stopAction(); return; }
   spellMesh.material.color.setHex(SPELL_COLOR[spell.icon] || 0xffffff);
+  if (spellMesh.userData.sc) spellMesh.userData.sc.value.setHex(SPELL_COLOR[spell.icon] || 0xffffff);
+  spellMesh.userData.hex = SPELL_COLOR[spell.icon] || 0xffffff;
   spellFlight = { from: pm.mesh.position.clone().setY(1.3), mon, t: 0 };
   pm.actionAnim = 1; pm.actionKind = 'bow';
   mon.hp -= res.dmg;
@@ -1775,7 +1788,8 @@ function flyArrow(f, mesh, target, dt) {
 function updateArrow(dt) {
   if (arrowFlight && !flyArrow(arrowFlight, arrowMesh, arrowFlight.mon.mesh, dt)) arrowFlight = null;
   if (enemyArrow && !flyArrow(enemyArrow, enemyArrowMesh, pm.mesh, dt)) enemyArrow = null;
-  if (spellFlight && !flyArrow(spellFlight, spellMesh, spellFlight.mon.mesh, dt)) { const mp = spellFlight.mon.mesh.position; burst('magic', mp.x, mp.y + 1.1, mp.z, 26); spellFlight = null; }
+  if (spellFlight && !flyArrow(spellFlight, spellMesh, spellFlight.mon.mesh, dt)) { const mp = spellFlight.mon.mesh.position; burst('magic', mp.x, mp.y + 1.1, mp.z, 26, SPELL_GLOW ? spellMesh.userData.hex : null); spellFlight = null; }
+  else if (spellFlight && SPELL_GLOW) spellTrail(spellMesh.position.x, spellMesh.position.y, spellMesh.position.z, spellMesh.userData.hex || 0xffffff, dt);
 }
 
 const ACTION_LABEL = {

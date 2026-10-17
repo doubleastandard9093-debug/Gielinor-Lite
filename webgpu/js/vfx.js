@@ -6,7 +6,9 @@ import { Fn, uniform, float, vec2, vec3, vec4, mix, smoothstep, length, sin, abs
 
 const MAX = 4000;
 const pos = new Float32Array(MAX * 3), vel = new Float32Array(MAX * 3), life = new Float32Array(MAX), dur = new Float32Array(MAX);
-const aLife = new Float32Array(MAX), aSize = new Float32Array(MAX), aKind = new Float32Array(MAX), aSeed = new Float32Array(MAX);
+const aLife = new Float32Array(MAX), aSize = new Float32Array(MAX), aKind = new Float32Array(MAX), aSeed = new Float32Array(MAX), aTint = new Float32Array(MAX * 3).fill(-1);
+// stage 9 glow: flames, sparks and spells are drawn hotter (HDR cores well above the bloom threshold) so they glow; ?noglow restores the old levels
+const GLOWK = /noglow/.test(location.search) ? 0 : 1;
 let SCALE = null;
 let cursor = 0, quality = 'high', inited = false, points = null;
 export const FIRES = [];
@@ -24,10 +26,18 @@ export function addFire(obj, k = 1, kind = 'fire', opts = {}) { const f = { obj,
 export function removeFireVfx(obj) { const i = FIRES.findIndex(f => f.obj === obj); if (i >= 0) FIRES.splice(i, 1); }
 export function setVfxQuality(q) { quality = q; LIGHTS.forEach((L, i) => { L.visible = !GPU_LIGHTS.active && i < (q === 'low' ? NL_LO : NL_HI); }); }
 
-function emit(kind, x, y, z, vx, vy, vz, d, size) {
+function emit(kind, x, y, z, vx, vy, vz, d, size, tint = null) {
   const i = cursor; cursor = (cursor + 1) % MAX;
   pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z; vel[i * 3] = vx; vel[i * 3 + 1] = vy; vel[i * 3 + 2] = vz;
   life[i] = 0; dur[i] = d; aSize[i] = size; aKind[i] = kind; aSeed[i] = Math.random();
+  if (tint) { aTint[i * 3] = tint.r; aTint[i * 3 + 1] = tint.g; aTint[i * 3 + 2] = tint.b; } else aTint[i * 3] = -1;
+}
+const _tc = new THREE.Color();
+// a spell in flight sheds a few glowing motes in its own colour (called every frame by main.js while it flies)
+export function spellTrail(x, y, z, hex, dt) {
+  if (!inited || !GLOWK) return; const R = Math.random; _tc.setHex(hex);
+  const n = Math.max(1, Math.round((quality === 'low' ? 30 : 90) * Math.min(dt, 0.05)));
+  for (let i = 0; i < n; i++) emit(KIND.magic, x + (R() - 0.5) * 0.12, y + (R() - 0.5) * 0.12, z + (R() - 0.5) * 0.12, (R() - 0.5) * 0.5, (R() - 0.2) * 0.5, (R() - 0.5) * 0.5, 0.3 + R() * 0.25, 0.12 + R() * 0.08, _tc);
 }
 // one-off bursts: 'hit' sparks, 'magic' (with colour hue via kind), 'dust'
 export function burst(type, x, y, z, n = 14, color = null) {
@@ -36,7 +46,7 @@ export function burst(type, x, y, z, n = 14, color = null) {
   const m = quality === 'low' ? 0.5 : 1;
   for (let i = 0; i < n * m; i++) {
     if (type === 'hit') emit(KIND.spark, x, y, z, (R() - 0.5) * 5, R() * 3.5 + 0.5, (R() - 0.5) * 5, 0.35 + R() * 0.3, 0.07 + R() * 0.05);
-    else if (type === 'magic') { const a = R() * 6.283, s = 1.5 + R() * 2.5; emit(KIND.magic, x, y, z, Math.cos(a) * s, (R() - 0.3) * 2.5, Math.sin(a) * s, 0.5 + R() * 0.4, 0.18 + R() * 0.14); }
+    else if (type === 'magic') { const a = R() * 6.283, s = 1.5 + R() * 2.5; emit(KIND.magic, x, y, z, Math.cos(a) * s, (R() - 0.3) * 2.5, Math.sin(a) * s, 0.5 + R() * 0.4, 0.18 + R() * 0.14, color != null && GLOWK ? _tc.setHex(color) : null); }
     else if (type === 'dust') { const a = R() * 6.283, s = 0.6 + R() * 0.9; emit(KIND.dust, x + Math.cos(a) * 0.2, y + 0.05, z + Math.sin(a) * 0.2, Math.cos(a) * s, 0.3 + R() * 0.5, Math.sin(a) * s, 0.8 + R() * 0.6, 0.35 + R() * 0.3); }
   }
 }
@@ -47,10 +57,11 @@ export function initVfx(scene) {
   const A = {
     position: new THREE.InstancedBufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage), aLife: new THREE.InstancedBufferAttribute(aLife, 1).setUsage(THREE.DynamicDrawUsage),
     aSize: new THREE.InstancedBufferAttribute(aSize, 1).setUsage(THREE.DynamicDrawUsage), aKind: new THREE.InstancedBufferAttribute(aKind, 1).setUsage(THREE.DynamicDrawUsage),
-    aSeed: new THREE.InstancedBufferAttribute(aSeed, 1).setUsage(THREE.DynamicDrawUsage)
+    aSeed: new THREE.InstancedBufferAttribute(aSeed, 1).setUsage(THREE.DynamicDrawUsage), aTint: new THREE.InstancedBufferAttribute(aTint, 3).setUsage(THREE.DynamicDrawUsage)
   };
   for (let i = 0; i < MAX; i++) { aLife[i] = 1; pos[i * 3 + 1] = -999; }
-  const iP = instancedBufferAttribute(A.position), vL = instancedBufferAttribute(A.aLife), vS0 = instancedBufferAttribute(A.aSize), vK = instancedBufferAttribute(A.aKind), vS = instancedBufferAttribute(A.aSeed);
+  const iP = instancedBufferAttribute(A.position), vL = instancedBufferAttribute(A.aLife), vS0 = instancedBufferAttribute(A.aSize), vK = instancedBufferAttribute(A.aKind), vS = instancedBufferAttribute(A.aSeed), vT = instancedBufferAttribute(A.aTint);
+  const G = float(GLOWK);
   const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, fog: false, blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor });
   mat.positionNode = iP;
   const grow = select(vK.lessThan(0.5), float(1).sub(vL.mul(0.7)), select(vK.greaterThan(1.5).and(vK.lessThan(2.5)), vL.mul(2.2).add(0.6), select(vK.greaterThan(4.5), vL.mul(1.5).add(0.7), float(1).sub(vL.mul(0.5)))));
@@ -59,20 +70,23 @@ export function initVfx(scene) {
   mat.colorNode = Fn(() => {
     const d = uv().sub(0.5), r = length(d).mul(2.0);
     If(r.greaterThan(1.0), () => { Discard(); });
-    const soft = float(1).sub(smoothstep(0.2, 1.0, r));
+    const soft = float(1).sub(smoothstep(0.2, 1.0, r)), core = float(1).sub(smoothstep(0.0, 0.45, r)).pow(2.0);
     const out = vec4(0).toVar();
     If(vK.lessThan(0.5), () => {
       const c = mix(mix(vec3(1.0, 0.92, 0.6), vec3(1.0, 0.45, 0.08), smoothstep(0.0, 0.45, vL)), vec3(0.6, 0.08, 0.02), smoothstep(0.45, 1.0, vL)).mul(2.4);
-      out.assign(vec4(c.mul(soft.mul(float(1).sub(vL)).mul(0.8)), 0));
+      const hot = vec3(1.0, 0.85, 0.55).mul(core).mul(float(1).sub(smoothstep(0.0, 0.5, vL))).mul(G.mul(2.2));
+      out.assign(vec4(c.mul(G.mul(0.35).add(1.0)).mul(soft.mul(float(1).sub(vL)).mul(0.8)).add(hot), 0));
     }).ElseIf(vK.lessThan(1.5), () => {
       const c = vec3(1.0, 0.6, 0.2).mul(3.0).mul(sin(vL.mul(30.0).add(vS.mul(20.0))).mul(0.4).add(0.6));
       out.assign(vec4(c.mul(float(1).sub(smoothstep(0.3, 1.0, r)).mul(float(1).sub(vL))), 0));
     }).ElseIf(vK.lessThan(2.5), () => {
       const a = soft.mul(0.28).mul(sin(vL.mul(3.1416))); out.assign(vec4(vec3(0.32, 0.3, 0.29).mul(a), a));
     }).ElseIf(vK.lessThan(3.5), () => {
-      out.assign(vec4(vec3(1.0, 0.8, 0.45).mul(3.0).mul(float(1).sub(smoothstep(0.2, 1.0, r)).mul(float(1).sub(vL))), 0));
+      out.assign(vec4(vec3(1.0, 0.8, 0.45).mul(G.mul(1.5).add(3.0)).mul(float(1).sub(smoothstep(0.2, 1.0, r)).mul(float(1).sub(vL))), 0));
     }).ElseIf(vK.lessThan(4.5), () => {
-      out.assign(vec4(mix(vec3(0.5, 0.8, 1.0), vec3(0.8, 0.4, 1.0), vS).mul(2.5).mul(soft.mul(float(1).sub(vL))), 0));
+      const base = select(vT.x.lessThan(0.0), mix(vec3(0.5, 0.8, 1.0), vec3(0.8, 0.4, 1.0), vS), vT.max(0.05));
+      const fade = float(1).sub(vL);
+      out.assign(vec4(base.mul(G.mul(1.5).add(2.5)).mul(soft.mul(fade)).add(mix(base, vec3(1.0), 0.6).mul(core).mul(fade).mul(G.mul(3.0))), 0));
     }).ElseIf(vK.lessThan(5.5), () => {
       const a = soft.mul(0.35).mul(float(1).sub(vL)); out.assign(vec4(vec3(0.62, 0.55, 0.42).mul(a), a));
     }).ElseIf(vK.lessThan(6.5), () => {
@@ -144,7 +158,7 @@ export function updateVfx(dt, px, pz, camera, now, night = 0, inCave = false) {
       const fl = 0.85 + 0.1 * Math.sin(t * 13 + n[2]) + 0.06 * Math.sin(t * 23.7 + n[4]);
       const lit = (torch ? (0.12 + 0.88 * night) : (0.35 + 0.65 * night)) * fl * (1 - Math.max(0, (n[0] - 45) / 15));
       if (ng < GLOW_MAX) { const sz = (torch ? 5.5 : f.kind === 'forge' ? 4 : 6.5) * Math.sqrt(f.k / (torch ? 0.45 : 1));
-        _p4.set(n[2], n[3] - f.ground + 0.05, n[4]); _s4.set(sz, 1, sz); _m4.compose(_p4, _q4.identity(), _s4); G.setMatrixAt(ng, _m4); gi.array[ng++] = lit * 0.07; }
+        _p4.set(n[2], n[3] - f.ground + 0.05, n[4]); _s4.set(sz, 1, sz); _m4.compose(_p4, _q4.identity(), _s4); G.setMatrixAt(ng, _m4); gi.array[ng++] = lit * (GLOWK ? 0.09 : 0.07); }
       if (f.wall && nw < GLOW_MAX) { _p4.set(n[2] - f.wall[0] * 0.165, n[3] - 0.15, n[4] - f.wall[1] * 0.165); _q4.setFromUnitVectors(_up, _v.set(f.wall[0], 0, f.wall[1])); _s4.set(3.2, 3.6, 1);
         _m4.compose(_p4, _q4, _s4); W.setMatrixAt(nw, _m4); wi.array[nw++] = lit * 0.06; }
     }
@@ -163,5 +177,5 @@ export function updateVfx(dt, px, pz, camera, now, night = 0, inCave = false) {
     pos[i * 3] += vel[i * 3] * d; pos[i * 3 + 1] += vel[i * 3 + 1] * d; pos[i * 3 + 2] += vel[i * 3 + 2] * d;
     aLife[i] = Math.min(1, life[i]);
   }
-  { const A = points.userData.attrs; A.position.needsUpdate = A.aLife.needsUpdate = A.aSize.needsUpdate = A.aKind.needsUpdate = A.aSeed.needsUpdate = true; }
+  { const A = points.userData.attrs; A.position.needsUpdate = A.aLife.needsUpdate = A.aSize.needsUpdate = A.aKind.needsUpdate = A.aSeed.needsUpdate = A.aTint.needsUpdate = true; }
 }

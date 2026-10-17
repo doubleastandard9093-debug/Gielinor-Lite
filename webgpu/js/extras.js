@@ -45,7 +45,7 @@ export function initGpuExtras(c) {
     GPU_LIGHTS.onBurst = (type, x, y, z, color) => {
       const col = type === 'magic' ? (color != null ? new THREE.Color(color) : new THREE.Color(0.6, 0.6, 1.0)) : type === 'hit' ? new THREE.Color(1, 0.7, 0.35) : null;
       if (!col) return;
-      flashes.push({ x, y: y + 0.3, z, col, t: 0, d: type === 'magic' ? 0.55 : 0.25, k: type === 'magic' ? 9 : 4 });
+      flashes.push({ x, y: y + 0.3, z, col, t: 0, d: type === 'magic' ? 0.7 : 0.3, k: type === 'magic' ? (/noglow/.test(location.search) ? 9 : 16) : (/noglow/.test(location.search) ? 4 : 6) });
       if (flashes.length > FLASH) flashes.shift();
     };
   }

@@ -12,7 +12,7 @@ const CHAR = ANAT.CHAR;
 import { DAY } from '../../js/daycycle.js';
 
 const N = (uv) => texture(getNoiseTexture(), uv);
-const charQ = uniform(1), lDir = uniform(DAY.lightDir), lCol = uniform(DAY.lightCol), lK = uniform(1);
+const charQ = uniform(1), lDir = uniform(DAY.lightDir), lCol = uniform(DAY.lightCol), lK = uniform(1), ambK = uniform(1);
 const pushU = uniformArray(PUSH.value, 'vec4');
 const fadeAt = (a, b) => float(1).sub(smoothstep(a, b, length(cameraPosition.sub(positionWorld))));
 // object origin in world space (per instance for InstancedMesh: modelWorldMatrix already includes the instance in positionLocal
@@ -134,6 +134,17 @@ function charNodes(m, o) {
     gF = gM.mul(charQ).mul(fadeAt(8, 22)); gP = gearPat(positionLocal, o.gear);
     col = vc.mul(mix(1.0, gP.y, gF)); rough = mix(rough, gP.w, gF); metal = mix(0.02, mix(0.15, 0.85, gP.z), gM);
   }
+  // stage 9 close-up detail (High, within ~6 m): a per-material surface pattern in mesh-local space so it sticks to the
+  // body as it animates. Skin gets mottling and pores, cloth a weave, fur strands and clumps, scales overlapping cells,
+  // chitin segment seams, bone pits and hairline cracks, metal fine scratches. ?nochardetail turns it off.
+  const kind = CDET_ON ? charKind(o) : null;
+  const cd = CDET.mul(HIQ).mul(charQ).mul(fadeAt(2.0, 6.5));
+  let dH = null;
+  if (kind) {
+    const D = charDetail(kind, positionLocal, skin);
+    col = col.mul(mix(vec3(1.0), D.alb, cd)); rough = clamp(rough.add(D.rough.mul(cd)), 0.05, 1.0);
+    dH = D.h.mul(cd); m.aoNode = mix(float(1.0), D.ao, cd);
+  }
   m.colorNode = col; m.roughnessNode = rough; m.metalnessNode = metal; m.vertexColors = false;
   // triplanar micro-bump (pores, weave, fur)
   const cfade = charQ.mul(fadeAt(10, 28));
@@ -146,16 +157,80 @@ function charNodes(m, o) {
   const wn = normalize(CN.add(vec3(hx, hy, float(1).sub(hx)).sub(0.5).mul(o.bump).mul(cfade)).add(vec3(dx2, dy2, float(1).sub(dx2)).sub(0.5).mul(o.bump * 0.6).mul(dK)));
   let n = normalize(mix(normalView, normalize(cameraViewMatrix.mul(vec4(wn, 0)).xyz), cfade.mul(0.6).mul(o.gear ? float(1).sub(gM) : 1)));
   if (o.gear) n = mix(n, bumpFrom(gP.x.mul(o.gear > 1.5 ? 0.012 : 0.006).mul(gF)), step(0.01, gF));
+  if (dH) n = normalize(n.add(bumpFrom(dH.mul(CDET_BUMP[kind] || 0.004)).sub(normalView)));
   m.normalNode = n;
   // rim / sheen / subsurface: added as emissive so it rides on top of the PBR result
   const V = positionViewDirection.negate(), fr = pow(float(1).sub(clamp(dot(normalView, V.negate()).abs(), 0, 1)), 3.0);
   const Lv = normalize(cameraViewMatrix.mul(vec4(lDir, 0)).xyz), nl = dot(normalView, Lv);
   const wrap = max(0.0, nl.add(0.45).div(1.45)).sub(max(0.0, nl));
-  const rim = vec3(0.85, 0.92, 1.0).mul(fr).mul(o.rim).mul(col.mul(o.sheen ? 1.6 : 0.6).add(0.4)).mul(0.35);
-  const sss = col.mul(vec3(1.0, 0.42, 0.28)).mul(skin).mul(fr.mul(0.25).add(0.18)).mul(0.35)
+  // the rim and the base skin scatter are emissive, so they used to glow at full strength at night and in the cave
+  // (hill giants read as flat orange segments). They now scale with the light reaching the scene (ambK, 1 at noon),
+  // as the WebGL character shader does since eea075c. ?giantglow keeps the old behaviour.
+  const rim = vec3(0.85, 0.92, 1.0).mul(fr).mul(o.rim).mul(col.mul(o.sheen ? 1.6 : 0.6).add(0.4)).mul(0.35).mul(ambK);
+  const sss = col.mul(vec3(1.0, 0.42, 0.28)).mul(skin).mul(fr.mul(0.25).add(0.18)).mul(0.35).mul(ambK)
     .add(col.mul(lCol).mul(lK).mul(skin).mul(vec3(0.9, 0.35, 0.22)).mul(wrap).mul(0.55));
   const cloth = o.sheen ? vec3(0) : col.mul(lCol).mul(lK).mul(float(1).sub(skin)).mul(fr).mul(max(0.0, nl.add(0.25))).mul(0.35);
-  m.emissiveNode = rim.add(sss).add(cloth).mul(charQ);
+  let extra = vec3(0);
+  if (o.sheen && !o.sss) {   // fur: Kajiya-Kay strand highlight along the hair direction (the WebGL shader has it too)
+    const Tv0 = normalize(cameraViewMatrix.mul(vec4(0, 1, 0, 0)).xyz), Tv = normalize(Tv0.sub(normalView.mul(dot(Tv0, normalView))).add(1e-4));
+    const Hh = normalize(Lv.add(V.negate())), th = dot(Tv, Hh), kk = pow(max(float(1).sub(th.mul(th)), 0.0).sqrt(), 24.0);
+    extra = col.mul(lCol).mul(lK).mul(kk).mul(0.35).mul(max(0.0, nl.add(0.3)));
+  }
+  if (o.sss > 0.5) {   // skin: thin edges (ears, fingers, nose) glow red when backlit by the sun
+    const back = pow(max(0.0, dot(V, Lv)), 4.0).mul(fr);
+    extra = extra.add(col.mul(lCol).mul(lK).mul(skin).mul(vec3(1.0, 0.45, 0.3)).mul(back).mul(0.6).mul(cd.mul(0.5).add(0.5)));
+  }
+  m.emissiveNode = rim.add(sss).add(cloth).add(extra).mul(charQ);
+}
+
+// ---------------- stage 9: close-up character / monster surface detail ----------------
+const CDET_ON = !/nochardetail/.test(location.search), CDET = uniform(CDET_ON ? 1 : 0);
+const CDET_BUMP = { skin: 0.0025, fur: 0.006, scale: 0.008, chitin: 0.006, bone: 0.005, metal: 0.0015, hide: 0.004 };
+function charKind(o) {
+  if (o.gear) return null;   // chain / plate already carry their own pattern
+  if (o.sheen) return o.sss > 0 ? 'hide' : 'fur';
+  if (o.metal >= 0.8) return 'metal';
+  if (o.metal >= 0.1 && o.rough < 0.5) return 'scale';
+  if (o.rough <= 0.32) return 'chitin';
+  if (o.sss === 0 && o.rough > 0.55) return 'bone';
+  return 'skin';
+}
+function charDetail(kind, p, skin) {   // -> { alb: vec3 multiplier, h: height 0..1, ao, rough: offset }
+  const a = atan(p.x, p.z), uv = vec2(a.mul(0.16), p.y);
+  if (kind === 'fur' || kind === 'hide') {
+    const s = gNoise(vec2(a.mul(kind === 'fur' ? 70.0 : 30.0), p.y.mul(9.0))).mul(0.6).add(gNoise(vec2(a.mul(170.0), p.y.mul(22.0))).mul(0.4));
+    const clump = gNoise(vec2(a.mul(12.0), p.y.mul(3.2)));
+    const k = kind === 'fur' ? 1.0 : 0.5;
+    return { alb: vec3(s.mul(0.34 * k).add(1.0 - 0.17 * k).mul(clump.mul(0.18 * k).add(1.0 - 0.09 * k))), h: s.mul(0.7).add(clump.mul(0.3)), ao: mix(float(1.0), s.mul(0.35).add(0.65), k), rough: s.sub(0.5).mul(0.08) };
+  }
+  if (kind === 'scale') {   // overlapping scales: offset rows, a rounded leading edge and a dark lip under the next row
+    const c = uv.mul(vec2(70.0, 26.0)), row = floor(c.y), cc = vec2(c.x.add(mod(row, 2.0).mul(0.5)), c.y), ci = floor(cc), f = fract(cc);
+    const d = length(vec2(f.x.sub(0.5), f.y.mul(0.9)));
+    const h = float(1).sub(smoothstep(0.3, 0.62, d)), lip = smoothstep(0.42, 0.62, d), v = gHash(ci);
+    return { alb: vec3(v.mul(0.22).add(0.88)).mul(float(1).sub(lip.mul(0.3))), h, ao: float(1).sub(lip.mul(0.45)), rough: lip.mul(0.15).sub(h.mul(0.08)) };
+  }
+  if (kind === 'chitin') {   // segment plates with seams, faint pitting
+    const band = fract(p.y.mul(7.0).add(gNoise(uv.mul(6.0)).mul(0.25))), seam = smoothstep(0.0, 0.07, band).mul(smoothstep(1.0, 0.9, band));
+    const pit = smoothstep(0.78, 0.9, gNoise(uv.mul(120.0)));
+    return { alb: vec3(seam.mul(0.35).add(0.65)).mul(float(1).sub(pit.mul(0.15))), h: seam.sub(pit.mul(0.4)), ao: seam.mul(0.4).add(0.6), rough: float(1).sub(seam).mul(0.25).add(pit.mul(0.1)) };
+  }
+  if (kind === 'bone') {   // porous pits and hairline cracks
+    const crack = float(1).sub(smoothstep(0.0, 0.035, abs(gNoise(uv.mul(vec2(40.0, 18.0))).sub(0.5))));
+    const pit = smoothstep(0.7, 0.88, gNoise(uv.mul(160.0)));
+    return { alb: vec3(float(1).sub(crack.mul(0.35)).sub(pit.mul(0.12))).mul(gNoise(uv.mul(9.0)).mul(0.12).add(0.94)), h: float(1).sub(crack).sub(pit.mul(0.5)), ao: float(1).sub(crack.mul(0.5)).sub(pit.mul(0.2)), rough: crack.mul(0.15) };
+  }
+  if (kind === 'metal') {   // fine scratches along one direction, some cross-hatched
+    const sc = smoothstep(0.92, 0.99, gNoise(vec2(a.mul(900.0), p.y.mul(8.0)))).add(smoothstep(0.94, 0.995, gNoise(vec2(a.mul(30.0).add(p.y.mul(300.0)), p.y.mul(30.0)))));
+    return { alb: vec3(sc.mul(0.12).add(1.0)), h: sc, ao: float(1.0), rough: sc.mul(0.22) };
+  }
+  // skin and cloth (the default character material carries both, split by the skin-tone test)
+  const mott = gNoise(uv.mul(14.0)), pore = gNoise(uv.mul(520.0)), freck = smoothstep(0.82, 0.92, gNoise(uv.mul(90.0)));
+  const skinA = mix(vec3(1.0), vec3(1.05, 0.95, 0.94), mott).mul(float(1).sub(freck.mul(0.1)));
+  const w = vec2(a.mul(160.0), p.y.mul(110.0)), wx = sin(w.x).mul(0.5).add(0.5), wy = sin(w.y).mul(0.5).add(0.5);
+  const weave = mix(wx, wy, step(0.5, fract(floor(w.x.div(3.1416)).add(floor(w.y.div(3.1416))).mul(0.5)))), lint = gNoise(uv.mul(60.0));
+  const clothA = vec3(weave.mul(0.12).add(0.9).mul(lint.mul(0.1).add(0.95)));
+  return { alb: mix(clothA, skinA, skin), h: mix(weave.mul(0.7).add(lint.mul(0.3)), pore.mul(0.6).add(mott.mul(0.4)), skin), ao: mix(weave.mul(0.18).add(0.82), float(1.0).sub(pore.mul(0.08)), skin),
+    rough: mix(lint.sub(0.5).mul(0.06), pore.sub(0.5).mul(0.18).add(mott.sub(0.5).mul(0.1)), skin) };
 }
 
 function gearNodes(m) {
@@ -199,7 +274,14 @@ export function upgradeScene(root) {
     if (Array.isArray(mm)) mm.forEach(x => upgradeMaterial(x, o)); else upgradeMaterial(mm, o);
   });
 }
+const lum = c => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+const AMB_NOON = lum(new THREE.Color(0xffdcae)) + 0.6 * lum(new THREE.Color(0xcfe4ff));
+const GIANT_GLOW = typeof location !== 'undefined' && /giantglow/.test(location.search);
 export function tickNodeMats() {
   charQ.value = CHAR.q.value; lK.value = DAY.dirK ?? 1;
+  // received-light level relative to noon: sun/moon plus sky fill, dimmed in the cave
+  const g = typeof window !== 'undefined' ? window.gielinor : null, cave = g ? Math.min(1, g.caveK || 0) : 0;
+  const now = lum(DAY.lightCol) * (DAY.dirK ?? 1) + 0.6 * lum(DAY.hemiCol) * (DAY.hemiK ?? 1);
+  ambK.value = GIANT_GLOW ? 1 : Math.min(1, Math.max(0.08, now / AMB_NOON)) * (1 - 0.7 * cave);
   for (const m of gearMats) { if (m.userData.gk) m.userData.gkU.value = m.userData.gk.value; m.userData.gearColorU.copy(m.color); }
 }
