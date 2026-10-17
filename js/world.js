@@ -40,7 +40,7 @@ export const BUILDINGS = [
   [13, -6, 3, 3, 0xd0c0a0, 0x7a3a2a, 'House', 'A cosy cottage.'],
   [12.5, 7, 3, 3, 0xc0b090, 0x5a4a3a, 'House', 'A cosy cottage.'],
   [-12, 5.5, 3, 3, 0xd0c0a0, 0x3a5a3a, 'House', 'A cosy cottage.'],
-  [-13, -5, 3, 3, 0xc0b090, 0x7a3a2a, 'House', 'A cosy cottage.'],
+  [-14, -7, 3, 3, 0xc0b090, 0x7a3a2a, 'House', 'A cosy cottage.'],
   // Ashford town (east)
   [48, -25, 5, 6, 0x8a7a6a, 0x5a3a2a, 'Ashford Bank', 'A smaller bank serving the eastern farms.'],
   [55, -18, 4, 5, 0xb8a878, 0x4a5a3a, 'Ashford Store', 'Local goods and supplies.'],
