@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { Fn, uniform, uniformArray, texture, float, vec2, vec3, vec4, mix, smoothstep, pow, max, min, clamp, abs, sin, cos, fract, floor, mod, dot, normalize,
   length, atan, positionLocal, positionWorld, normalWorld, normalView, cameraPosition, cameraViewMatrix, modelWorldMatrix, vertexColor, attribute, select, If, Loop, positionViewDirection, step } from 'three/tsl';
-import { getNoiseTexture, TIME, SWAY, bumpFrom } from './gfx.js';
+import { getNoiseTexture, TIME, SWAY, bumpFrom, HIQ } from './gfx.js';
 import { PUSH, vcMat, buildMat, foliageMat, treeMat } from '../../js/models.js';
 import * as ANAT from '../../js/anatomy.js';
 const CHAR = ANAT.CHAR;
@@ -81,7 +81,15 @@ function buildNodes(m) {
   m.colorNode = vc.rgb.mul(woodC.mul(isW).add(plC.mul(is4)).add(stC.mul(is5)).add(isN)).add(roofC.mul(is6));
   const H = woodH.mul(isW).add(plH.mul(is4)).add(stH.mul(is5)).add(strands.sub(0.5).mul(1.2).mul(fade).mul(is6));
   m.roughnessNode = woodR.mul(isW).add(is4.mul(0.92)).add(is5.mul(0.85)).add(is6.mul(0.9)).add(isN.mul(m.roughness));
-  m.normalNode = bumpFrom(H.mul(0.012));
+  // stage 6: overlapping clay roof tiles on High (scalloped courses with a shadowed lip), cavity AO everywhere
+  const tc = vec2(ra.mul(2.6), dn.mul(3.2)), tcf = fract(vec2(tc.x.add(floor(tc.y).mul(0.5)), tc.y));
+  const lip = smoothstep(0.0, 0.18, tcf.y), arc = float(1).sub(pow(abs(tcf.x.sub(0.5)).mul(2.0), 2.0)).mul(0.25);
+  const tileH = smoothstep(0.0, 0.95, tcf.y.add(arc)).mul(0.8).add(N(floor(tc).mul(0.21)).g.mul(0.2));
+  const tileK = HIQ.mul(fade).mul(is6).mul(step(0.35, vc.r.sub(vc.b)));   // reddish roofs read as tile; thatch keeps strands
+  m.colorNode = mix(m.colorNode, vc.rgb.mul(tileH.mul(0.3).add(0.75)).mul(N(floor(tc).mul(0.37)).r.mul(0.25).add(0.85)), tileK);
+  m.normalNode = bumpFrom(mix(H, tileH.mul(1.6), tileK).mul(0.012));
+  m.aoNode = float(1).sub(knot.mul(0.3).mul(isW)).sub(float(1).sub(mortar).mul(0.5).mul(is5).mul(fade))
+    .sub(float(1).sub(lip).mul(0.45).mul(tileK)).sub(float(1).sub(strands).mul(0.25).mul(is6).mul(fade)).sub(grime.mul(0.12).mul(is4));
   m.vertexColors = false;
 }
 // ---------------- vcMat noise bump ----------------
@@ -132,7 +140,10 @@ function charNodes(m, o) {
   const bw0 = abs(CN), bw = bw0.div(bw0.x.add(bw0.y).add(bw0.z)), P = W.mul(o.freq);
   const hx = N(P.yz).r.mul(bw.x).add(N(P.xz).r.mul(bw.y)).add(N(P.xy).r.mul(bw.z));
   const hy = N(P.yz.add(0.37)).g.mul(bw.x).add(N(P.xz.add(0.37)).g.mul(bw.y)).add(N(P.xy.add(0.37)).g.mul(bw.z));
-  const wn = normalize(CN.add(vec3(hx, hy, float(1).sub(hx)).sub(0.5).mul(o.bump).mul(cfade)));
+  // stage 6 detail normal: a second, 4x finer octave that only shows within ~4 m (pores, weave threads, fur strands)
+  const P2 = W.mul(o.freq * 4.0), dK = HIQ.mul(charQ).mul(fadeAt(1.5, 4.5));
+  const dx2 = N(P2.yz).b.mul(bw.x).add(N(P2.xz).b.mul(bw.y)).add(N(P2.xy).b.mul(bw.z)), dy2 = N(P2.yz.add(0.61)).r.mul(bw.x).add(N(P2.xz.add(0.61)).r.mul(bw.y)).add(N(P2.xy.add(0.61)).r.mul(bw.z));
+  const wn = normalize(CN.add(vec3(hx, hy, float(1).sub(hx)).sub(0.5).mul(o.bump).mul(cfade)).add(vec3(dx2, dy2, float(1).sub(dx2)).sub(0.5).mul(o.bump * 0.6).mul(dK)));
   let n = normalize(mix(normalView, normalize(cameraViewMatrix.mul(vec4(wn, 0)).xyz), cfade.mul(0.6).mul(o.gear ? float(1).sub(gM) : 1)));
   if (o.gear) n = mix(n, bumpFrom(gP.x.mul(o.gear > 1.5 ? 0.012 : 0.006).mul(gF)), step(0.01, gF));
   m.normalNode = n;
@@ -176,6 +187,7 @@ export function upgradeMaterial(m, obj) {
   } catch (e) { console.warn('[webgpu] material upgrade skipped', key, e); }
   m.needsUpdate = true;
 }
+export function markUpgraded(m) { done.add(m); }
 export function upgradeShared() {
   for (const m of [vcMat, buildMat, foliageMat, treeMat]) upgradeMaterial(m);
   for (const k of ['charMat', 'furMat', 'scaleMat', 'chitinMat', 'metalMat', 'boneMat', 'plateCharMat', 'chainCharMat', 'hideMat']) if (ANAT[k] && ANAT[k].isMaterial) upgradeMaterial(ANAT[k]);

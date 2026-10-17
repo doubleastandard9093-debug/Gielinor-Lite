@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { IS_TOUCH } from './scene.js';
 import { Fn, uniform, texture, float, vec2, vec3, vec4, mix, smoothstep, pow, max, min, clamp, abs, sin, cos, fract, floor, exp, dot, normalize, length,
-  reflect, positionLocal, positionWorld, positionView, normalView, normalWorld, cameraPosition, screenCoordinate, Loop, If, Break, select, attribute, cross, sign } from 'three/tsl';
+  reflect, positionLocal, positionWorld, positionView, normalView, normalWorld, cameraPosition, screenCoordinate, Loop, If, Break, select, attribute, cross, sign, step } from 'three/tsl';
 import { reflector } from 'three/tsl';
 
 export const SUN_DIR = new THREE.Vector3(0.55, 0.62, 0.42).normalize();
@@ -17,6 +17,8 @@ export const SKY = {
 export const TIME = uniform(0);
 export const SWAY = uniform(1);
 const GOLD = uniform(0);
+// 1 on High, 0 on Low: gates parallax, stochastic tiling and other per-pixel extras (stage 6)
+export const HIQ = uniform(1);
 
 // ---------------------------------------------------------------------------
 // Graphics quality: 'high' or 'low'. Auto (null) = High on desktop, High on
@@ -80,6 +82,18 @@ export function getNoiseTexture() {
 const noiseNode = (uv) => texture(getNoiseTexture(), uv);
 const noiseL = (uv) => texture(getNoiseTexture(), uv).level(0);   // explicit LOD: safe inside loops / branches
 const lin = (c) => pow(c, vec3(2.2));
+// Stochastic tiling (stage 6): two lookups whose UVs are offset per large hashed cell, blended across cell borders, so the
+// 256px noise never visibly repeats on big surfaces. Contrast-preserving blend keeps the variance of a single lookup.
+const h2 = (p) => fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))).mul(43758.5453));
+export const stoch = (uv) => {
+  const g = uv.mul(0.37), c = floor(g), f = fract(g);
+  const wx = smoothstep(0.3, 0.7, f.x), wy = smoothstep(0.3, 0.7, f.y);
+  const a = texture(getNoiseTexture(), uv.add(h2(c))), b = texture(getNoiseTexture(), uv.add(h2(c.add(vec2(1, 0)))));
+  const cc = texture(getNoiseTexture(), uv.add(h2(c.add(vec2(0, 1))))), d = texture(getNoiseTexture(), uv.add(h2(c.add(vec2(1, 1)))));
+  const m = mix(mix(a, b, wx), mix(cc, d, wx), wy);
+  const v = wx.mul(wx).add(float(1).sub(wx).mul(float(1).sub(wx))).mul(wy.mul(wy).add(float(1).sub(wy).mul(float(1).sub(wy))));
+  return m.sub(0.5).div(max(v.sqrt(), 0.35)).add(0.5).clamp(0, 1);
+};
 
 // Screen-space bump from a procedural height (Mikkelsen surface gradient), returns a view-space normal.
 export const bumpFrom = Fn(([h]) => {
@@ -153,7 +167,7 @@ export function createSky(scene) {
   return {
     mesh: sky,
     follow(camera) { sky.position.copy(camera.position); },
-    setQuality(q) { clouds.value = q === 'low' ? 0 : 1; },
+    setQuality(q) { clouds.value = q === 'low' ? 0 : 1; HIQ.value = q === 'low' ? 0 : 1; },
     setNight(n) { night.value = n; }
   };
 }
@@ -165,11 +179,24 @@ export const TERRAIN_MASK = { tex: null, size: 1 };
 export function terrainMaterial(maskTex, maskSize) {
   TERRAIN_MASK.tex = maskTex; TERRAIN_MASK.size = maskSize;
   const m = new THREE.MeshStandardNodeMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0.0 });
-  const W = positionWorld, wp = W.xz;
-  const mk = texture(maskTex, wp.div(maskSize).add(0.5));
-  const n1 = noiseNode(wp.mul(0.012)).r, n2 = noiseNode(wp.mul(0.07)).g;
+  const W = positionWorld;
+  const mk = texture(maskTex, W.xz.div(maskSize).add(0.5));
   const fineK = float(1).sub(smoothstep(40.0, 70.0, length(cameraPosition.sub(W))));
-  const n3 = mix(0.5, noiseNode(wp.mul(0.45)).b, fineK.mul(0.5).add(0.5)), n4 = mix(0.5, noiseNode(wp.mul(1.9)).r, fineK);
+  // parallax occlusion on cobbles (High, near, flat ground only): march the view ray through the cobble height field
+  const cobH = (q) => { const c = q.mul(1.35), sh0 = vec2(0.0, floor(c.x).mul(0.5)), f0 = fract(c.add(sh0));
+    const e = f0.sub(0.5).abs().mul(2.0); return float(1).sub(smoothstep(0.72, 1.0, max(e.x, e.y))).mul(noiseL(floor(c.add(sh0)).mul(0.137)).g.mul(0.35).add(0.65)); };
+  const V0 = normalize(cameraPosition.sub(W));
+  const pomK = HIQ.mul(fineK).mul(smoothstep(0.3, 0.55, mk.b)).mul(smoothstep(0.9, 0.98, normalWorld.y));
+  const pdir = V0.xz.div(max(V0.y, 0.25)).mul(-0.06).mul(pomK);   // 6 cm max depth
+  const pom = Fn(() => {
+    const q = W.xz.toVar(), lay = float(1).toVar();
+    Loop(8, () => { const go = step(cobH(q), lay); q.addAssign(pdir.mul(0.125).mul(go)); lay.subAssign(go.mul(0.125)); });
+    return vec3(q, lay);
+  })();
+  const wp = pom.xy, layer = pom.z;
+  const n1 = noiseNode(wp.mul(0.012)).r, n2 = noiseNode(wp.mul(0.07)).g;
+  const st3 = mix(noiseNode(wp.mul(0.45)), stoch(wp.mul(0.45)), HIQ).b, st4 = mix(noiseNode(wp.mul(1.9)), stoch(wp.mul(1.9)), HIQ).r;
+  const n3 = mix(0.5, st3, fineK.mul(0.5).add(0.5)), n4 = mix(0.5, st4, fineK);
   let grass = mix(vec3(0.27, 0.50, 0.14), vec3(0.45, 0.63, 0.19), smoothstep(0.3, 0.7, n1));
   grass = mix(grass, vec3(0.20, 0.40, 0.12), smoothstep(0.55, 0.85, n2).mul(0.55));
   grass = mix(grass, vec3(0.55, 0.62, 0.24), smoothstep(0.62, 0.9, n3).mul(0.3)).mul(n4.mul(0.36).add(0.82));
@@ -201,7 +228,10 @@ export function terrainMaterial(maskTex, maskSize) {
   let tH = mix(n4.mul(0.6).add(n3.mul(0.4)), float(1).sub(grout).mul(-0.55).add(n4.mul(0.3)), isStone);
   tH = mix(tH, r4.mul(0.6).add(r3.mul(0.6)).add(strata.mul(0.3).mul(slope)), hrock).mul(float(1).sub(snow.mul(0.7))).mul(fineK);
   m.normalNode = bumpFrom(tH.mul(0.14));
-  m.roughnessNode = mix(mix(mix(mix(0.95, 0.88, isDirt), 0.72, isStone), float(0.8).sub(r4.mul(0.15)), hrock), 0.55, snow).mul(float(1).sub(valley.mul(0.12)));
+  m.roughnessNode = mix(mix(mix(mix(0.95, 0.88, isDirt), 0.72, isStone), float(0.8).sub(r4.mul(0.15)), hrock), 0.55, snow).mul(float(1).sub(valley.mul(0.12)))
+    .add(n4.sub(0.5).mul(0.12)).sub(grout.oneMinus().mul(isStone).mul(-0.1)).clamp(0.3, 1.0);
+  // cavity AO: grout lines, rock crevices and the low points of the parallax march
+  m.aoNode = mix(1.0, float(1).sub(grout.oneMinus().mul(isStone).mul(0.55)).mul(float(1).sub(smoothstep(0.35, 0.0, r4).mul(hrock).mul(0.35))).mul(mix(1.0, layer.mul(0.4).add(0.6), pomK)), fineK);
   return m;
 }
 
