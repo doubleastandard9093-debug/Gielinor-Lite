@@ -17,7 +17,7 @@ import { terrainHeight, insideLake, WORLD_HALF, TOWNS, CAVE, inCave } from './wo
 import { createWorld, createPileMesh, SPAWN, setDecorQuality, updateDecorChunks, updateLocalGrass } from './world.js';
 import { updateLod, setLodRange, poseHumanoid } from './anatomy.js';
 import { createCritters } from './critters.js';
-import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt } from './player.js';
+import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt, moveWithCollision } from './player.js';
 import { createCameraRig, rotateRig, zoomRig, updateRig } from './camera.js';
 import { setupInput } from './input.js';
 import { setupUI } from './ui.js';
@@ -1752,8 +1752,8 @@ function updateMonsters(dt, now) {
       const dx = tx - pos.x, dz = tz - pos.z, d = Math.hypot(dx, dz);
       if (d > stop) {
         const step = Math.min(d - stop, speed * dt);
-        pos.x += dx / d * step; pos.z += dz / d * step;
-        if (m.state !== 'idle') resolveCollisions(pos);
+        if (m.state !== 'idle') moveWithCollision(pos, dx / d, dz / d, step, { water: false }); // chasing: same walls as the player
+        else { pos.x += dx / d * step; pos.z += dz / d * step; }
         moving = step > 0.001;
         m.mesh.rotation.y = Math.atan2(dx, dz);
       } else if (m.state === 'fight') {

@@ -576,8 +576,11 @@ export function createWorld(scene) {
       setMat(pl, 5); const plm = paint(pl, (px, py, pz) => fc.copy(footC).multiplyScalar(0.8 + 0.25 * (0.5 + 0.5 * snoise(Math.floor(px * 2.2 + pz * 2.2), Math.floor(py * 4), 0, 3))));
       if (alongX) put(plm, mid, base / 2, side * (d / 2 - T / 2)); else put(plm, side * (w / 2 - T / 2), base / 2, mid);
       parts.push(plm);
-      if (alongX) colliders.push({ minX: x + a0, maxX: x + a1, minZ: z + side * (d / 2) - T, maxZ: z + side * (d / 2) + T * 0.2 });
-      else colliders.push({ minX: x + side * (w / 2) - T, maxX: x + side * (w / 2) + T * 0.2, minZ: z + a0, maxZ: z + a1 });
+      // The collider is exactly the wall slab (the old box sat T outside the mesh on the -X/-Z faces). Segments run the
+      // full outer length, so the two walls at every corner overlap and no corner can be squeezed through.
+      const c0 = side * (alongX ? d : w) / 2, c1 = c0 - side * T;
+      if (alongX) colliders.push({ minX: x + a0, maxX: x + a1, minZ: z + Math.min(c0, c1), maxZ: z + Math.max(c0, c1), wall: name });
+      else colliders.push({ minX: x + Math.min(c0, c1), maxX: x + Math.max(c0, c1), minZ: z + a0, maxZ: z + a1, wall: name });
     };
     const splitDoor = (fullHalf, doorHalf) => {
       // returns [[-full, -door], [door, full]] segments leaving the gap

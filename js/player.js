@@ -238,33 +238,69 @@ export function applyEquipmentLook(pm, equipment) {
   }
 }
 
-// Push a point out of any building it overlaps (circle of radius r vs boxes).
-const PR = 0.35;
-export function resolveCollisions(pos) {
-  for (const b of colliders) {
-    if (pos.x <= b.minX - PR || pos.x >= b.maxX + PR || pos.z <= b.minZ - PR || pos.z >= b.maxZ + PR) continue;
-    const pl = pos.x - (b.minX - PR), pr = (b.maxX + PR) - pos.x, pt = pos.z - (b.minZ - PR), pb = (b.maxZ + PR) - pos.z;
-    const m = Math.min(pl, pr, pt, pb);
-    if (m === pl) pos.x = b.minX - PR; else if (m === pr) pos.x = b.maxX + PR; else if (m === pt) pos.z = b.minZ - PR; else pos.z = b.maxZ + PR;
+// Collision: the player (and chasing monsters) are circles of radius PR against axis-aligned boxes (walls, furniture,
+// props). Each box is grown by PR and the centre point is pushed out of it.
+// - Swept: when the previous position is known, the point leaves through the face it entered by (the face whose slab it
+//   crossed last), never through the far side, so a long step can't pop out on the other side of a thin wall.
+// - Sub-stepped: movement is applied in slices of at most SUB (well under half a wall's grown thickness), so a lag spike
+//   or running at a low frame rate can't tunnel, and sliding along corners resolves one small step at a time.
+// - Iterated: pushing out of one box can push into its neighbour (furniture against a wall), so it repeats until clear.
+export const PR = 0.35;
+const SUB = 0.08;
+function pushOut(pos, b, prev) {
+  const x0 = b.minX - PR, x1 = b.maxX + PR, z0 = b.minZ - PR, z1 = b.maxZ + PR;
+  if (prev) {
+    // entry time along each axis for the move prev -> pos (later entry = the face that was actually hit)
+    const mx = pos.x - prev.x, mz = pos.z - prev.z;
+    let tx = -1, tz = -1, fx = 0, fz = 0;
+    if (prev.x <= x0 && mx > 0) { tx = (x0 - prev.x) / mx; fx = x0; } else if (prev.x >= x1 && mx < 0) { tx = (x1 - prev.x) / mx; fx = x1; }
+    if (prev.z <= z0 && mz > 0) { tz = (z0 - prev.z) / mz; fz = z0; } else if (prev.z >= z1 && mz < 0) { tz = (z1 - prev.z) / mz; fz = z1; }
+    if (tx >= 0 || tz >= 0) { if (tx >= tz) pos.x = fx; else pos.z = fz; return; }
+  }
+  let pl = pos.x - x0, pr = x1 - pos.x, pt = pos.z - z0, pb = z1 - pos.z;
+  if (b.wall) {
+    // Never flip through a wall: across its thin axis only the face on the side the point came from is allowed
+    // (furniture pushed against a wall used to shove you into the slab, and the shortest way out was the far side).
+    const ref = prev || pos;
+    if (b.maxX - b.minX < b.maxZ - b.minZ) { if (ref.x < (b.minX + b.maxX) / 2) pr = Infinity; else pl = Infinity; }
+    else { if (ref.z < (b.minZ + b.maxZ) / 2) pb = Infinity; else pt = Infinity; }
+  }
+  const m = Math.min(pl, pr, pt, pb);
+  if (m === pl) pos.x = x0; else if (m === pr) pos.x = x1; else if (m === pt) pos.z = z0; else pos.z = z1;
+}
+const overlaps = (b, x, z) => x > b.minX - PR && x < b.maxX + PR && z > b.minZ - PR && z < b.maxZ + PR;
+export function resolveCollisions(pos, prev = null) {
+  for (let pass = 0; pass < 4; pass++) {
+    let hit = false;
+    for (const b of colliders) if (overlaps(b, pos.x, pos.z)) { pushOut(pos, b, prev); hit = true; }
+    if (!hit) return;
   }
 }
 export function blockedAt(x, z) {
-  return colliders.some(b => x > b.minX - PR && x < b.maxX + PR && z > b.minZ - PR && z < b.maxZ + PR);
+  return colliders.some(b => overlaps(b, x, z));
 }
-
-function stepTo(pos, dx, dz, step) {
-  pos.x += dx * step;
-  pos.z += dz * step;
-  pos.x = Math.max(-WORLD_HALF + 1, Math.min(WORLD_HALF - 1, pos.x));
-  pos.z = Math.max(-WORLD_HALF + 1, Math.min(WORLD_HALF - 1, pos.z));
-  const W = waterAt(pos.x, pos.z, -0.3);
-  if (W) {
-    const ax = pos.x - W.x, az = pos.z - W.z, d = Math.hypot(ax, az) || 1;
-    pos.x = W.x + (ax / d) * (W.r - 0.3);
-    pos.z = W.z + (az / d) * (W.r - 0.3);
+// Move a point dist along (dx, dz) with collision, in sub-steps. opts.world/opts.water: clamp to the map and lakes.
+export function moveWithCollision(pos, dx, dz, dist, opts = {}) {
+  const n = Math.max(1, Math.ceil(dist / SUB)), s = dist / n, prev = { x: 0, z: 0 };
+  for (let i = 0; i < n; i++) {
+    prev.x = pos.x; prev.z = pos.z;
+    pos.x += dx * s; pos.z += dz * s;
+    if (opts.world !== false) {
+      pos.x = Math.max(-WORLD_HALF + 1, Math.min(WORLD_HALF - 1, pos.x));
+      pos.z = Math.max(-WORLD_HALF + 1, Math.min(WORLD_HALF - 1, pos.z));
+    }
+    if (opts.water !== false) {
+      const W = waterAt(pos.x, pos.z, -0.3);
+      if (W) {
+        const ax = pos.x - W.x, az = pos.z - W.z, d = Math.hypot(ax, az) || 1;
+        pos.x = W.x + (ax / d) * (W.r - 0.3);
+        pos.z = W.z + (az / d) * (W.r - 0.3);
+      }
+    }
+    resolveCollisions(pos, prev);
   }
-  resolveCollisions(pos);
 }
+function stepTo(pos, dx, dz, step) { moveWithCollision(pos, dx, dz, step); }
 
 // Turn toward a point smoothly.
 export function faceToward(pm, x, z) {
