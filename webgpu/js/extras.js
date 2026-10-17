@@ -10,6 +10,7 @@ import { FIRES, GPU_LIGHTS, setVfxQuality } from './vfx.js';
 import { TiledLighting } from 'three/addons/lighting/TiledLighting.js';
 import { DAY } from '../../js/daycycle.js';
 import { initStage5, updateStage5, S5 } from './stage5.js';
+import { initStage6, updateStage6 } from './stage6.js';
 import { terrainHeight, insideLake, WORLD_HALF, inCave } from '../../js/world.js';
 import { blockedAt } from '../../js/player.js';
 import { PUSH } from '../../js/models.js';
@@ -60,6 +61,7 @@ export function initGpuExtras(c) {
     } catch (e) { console.warn('[webgpu] CSM unavailable', e); }
   }
   initStage5(ctx);
+  initStage6(ctx);
   const narrow = innerWidth < 520;
   badge.style.whiteSpace = 'nowrap';
   badge.textContent = (BACKEND.name === 'WebGPU' ? 'WebGPU' : narrow ? 'WebGL2' : 'WebGL2 fallback') + (tiled ? (narrow ? ' · tiled' : ' · tiled lights') : '') + (CASCADE.csm ? ' · CSM' : '') + (S5.particles ? (narrow ? ' · FX' : ' · compute FX') : '');
@@ -69,6 +71,7 @@ export function setGpuQuality(q) { quality = q; }
 export function updateGpuExtras(dt, now, p, q) {
   updateGrassField(p, q);
   updateStage5(dt, now, p, q);
+  updateStage6(dt, now, p, q);
   if (!tiled) return;
   const t = now * 0.001;
   const near = [];

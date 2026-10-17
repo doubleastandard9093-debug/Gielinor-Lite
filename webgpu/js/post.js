@@ -6,6 +6,16 @@ import { pass, mrt, output, normalView, directionToColor, colorToDirection, samp
   uv, Fn, Loop, renderOutput, max } from 'three/tsl';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
+import { bayer16 } from 'three/addons/tsl/math/Bayer.js';
+import { screenUV, screenCoordinate, positionWorld, exp, texture } from 'three/tsl';
+import { BACKEND } from './scene.js';
+import { getNoiseTexture, TIME } from './gfx.js';
+
+// Stage 6 volumetric light: a VolumeNodeMaterial box that follows the camera is raymarched (dithered, 1/4 resolution,
+// then blurred) against every light on VOL.layer, sampling their shadow maps, so sun shafts through trees and roofs and
+// torch halos are true 3D in-scattering that keeps working when the sun is off-screen. Occluded by the scene depth.
+export const VOL = { layer: 10, mesh: null, on: false, intensity: uniform(0.55), density: uniform(1) };
 
 const okc = (v) => select(v.greaterThanEqual(0.0).and(v.lessThan(1e4)), v, float(0));   // NaN fails both tests, Inf the second
 const guard = (c) => vec4(okc(c.r), okc(c.g), okc(c.b), okc(c.a).clamp(0, 1));
@@ -23,8 +33,33 @@ export function createPost(renderer, scene, camera) {
   const clean = guard(col);
   const aoV = okc(aoPass.getTextureNode().x).clamp(0, 1);
   const lit = clean.rgb.mul(mix(1.0, aoV, aoOn.mul(0.85)));
-  const bl = bloom(vec4(lit, 1), 0.3, 0.45, 0.9);
-  const hdr = vec4(lit.add(guard(bl).rgb), 1);
+  let litV = lit;
+  const Qs = new URLSearchParams(location.search);
+  if (BACKEND.name === 'WebGPU' && !Qs.has('novol')) {
+    try {
+      const vm = new THREE.VolumeNodeMaterial();
+      vm.steps = +(Qs.get('volsteps') || 12);
+      vm.offsetNode = bayer16(screenCoordinate);
+      vm.scatteringNode = Fn(({ positionRay }) => {
+        const n = texture(getNoiseTexture(), positionRay.xz.mul(0.035).add(vec2(TIME.mul(0.006), TIME.mul(0.003)))).level(0).r;
+        const h = exp(max(positionRay.y, 0.0).mul(-0.09));   // thick in valleys and at ground level, thin up high
+        return h.mul(n.mul(0.8).add(0.4)).mul(VOL.density).mul(0.06);
+      });
+      vm.depthNode = depth.sample(screenUV);
+      const box = new THREE.Mesh(new THREE.BoxGeometry(140, 40, 140), vm);
+      box.receiveShadow = true; box.frustumCulled = false;
+      box.layers.disableAll(); box.layers.enable(VOL.layer);
+      scene.add(box); VOL.mesh = box;
+      const layers = new THREE.Layers(); layers.disableAll(); layers.enable(VOL.layer);
+      const vPass = pass(scene, camera, { depthBuffer: false });
+      vPass.setLayers(layers); vPass.setResolution(+(Qs.get('volres') || 0.25));
+      const vol = gaussianBlur(vPass, 0.6);
+      litV = lit.add(guard(vol).rgb.mul(VOL.intensity));
+      VOL.on = true;
+    } catch (e) { console.warn('[webgpu] volumetric light unavailable', e); }
+  }
+  const bl = bloom(vec4(litV, 1), 0.3, 0.45, 0.9);
+  const hdr = vec4(litV.add(guard(bl).rgb), 1);
   const GRADE = { sat: uniform(1.12), vig: uniform(0.32), sunUV: uniform(new THREE.Vector2(0.5, 0.8)), shaftK: uniform(0), shaftCol: uniform(new THREE.Color(1, 0.9, 0.7)) };
   const graded = Fn(() => {
     const c = renderOutput(hdr).toVar();

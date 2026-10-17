@@ -4,7 +4,8 @@
 import * as THREE from 'three';
 import { IS_TOUCH } from './scene.js';
 import { Fn, uniform, texture, float, vec2, vec3, vec4, mix, smoothstep, pow, max, min, clamp, abs, sin, cos, fract, floor, exp, dot, normalize, length,
-  reflect, positionLocal, positionWorld, positionView, normalView, normalWorld, cameraPosition, screenCoordinate, Loop, If, Break, select, attribute, cross, sign, step } from 'three/tsl';
+  reflect, positionLocal, positionWorld, positionView, normalView, normalWorld, cameraPosition, screenCoordinate, Loop, If, Break, select, attribute, cross, sign, step,
+  screenUV, viewportSharedTexture, viewportDepthTexture, perspectiveDepthToViewZ, cameraNear, cameraFar } from 'three/tsl';
 import { reflector } from 'three/tsl';
 
 export const SUN_DIR = new THREE.Vector3(0.55, 0.62, 0.42).normalize();
@@ -245,40 +246,85 @@ export function createWaterReflection() {
   // the reflector node renders its own mirrored view; this just turns it off on Low
   return { update(enabled) { WATER_REFL.on.value = enabled ? 1 : 0; for (const r of WATER_REFL.nodes) r.target.visible = !!enabled; } };
 }
+// Stage 6 water: 4-wave Gerstner surface with analytic normals plus two scrolling detail normals, screen-space
+// refraction of what lies below, Beer-Lambert absorption over a virtual lakebed depth (the lakes are shallow discs, so
+// depth comes from the radial profile blended with the real depth-buffer difference at the shore), planar reflection
+// mixed by Schlick Fresnel, depth-difference shoreline foam, animated caustics on the refracted lakebed, and expanding
+// ripple rings from the player. Low/WebGL2 keeps the same graph with the reflection off.
+export const WATER_PLAYER = uniform(new THREE.Vector3(1e4, 0, 1e4));
+export const WATER_RIPPLE = uniform(0);   // 0..1 how much the player is stirring the water (moving near or in it)
+const GW = [[0.9, 0.35, 0.030, 5.5], [-0.4, 0.92, 0.022, 3.4], [0.62, -0.78, 0.016, 2.1], [-0.85, -0.5, 0.010, 1.3]];   // dir.x, dir.z, amplitude, wavelength
 export function waterMaterial(cx, cz, radius) {
   const center = uniform(new THREE.Vector2(cx, cz)), rad = uniform(radius), sunDir = uniform(SUN_DIR), sunCol = uniform(SKY.sun), skyCol = uniform(SKY.horizon), skyTop = uniform(SKY.top);
   const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
   const wLod = float(1).sub(smoothstep(45.0, 80.0, length(cameraPosition.xz.sub(positionWorld.xz))));
-  // the mesh is a circle rotated flat: local z is world up
-  m.positionNode = positionLocal.add(vec3(0, 0, sin(positionWorld.x.mul(0.9).add(TIME.mul(1.3))).mul(0.025).add(sin(positionWorld.z.mul(1.3).sub(TIME.mul(1.7))).mul(0.02)).mul(wLod)));
+  const edgeK = (p) => float(1).sub(smoothstep(0.8, 1.0, length(p.sub(center)).div(rad)));   // waves die out at the bank so the rim stays put
+  const gerst = (p, t) => {   // returns { d: displacement (x, y, z), n: world normal }
+    let dx = float(0), dy = float(0), dz = float(0), nx = float(0), nz = float(0), ny = float(0);
+    for (const [ax, az, A, L] of GW) {
+      const k = 2 * Math.PI / L, c = Math.sqrt(9.8 / k), Q = 0.6;
+      const f = dot(vec2(ax, az), p).mul(k).sub(t.mul(c * k)), cf = cos(f), sf = sin(f);
+      dx = dx.add(cf.mul(Q * A * ax)); dz = dz.add(cf.mul(Q * A * az)); dy = dy.add(sf.mul(A));
+      nx = nx.add(cf.mul(-ax * k * A)); nz = nz.add(cf.mul(-az * k * A)); ny = ny.add(sf.mul(Q * k * A));
+    }
+    return { d: vec3(dx, dy, dz), n: vec3(nx, float(1).sub(ny), nz) };
+  };
+  const ripple = (p) => {   // concentric rings travelling out from the player, as a height and its radial slope
+    const dv = p.sub(WATER_PLAYER.xz), r = length(dv), ph = r.mul(9.0).sub(TIME.mul(6.0));
+    const env = float(1).sub(smoothstep(0.4, 4.5, r)).mul(WATER_RIPPLE);
+    return { h: sin(ph).mul(env).mul(0.012), slope: cos(ph).mul(env).mul(0.11), dir: dv.div(max(r, 1e-3)) };
+  };
+  // the mesh is a circle rotated flat: local x = world x, local y = -world z, local z = world up
+  m.positionNode = Fn(() => {
+    const p = positionWorld.xz, g = gerst(p, TIME), e = edgeK(p).mul(wLod), rp = ripple(p);
+    return positionLocal.add(vec3(g.d.x, g.d.z.negate(), g.d.y.add(rp.h)).mul(e));
+  })();
   const refl = reflector({ resolutionScale: 0.5 });
   WATER_REFL.nodes.push(refl);
   m.userData.reflector = refl;
   m.colorNode = Fn(() => {
-    const p = positionWorld.xz;
-    const a = noiseNode(p.mul(0.09).add(vec2(TIME.mul(0.018), TIME.mul(0.011)))).rg.sub(0.5);
-    const b = noiseNode(p.mul(0.21).sub(vec2(TIME.mul(0.025), TIME.mul(-0.017)))).gb.sub(0.5);
-    const N = normalize(vec3(a.x.add(b.x).mul(0.45), 1.0, a.y.add(b.y).mul(0.45)));
+    const p = positionWorld.xz, e = edgeK(p);
+    const g = gerst(p, TIME), rp = ripple(p);
+    const a = noiseNode(p.mul(0.35).add(vec2(TIME.mul(0.03), TIME.mul(0.017)))).rg.sub(0.5);
+    const b = noiseNode(p.mul(0.9).sub(vec2(TIME.mul(0.045), TIME.mul(-0.03)))).gb.sub(0.5);
+    const det = a.mul(0.22).add(b.mul(0.14)).mul(mix(0.4, 1.0, HIQ));
+    const N = normalize(vec3(g.n.x.mul(e).add(det.x).add(rp.dir.x.mul(rp.slope).negate()), 1.0, g.n.z.mul(e).add(det.y).add(rp.dir.y.mul(rp.slope).negate())));
     const V = normalize(cameraPosition.sub(positionWorld));
-    const fres = pow(float(1).sub(max(dot(N, V), 0.0)), 3.0);
+    const NV = max(dot(N, V), 0.0), fres = float(0.02).add(float(0.98).mul(pow(float(1).sub(NV), 5.0)));
     const r = length(p.sub(center)).div(rad);
-    const col = mix(vec3(0.008, 0.045, 0.10), vec3(0.025, 0.14, 0.17), smoothstep(0.55, 1.0, r)).toVar();
+    // depth: virtual bowl profile (1.8 m in the middle), then clamp by the real depth-buffer gap so the bank stays shallow
+    const sceneZ = perspectiveDepthToViewZ(viewportDepthTexture(screenUV), cameraNear, cameraFar);
+    const gap = max(positionView.z.sub(sceneZ), 0.0);   // metres of scene behind the surface along the view ray
+    const bowl = float(1).sub(r.mul(r)).max(0.0).mul(1.8);
+    const depth = min(bowl, gap.mul(4.0).add(bowl.mul(smoothstep(0.85, 0.6, r))));
+    // refraction: bend the screen lookup by the normal, scaled by depth so the bank barely wobbles
+    const ruv = screenUV.add(N.xz.mul(0.035).mul(smoothstep(0.0, 0.5, depth)));
+    const below = viewportSharedTexture(ruv).rgb;
+    // lakebed seen through the water: refracted bed point, sand/silt colour, animated caustics
+    const bedP = p.add(N.xz.mul(depth).mul(0.6)).sub(V.xz.div(max(V.y, 0.2)).mul(depth).mul(0.75));
+    const c1 = noiseNode(bedP.mul(0.55).add(vec2(TIME.mul(0.05), TIME.mul(0.03)))).r, c2 = noiseNode(bedP.mul(0.55).mul(1.31).sub(vec2(TIME.mul(0.04), TIME.mul(-0.05)))).g;
+    const caus = pow(float(1).sub(abs(c1.sub(c2)).mul(3.0)).clamp(0, 1), 6.0).mul(smoothstep(0.0, 0.3, depth)).mul(float(1).sub(smoothstep(0.8, 1.8, depth)).mul(0.6).add(0.4));
+    const bed = mix(vec3(0.34, 0.31, 0.22), vec3(0.18, 0.2, 0.15), noiseNode(bedP.mul(0.4)).b).mul(below.mul(1.5).add(0.5)).add(sunCol.mul(caus).mul(0.55).mul(HIQ.mul(0.5).add(0.5)));
+    // Beer-Lambert absorption: red goes first, so deep water turns teal then navy
+    const absorb = exp(vec3(-1.6, -0.55, -0.32).mul(depth.mul(1.6)));
+    const scatter = vec3(0.012, 0.07, 0.09);
+    const under = mix(bed, below, smoothstep(0.92, 1.0, r)).mul(absorb).add(scatter.mul(float(1).sub(absorb.g)));
+    // reflection: planar reflector on High, analytic sky on Low
+    refl.uvNode = refl.uvNode.add(N.xz.mul(0.04));
     const R = reflect(V.negate(), N), sky = mix(skyCol, skyTop, clamp(R.y, 0, 1));
-    const shallowK = smoothstep(0.7, 0.98, r.add(a.x.add(b.x).mul(0.15)));
-    col.assign(mix(col, vec3(0.32, 0.36, 0.26).mul(noiseNode(p.mul(0.8).add(N.xz.mul(0.6))).g.mul(0.4).add(0.8)), shallowK.mul(0.45)));
-    refl.uvNode = refl.uvNode.add(N.xz.mul(0.045));
-    const rcol = refl.rgb;
-    col.assign(mix(col, mix(sky.mul(0.7), rcol.mul(0.9), WATER_REFL.on), mix(fres.mul(0.4).add(0.05), fres.mul(0.62).add(0.18).mul(float(1).sub(shallowK.mul(0.5))), WATER_REFL.on)));
-    const H = normalize(sunDir.add(V).add(vec3(0, 1e-4, 0)));
-    const nh = max(dot(N, H), 0.0);
-    col.addAssign(sunCol.mul(pow(nh, 220.0).mul(3.0).add(pow(nh, 30.0).mul(0.08))));
-    const fn = noiseNode(p.mul(0.6).add(TIME.mul(0.03))).b;
-    const foam = smoothstep(0.93, 1.0, r.add(fn.sub(0.5).mul(0.08)).add(sin(TIME.mul(1.6).add(r.mul(40.0))).mul(0.008))).toVar();
+    const rcol = mix(sky.mul(0.8), refl.rgb, WATER_REFL.on);
+    const col = mix(under, rcol, fres.mul(0.9)).toVar();
+    const H = normalize(sunDir.add(V)), nh = max(dot(N, H), 0.0);
+    col.addAssign(sunCol.mul(pow(nh, 400.0).mul(4.0).add(pow(nh, 40.0).mul(0.06))));
+    // shoreline foam from the depth gap plus the old lapping bands near the rim, broken up by noise
+    const fn = noiseNode(p.mul(0.9).add(TIME.mul(0.04))).b, fn2 = noiseNode(p.mul(2.6).sub(TIME.mul(0.06))).r;
+    const shore = float(1).sub(smoothstep(0.0, 0.07, gap.add(fn.sub(0.5).mul(0.04)))).mul(smoothstep(0.78, 0.92, r));   // the flat bed disc sits 3.5 cm down, so only trust the gap near the bank
     const lap = fract(r.mul(9.0).sub(TIME.mul(0.35)));
-    const band = smoothstep(0.0, 0.08, lap).mul(smoothstep(0.35, 0.1, lap)).mul(smoothstep(0.82, 0.97, r));
-    foam.assign(max(foam, band.mul(smoothstep(0.45, 0.75, fn.add(noiseNode(p.mul(2.3).sub(TIME.mul(0.05))).r.mul(0.2))))));
-    col.assign(mix(col, vec3(0.86, 0.9, 0.93), foam.mul(0.75)));
-    return vec4(col, mix(1.0, 0.72, shallowK));
+    const band = smoothstep(0.0, 0.08, lap).mul(smoothstep(0.35, 0.1, lap)).mul(smoothstep(0.85, 0.97, r));
+    const crest = smoothstep(0.05, 0.068, g.d.y).mul(e).mul(0.3);
+    const foam = max(max(shore, band.mul(0.6)), crest).mul(smoothstep(0.35, 0.7, fn.mul(0.6).add(fn2.mul(0.4)).add(shore.mul(0.3)))).add(abs(rp.h).mul(25.0).mul(WATER_RIPPLE).mul(0.4)).clamp(0, 1);
+    col.assign(mix(col, vec3(0.88, 0.92, 0.95), foam.mul(0.8)));
+    return vec4(col, smoothstep(0.0, 0.06, gap).mul(0.25).add(0.75));
   })();
   return m;
 }
