@@ -1200,9 +1200,9 @@ function removeFire(f) {
 }
 
 // ---- Talking ----
-const NPC_FACE = { mizgog: '🧙', betty: '🧙‍♀️', aubury: '🧙', man: '👨', woman: '👩', sailor: '🧑‍✈️', vguard: '💂', warrior: '🤺', wknight: '🤺', paladin: '🛡️', hero: '🦸', cassie: '👩‍🔧', nessa: '🧑‍🌾', horvik: '🧔', gerrant: '🧑‍💼', vshop: '🧑‍💼', cook: '👨‍🍳', priest: '🧔', doric: '🧔‍♂️', captain: '💂‍♀️', farmer: '👨‍🌾', bob: '👷', merchant: '🧑‍💼', ranger: '🧝', knight: '🤺', apothecary: '🧑‍⚕️' };
+const NPC_FACE = { mizgog: '🧙', betty: '🧙‍♀️', aubury: '🧙', man: '👨', woman: '👩', sailor: '🧑‍✈️', vguard: '💂', warrior: '🤺', wknight: '🤺', paladin: '🛡️', hero: '🦸', cassie: '👩‍🔧', nessa: '🧑‍🌾', horvik: '🧔', gerrant: '🧑‍💼', vshop: '🧑‍💼', cook: '👨‍🍳', priest: '🧔', doric: '🧔‍♂️', captain: '💂‍♀️', farmer: '👨‍🌾', bob: '👷', merchant: '🧑‍💼', ranger: '🧝', knight: '🤺', apothecary: '🧑‍⚕️', merchant2: '🧑‍💼', banker: '🏦' };
 for (const n of QUEST_NPCS) NPC_FACE[n.id] = n.face;
-const SHOP_GREET = { magic0: 'Runes for beginners! Wind Strike needs an air rune and a mind rune. Open the Combat tab to pick a spell to autocast.', magic: 'Welcome to my emporium. A staff of an element gives you all the runes of that element you need.', runes: 'Runes and essence! Mine rune essence in the rocks just south-east of here, then take it to an altar.', apothecary: 'Herbs, vials and potions! Fill empty vials at the well. Pick grimy herbs from the patches out back, clean them, then mix herb + vial of water + a secondary.' };
+const SHOP_GREET = { ashford: 'Welcome to the Ashford Store! Farm goods, tools and supplies. I buy what you bring in, too.', magic0: 'Runes for beginners! Wind Strike needs an air rune and a mind rune. Open the Combat tab to pick a spell to autocast.', magic: 'Welcome to my emporium. A staff of an element gives you all the runes of that element you need.', runes: 'Runes and essence! Mine rune essence in the rocks just south-east of here, then take it to an altar.', apothecary: 'Herbs, vials and potions! Fill empty vials at the well. Pick grimy herbs from the patches out back, clean them, then mix herb + vial of water + a secondary.' };
 const questHelpers = {
   rewarding: false,
   level: s => (skills[s] ? skills[s].level : 1),
@@ -1231,7 +1231,7 @@ function talkTo(ent) {
   const qd = questForNpc(ent.npc, player, questHelpers);
   const side = questTalk(player, ent.npc, questHelpers);
   let script;
-  if (side) script = side;
+  if (side) { script = side; if (ent.shop) script = [...script, { choose: [["Let's trade.", [{ run: () => invUI.open(ent.shop) }]], ['Goodbye.', []]] }]; }
   else if (qd) {
     script = qd.talk(player, questHelpers);
     // Shopkeepers with quests still offer to trade afterwards.

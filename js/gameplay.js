@@ -897,6 +897,8 @@ Object.assign(SHOPS, {
 });
 // The towns that were planned as Saltmere and Highcrag are now Port Sarim and Varrock (plus Falador).
 SHOPS.general2.title = 'Port Sarim General Store';
+// Ashford Store: Trader Mira's general goods (same stock and prices as the other general stores)
+SHOPS.ashford = { title: 'Ashford Store', stock: SHOP_STOCK };
 SHOPS.armour.title = 'Falador Armoury';
 SHOPS.weapons.title = 'Varrock Weaponsmith';
 SHOPS.general3.title = 'Varrock General Store';

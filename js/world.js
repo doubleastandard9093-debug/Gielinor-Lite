@@ -1084,7 +1084,7 @@ export function createWorld(scene) {
   nodes.push(createNpc(LAKE.x + Math.cos(-0.9) * (LAKE.r + 1), LAKE.z + Math.sin(-0.9) * (LAKE.r + 1), 'fisherman', 'Fisherman Fred', { body: 0x4a6a8a, legs: 0x3a3a2a, hat: 0x2a4a6a, hatH: 0.2, skin: 0xc89a74 }, LAKE.x, LAKE.z)); // on the lakeshore facing the water
   // Ashford NPCs
   nodes.push(createNpc(50, -22, 'mayor', 'Mayor Aldric', { body: 0x4a3a2a, legs: 0x3a2a1a, hat: 0x8a6a3a, hatH: 0.25, beard: 0x6a4a2a }, 48, -25));
-  nodes.push(createNpc(56, -16, 'merchant2', 'Trader Mira', { body: 0xc8b48a, legs: 0x5a4a3a, hat: 0xd4af37, hatH: 0.15 }, 55, -18));
+  nodes.push(Object.assign(createNpc(56, -16, 'merchant2', 'Trader Mira', { body: 0xc8b48a, legs: 0x5a4a3a, hat: 0xd4af37, hatH: 0.15, apron: 0xe0d8c8 }, 55, -18), { shop: 'ashford', examine: 'She runs the Ashford Store.' }));
   nodes.push(createNpc(43, -30, 'smith2', 'Smith Torin', { body: 0x6a3a2a, beard: 0xa06a2a, apron: 0x3a3a3a }, 42, -32));
   nodes.push(createNpc(53, -33, 'farmer2', 'Farmer Elara', { body: 0x6a8a3a, legs: 0x4a5a8a, hat: 0xd8c070, hatW: 0.7, hatH: 0.1 }, 52, -35));
   nodes.push(createNpc(58, -24, 'guard2', 'Guard Captain Ryn', { body: 0x8a2a2a, legs: 0x3a3a4a, hat: 0x9a9aa8, hatH: 0.25 }, 60, -22));

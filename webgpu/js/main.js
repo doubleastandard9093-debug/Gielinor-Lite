@@ -9,8 +9,7 @@ import { agilityStyle, agilityDuration, agilityVariation, agilityPose3 as agilit
 import { updateDay, DAY, dayLabel } from '../../js/daycycle.js';
 import { poseGait, tailSway } from '../../js/gait.js';
 import { PUSH } from '../../js/models.js';
-import { initVfx, updateVfx, addFire, removeFireVfx, burst, setVfxQuality, setLeafSources, spellTrail } from './vfx.js';
-import { Fn, uniform, mix, vec3, vec4, float, length, smoothstep, uv as tslUv } from 'three/tsl';
+import { initVfx, updateVfx, addFire, removeFireVfx, burst, setVfxQuality, setLeafSources } from './vfx.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, SUN_DIR, createWaterReflection } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
 import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from '../../js/chunk.js';
@@ -131,7 +130,7 @@ function giveXP(skill, amount) {
 // Low = plain render at a lower resolution for slower phones.
 const gfx = { quality: 'high', auto: true, slowFrames: 0, frames: 0, sum: 0 };
 function applyGfx() {
-  gfx.auto = player.settings.gfx !== 'high' && player.settings.gfx !== 'low' && player.settings.gfx !== 'ultra';
+  gfx.auto = player.settings.gfx !== 'high' && player.settings.gfx !== 'low';
   gfx.quality = gfx.auto && gfx.autoLow ? 'low' : resolveQuality(player.settings.gfx);
   renderer.setPixelRatio(pixelRatioFor(gfx.quality));
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -141,8 +140,6 @@ function applyGfx() {
   renderer.toneMappingExposure = gfx.quality === 'low' ? 1.12 : 1.18;
   GRADE.sat.value = gfx.quality === 'low' ? 1.12 : 1.5; post.needsUpdate(); setGpuQuality(gfx.quality);
   sky.setQuality(gfx.quality);
-  // Ultra (WebGPU release only): full-res GTAO with more samples, full-res water reflections, 4096 px cascades out to 480 m, dense gusting grass
-  try { post.setQuality && post.setQuality(gfx.quality); waterRefl.setQuality && waterRefl.setQuality(gfx.quality); } catch (e) { console.warn('[webgpu] ultra setup', e); }
   setDecorQuality(gfx.quality); setVfxQuality(gfx.quality);
   SWAY.value = gfx.quality === 'low' ? 0 : 1;
   setLodRange(gfx.quality);
@@ -154,7 +151,7 @@ function applyGfx() {
   lightBase = null;
 }
 function gfxLabel() {
-  return player.settings.gfx === 'ultra' ? 'Ultra' : player.settings.gfx === 'high' ? 'High' : player.settings.gfx === 'low' ? 'Low' : `Auto (${gfx.quality === 'low' ? 'Low' : 'High'})`;
+  return player.settings.gfx === 'high' ? 'High' : player.settings.gfx === 'low' ? 'Low' : `Auto (${gfx.quality === 'low' ? 'Low' : 'High'})`;
 }
 // Auto mode on phones: if frames stay slow after loading, drop to Low once.
 function watchFrameRate(dt) {
@@ -172,7 +169,7 @@ function watchFrameRate(dt) {
 function shadowsOn() {
   if (gfx.quality === 'low') return false;
   // Default: on for desktop and whenever High is chosen explicitly (console/PC target); phones on Auto start without.
-  return player.settings.shadows === null || player.settings.shadows === undefined ? (!IS_TOUCH || player.settings.gfx === 'high' || player.settings.gfx === 'ultra') : !!player.settings.shadows;
+  return player.settings.shadows === null || player.settings.shadows === undefined ? (!IS_TOUCH || player.settings.gfx === 'high') : !!player.settings.shadows;
 }
 
 // ---------------------------------------------------------------------------
@@ -490,7 +487,7 @@ function setting(act) {
     if (gfx.quality === 'low') { log('Shadows are off on Low graphics. Switch to High to use them.', 'warn'); }
     else { s.shadows = !shadowsOn(); setShadows(renderer, dirLight, s.shadows, gfx.quality); }
   }
-  else if (act === 'gfx') { s.gfx = s.gfx === 'high' ? 'ultra' : s.gfx === 'ultra' ? 'low' : s.gfx === 'low' ? null : 'high'; gfx.autoLow = false; applyGfx(); log(`Graphics: ${gfxLabel()}.`, 'game'); }
+  else if (act === 'gfx') { s.gfx = s.gfx === 'high' ? 'low' : s.gfx === 'low' ? null : 'high'; gfx.autoLow = false; applyGfx(); log(`Graphics: ${gfxLabel()}.`, 'game'); }
   else if (act === 'retaliate') s.autoRetaliate = !s.autoRetaliate;
   else if (act === 'run') toggleRun();
   else if (act === 'autoloot') s.autoLoot = !s.autoLoot;
@@ -609,16 +606,6 @@ const SPELL_COLOR = { '💨': 0xe8f4ff, '💧': 0x3a8aff, '🪨': 0x9a7a40, '�
 const spellMesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
 spellMesh.visible = false;
 scene.add(spellMesh);
-// stage 9 glow: the bolt is an HDR core (well above the bloom threshold) inside an additive halo sprite of its own
-// colour, and sheds motes as it flies (vfx.spellTrail). ?noglow keeps the flat sphere.
-const SPELL_GLOW = !/noglow/.test(location.search);
-if (SPELL_GLOW) {
-  const sc = uniform(new THREE.Color(0xffffff));
-  const cm = new THREE.MeshBasicNodeMaterial({ fog: false }); cm.colorNode = mix(sc, vec3(1.0), 0.45).mul(6.0); spellMesh.material = cm; spellMesh.userData.sc = sc;
-  const hm = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending });
-  hm.colorNode = Fn(() => { const r = length(tslUv().sub(0.5)).mul(2.0); return vec4(sc.mul(float(1).sub(smoothstep(0.0, 1.0, r)).pow(2.0).mul(2.2)), 1.0); })();
-  const halo = new THREE.Sprite(hm); halo.scale.setScalar(0.9); spellMesh.add(halo);
-}
 let spellFlight = null;
 function doMagicTick(a, now) {
   const mon = a.mon;
@@ -626,8 +613,6 @@ function doMagicTick(a, now) {
   const res = castSpell(spell, skills, player, mon);
   if (res.error) { log(res.error, 'warn'); stopAction(); return; }
   spellMesh.material.color.setHex(SPELL_COLOR[spell.icon] || 0xffffff);
-  if (spellMesh.userData.sc) spellMesh.userData.sc.value.setHex(SPELL_COLOR[spell.icon] || 0xffffff);
-  spellMesh.userData.hex = SPELL_COLOR[spell.icon] || 0xffffff;
   spellFlight = { from: pm.mesh.position.clone().setY(1.3), mon, t: 0 };
   pm.actionAnim = 1; pm.actionKind = 'bow';
   mon.hp -= res.dmg;
@@ -1179,9 +1164,9 @@ function removeFire(f) {
 }
 
 // ---- Talking ----
-const NPC_FACE = { mizgog: '🧙', betty: '🧙‍♀️', aubury: '🧙', man: '👨', woman: '👩', sailor: '🧑‍✈️', vguard: '💂', warrior: '🤺', wknight: '🤺', paladin: '🛡️', hero: '🦸', cassie: '👩‍🔧', nessa: '🧑‍🌾', horvik: '🧔', gerrant: '🧑‍💼', vshop: '🧑‍💼', cook: '👨‍🍳', priest: '🧔', doric: '🧔‍♂️', captain: '💂‍♀️', farmer: '👨‍🌾', bob: '👷', merchant: '🧑‍💼', ranger: '🧝', knight: '🤺', apothecary: '🧑‍⚕️' };
+const NPC_FACE = { mizgog: '🧙', betty: '🧙‍♀️', aubury: '🧙', man: '👨', woman: '👩', sailor: '🧑‍✈️', vguard: '💂', warrior: '🤺', wknight: '🤺', paladin: '🛡️', hero: '🦸', cassie: '👩‍🔧', nessa: '🧑‍🌾', horvik: '🧔', gerrant: '🧑‍💼', vshop: '🧑‍💼', cook: '👨‍🍳', priest: '🧔', doric: '🧔‍♂️', captain: '💂‍♀️', farmer: '👨‍🌾', bob: '👷', merchant: '🧑‍💼', ranger: '🧝', knight: '🤺', apothecary: '🧑‍⚕️', merchant2: '🧑‍💼', banker: '🏦' };
 for (const n of QUEST_NPCS) NPC_FACE[n.id] = n.face;
-const SHOP_GREET = { magic0: 'Runes for beginners! Wind Strike needs an air rune and a mind rune. Open the Combat tab to pick a spell to autocast.', magic: 'Welcome to my emporium. A staff of an element gives you all the runes of that element you need.', runes: 'Runes and essence! Mine rune essence in the rocks just south-east of here, then take it to an altar.', apothecary: 'Herbs, vials and potions! Fill empty vials at the well. Pick grimy herbs from the patches out back, clean them, then mix herb + vial of water + a secondary.' };
+const SHOP_GREET = { ashford: 'Welcome to the Ashford Store! Farm goods, tools and supplies. I buy what you bring in, too.', magic0: 'Runes for beginners! Wind Strike needs an air rune and a mind rune. Open the Combat tab to pick a spell to autocast.', magic: 'Welcome to my emporium. A staff of an element gives you all the runes of that element you need.', runes: 'Runes and essence! Mine rune essence in the rocks just south-east of here, then take it to an altar.', apothecary: 'Herbs, vials and potions! Fill empty vials at the well. Pick grimy herbs from the patches out back, clean them, then mix herb + vial of water + a secondary.' };
 const questHelpers = {
   rewarding: false,
   level: s => (skills[s] ? skills[s].level : 1),
@@ -1210,7 +1195,7 @@ function talkTo(ent) {
   const qd = questForNpc(ent.npc, player, questHelpers);
   const side = questTalk(player, ent.npc, questHelpers);
   let script;
-  if (side) script = side;
+  if (side) { script = side; if (ent.shop) script = [...script, { choose: [["Let's trade.", [{ run: () => invUI.open(ent.shop) }]], ['Goodbye.', []]] }]; }
   else if (qd) {
     script = qd.talk(player, questHelpers);
     // Shopkeepers with quests still offer to trade afterwards.
@@ -1315,14 +1300,18 @@ function updateCave(dt) {
   scene.background.copy(scene.fog.color);
 }
 const _caveFog = new THREE.Color(0x0c0a10);
-// The shared day cycle lights the night with a saturated blue moon (0x7f9cff) and a blue sky fill (0x5a6fa8). Under the
-// WebGPU release's physically based shading, grey stone (town-square cobbles, well rims, walls) took that colour almost
-// unfiltered and read as bright blue paving. Pull both lights toward their own luminance with only a slight cool tint,
-// so moonlit stone stays grey; brightness is unchanged. ?bluenight keeps the old colours.
+// At night all three lights were saturated blue (moon 0x7f9cff, sky fill 0x5a6fa8, cool fill 0x9ab8ff). Saturated
+// blue surfaces, above all the pale-blue Magic tree leaves (0x5aa0f0), reflected nearly all of it while green and grey
+// surfaces absorbed it, so a Magic tree read as a glowing neon-blue tree in the dark. Pull the night lights toward their
+// own luminance with only a slight cool tint (as the WebGPU release does); brightness is unchanged. ?bluenight keeps the old look.
 const _nn = new THREE.Color(), NN_TINT = [0.92, 0.98, 1.1];
+let fillBase = null;
 function nightNeutral() {
-  const k = DAY.night || 0; if (k <= 0 || /bluenight/.test(location.search)) return;
-  for (const c of [DAY.lightCol, DAY.hemiCol]) {
+  const k = DAY.night || 0, off = /bluenight/.test(location.search);
+  if (!fillBase) fillBase = lightsRef.fill.color.clone();
+  lightsRef.fill.color.copy(fillBase);
+  if (k <= 0 || off) return;
+  for (const c of [DAY.lightCol, DAY.hemiCol, lightsRef.fill.color]) {
     const L = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
     _nn.setRGB(L * NN_TINT[0], L * NN_TINT[1], L * NN_TINT[2]);
     c.lerp(_nn, 0.8 * k);
@@ -1790,8 +1779,7 @@ function flyArrow(f, mesh, target, dt) {
 function updateArrow(dt) {
   if (arrowFlight && !flyArrow(arrowFlight, arrowMesh, arrowFlight.mon.mesh, dt)) arrowFlight = null;
   if (enemyArrow && !flyArrow(enemyArrow, enemyArrowMesh, pm.mesh, dt)) enemyArrow = null;
-  if (spellFlight && !flyArrow(spellFlight, spellMesh, spellFlight.mon.mesh, dt)) { const mp = spellFlight.mon.mesh.position; burst('magic', mp.x, mp.y + 1.1, mp.z, 26, SPELL_GLOW ? spellMesh.userData.hex : null); spellFlight = null; }
-  else if (spellFlight && SPELL_GLOW) spellTrail(spellMesh.position.x, spellMesh.position.y, spellMesh.position.z, spellMesh.userData.hex || 0xffffff, dt);
+  if (spellFlight && !flyArrow(spellFlight, spellMesh, spellFlight.mon.mesh, dt)) { const mp = spellFlight.mon.mesh.position; burst('magic', mp.x, mp.y + 1.1, mp.z, 26); spellFlight = null; }
 }
 
 const ACTION_LABEL = {
@@ -2102,7 +2090,6 @@ window.gielinor = {
   gfx, terrainHeight, applyLook() { applyEquipmentLook(pm, player.equipment); }, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
   renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   get queued() { return queuedAbility; }, cooldowns, buffs,
-  get inCaveNow() { return caveK > 0.5; }, get caveK() { return caveK; }, get indoorsNow() { const p = pm.mesh.position; return !!insideOf(p.x, p.z); },
   get action() { return action; }, get tick() { return tick; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
