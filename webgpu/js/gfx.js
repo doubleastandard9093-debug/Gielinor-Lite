@@ -20,6 +20,8 @@ export const SWAY = uniform(1);
 const GOLD = uniform(0);
 // 1 on High, 0 on Low: gates parallax, stochastic tiling and other per-pixel extras (stage 6)
 export const HIQ = uniform(1);
+// 1 on Ultra only: extra water detail normals, sharper ripples and wider shoreline foam
+export const ULTRA = uniform(0);
 
 // ---------------------------------------------------------------------------
 // Graphics quality: 'high' or 'low'. Auto (null) = High on desktop, High on
@@ -27,7 +29,7 @@ export const HIQ = uniform(1);
 // phone can't keep a smooth frame rate.
 // ---------------------------------------------------------------------------
 export function resolveQuality(setting) {
-  if (setting === 'high' || setting === 'low') return setting;
+  if (setting === 'high' || setting === 'low' || setting === 'ultra') return setting;
   return 'high';
 }
 export function pixelRatioFor(quality) {
@@ -168,7 +170,7 @@ export function createSky(scene) {
   return {
     mesh: sky,
     follow(camera) { sky.position.copy(camera.position); },
-    setQuality(q) { clouds.value = q === 'low' ? 0 : 1; HIQ.value = q === 'low' ? 0 : 1; },
+    setQuality(q) { ULTRA.value = q === 'ultra' ? 1 : 0; clouds.value = q === 'low' ? 0 : 1; HIQ.value = q === 'low' ? 0 : 1; },
     setNight(n) { night.value = n; }
   };
 }
@@ -244,7 +246,8 @@ export const WATER_REFL = { on: uniform(0), nodes: [] };
 export const WATER_MESHES = [];
 export function createWaterReflection() {
   // the reflector node renders its own mirrored view; this just turns it off on Low
-  return { update(enabled) { WATER_REFL.on.value = enabled ? 1 : 0; for (const r of WATER_REFL.nodes) r.target.visible = !!enabled; } };
+  return { setQuality(q) { const s = WATER_REFL.scale = q === 'ultra' ? 1.0 : 0.5; for (const r of WATER_REFL.nodes) { try { if (r.reflector) r.reflector.resolutionScale = s; } catch (e) {} } },
+    update(enabled) { WATER_REFL.on.value = enabled ? 1 : 0; for (const r of WATER_REFL.nodes) r.target.visible = !!enabled; } };
 }
 // Stage 6 water: 4-wave Gerstner surface with analytic normals plus two scrolling detail normals, screen-space
 // refraction of what lies below, Beer-Lambert absorption over a virtual lakebed depth (the lakes are shallow discs, so
@@ -279,7 +282,7 @@ export function waterMaterial(cx, cz, radius) {
     const p = positionWorld.xz, g = gerst(p, TIME), e = edgeK(p).mul(wLod), rp = ripple(p);
     return positionLocal.add(vec3(g.d.x, g.d.z.negate(), g.d.y.add(rp.h)).mul(e));
   })();
-  const refl = reflector({ resolutionScale: 0.5 });
+  const refl = reflector({ resolutionScale: WATER_REFL.scale || 0.5 });
   WATER_REFL.nodes.push(refl);
   m.userData.reflector = refl;
   m.colorNode = Fn(() => {
@@ -287,7 +290,9 @@ export function waterMaterial(cx, cz, radius) {
     const g = gerst(p, TIME), rp = ripple(p);
     const a = noiseNode(p.mul(0.35).add(vec2(TIME.mul(0.03), TIME.mul(0.017)))).rg.sub(0.5);
     const b = noiseNode(p.mul(0.9).sub(vec2(TIME.mul(0.045), TIME.mul(-0.03)))).gb.sub(0.5);
-    const det = a.mul(0.22).add(b.mul(0.14)).mul(mix(0.4, 1.0, HIQ));
+    // Ultra: a third, finer ripple normal layer scrolling across the other two
+    const c3 = noiseNode(p.mul(2.3).add(vec2(TIME.mul(-0.07), TIME.mul(0.05)))).rb.sub(0.5);
+    const det = a.mul(0.22).add(b.mul(0.14)).add(c3.mul(0.12).mul(ULTRA)).mul(mix(0.4, 1.0, HIQ));
     const N = normalize(vec3(g.n.x.mul(e).add(det.x).add(rp.dir.x.mul(rp.slope).negate()), 1.0, g.n.z.mul(e).add(det.y).add(rp.dir.y.mul(rp.slope).negate())));
     const V = normalize(cameraPosition.sub(positionWorld));
     const NV = max(dot(N, V), 0.0), fres = float(0.02).add(float(0.98).mul(pow(float(1).sub(NV), 5.0)));
@@ -323,7 +328,11 @@ export function waterMaterial(cx, cz, radius) {
     const band = smoothstep(0.0, 0.08, lap).mul(smoothstep(0.35, 0.1, lap)).mul(smoothstep(0.85, 0.97, r));
     const crest = smoothstep(0.05, 0.068, g.d.y).mul(e).mul(0.3);
     const foam = max(max(shore, band.mul(0.6)), crest).mul(smoothstep(0.35, 0.7, fn.mul(0.6).add(fn2.mul(0.4)).add(shore.mul(0.3)))).add(abs(rp.h).mul(25.0).mul(WATER_RIPPLE).mul(0.4)).clamp(0, 1);
-    col.assign(mix(col, vec3(0.88, 0.92, 0.95), foam.mul(0.8)));
+    // Ultra: a wider lacy foam fringe along the bank (cellular-looking from two noise octaves) that breathes with the waves
+    const lace = smoothstep(0.55, 0.72, fn2.mul(0.7).add(noiseNode(p.mul(5.5).add(TIME.mul(0.05))).g.mul(0.3)));
+    const fringe = float(1).sub(smoothstep(0.0, 0.22, gap)).mul(smoothstep(0.7, 0.9, r)).mul(lace).mul(sin(TIME.mul(0.9).add(r.mul(14.0))).mul(0.25).add(0.75));
+    const foamU = max(foam, fringe.mul(ULTRA));
+    col.assign(mix(col, vec3(0.88, 0.92, 0.95), foamU.mul(0.8)));
     return vec4(col, smoothstep(0.0, 0.06, gap).mul(0.25).add(0.75));
   })();
   return m;

@@ -83,6 +83,19 @@ export function setShadows(renderer, dirLight, on, quality = 'high') {
   dirLight.shadow.bias = quality === 'low' ? -0.0004 : -0.00015;
   dirLight.shadow.radius = quality === 'low' ? 2 : 4;
   dirLight.shadow.blurSamples = quality === 'low' ? 8 : 16;
+  // Ultra: 4096 px cascades (2048 on High), softer PCF and a longer shadow distance. Map sizes are read every shadow
+  // render, so cascades resize in place.
+  const csm = CASCADE.csm;
+  if (csm) {
+    const u = quality === 'ultra', cs = u ? 4096 : 2048;
+    if (CASCADE.baseFar === undefined) CASCADE.baseFar = csm.maxFar;
+    csm.maxFar = u ? 480 : CASCADE.baseFar;
+    for (const l of (csm.lights || [])) {
+      if (l.shadow.mapSize.x !== cs) l.shadow.mapSize.set(cs, cs);
+      l.shadow.radius = u ? 5 : 4; l.shadow.blurSamples = u ? 24 : 16;
+    }
+    try { csm.updateFrustums && csm.camera && csm.updateFrustums(); } catch (e) { console.warn('[webgpu] CSM resize', e); }
+  }
 }
 export function tuneLights(lights, quality) {
   lights.hemi.intensity = quality === 'low' ? 1.2 : 0.95;

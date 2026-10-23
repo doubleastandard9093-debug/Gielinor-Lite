@@ -109,8 +109,10 @@ export function updateGpuExtras(dt, now, p, q) {
 // and a "grass allowed" mask from a baked texture (no roads, sand, cobbles, water or buildings), and applies wind and
 // trampling by the same pushers the WebGL grass uses. No per-frame CPU work besides two uniforms.
 // ---------------------------------------------------------------------------
-let grass = null;
+let grass = null, grassU = null, groundTex = null;
 const G_ORIGIN = uniform(new THREE.Vector2()), G_ON = uniform(1);
+// Ultra field: a second, denser and wider grid (own origin, gusting wind), built the first time Ultra is picked
+const GU_ORIGIN = uniform(new THREE.Vector2()), GU_ON = uniform(0), GU = { SIDE: 600, S: 0.19 };
 function bakeGround() {
   const R = 512, H = WORLD_HALF, data = new Uint16Array(R * R * 4), toH = THREE.DataUtils.toHalfFloat;
   const t0 = performance.now();
@@ -143,8 +145,16 @@ function bladeGeometry() {
 function initGrass() {
   if (/nograss/.test(location.search)) return;
   const gpu = BACKEND.name === 'WebGPU';
-  const SIDE = gpu ? 300 : 180, S = gpu ? 0.26 : 0.34, COUNT = SIDE * SIDE, HALF = SIDE * S / 2;
-  const ground = bakeGround(), HW = WORLD_HALF;
+  grass = makeGrass(gpu ? 300 : 180, gpu ? 0.26 : 0.34, G_ORIGIN, G_ON, false);
+  GPU_STATS.grass = grass.count;
+}
+function initUltraGrass() {
+  if (grassU || /nograss/.test(location.search) || !ctx) return;
+  try { grassU = makeGrass(GU.SIDE, GU.S, GU_ORIGIN, GU_ON, true); } catch (e) { console.warn('[webgpu] ultra grass unavailable', e); grassU = false; }
+}
+function makeGrass(SIDE, S, G_ORIGIN, G_ON, gust) {
+  const COUNT = SIDE * SIDE, HALF = SIDE * S / 2;
+  const ground = groundTex || (groundTex = bakeGround()), HW = WORLD_HALF;
   const mask = TERRAIN_MASK.tex;
   const pushU = uniformArray(PUSH.value, 'vec4');
   const raw = attribute('position', 'vec3');
@@ -165,6 +175,10 @@ function initGrass() {
     const ph = p.x.mul(0.31).add(p.y.mul(0.17));
     v.x.addAssign(sin(TIME.mul(1.6).add(ph)).mul(0.07).add(sin(TIME.mul(3.7).add(ph.mul(2.3))).mul(0.025)).mul(tip).mul(ht).mul(SWAY.mul(0.8).add(0.2)));
     v.z.addAssign(cos(TIME.mul(1.3).add(ph.mul(1.2))).mul(0.05).mul(tip).mul(ht).mul(SWAY.mul(0.8).add(0.2)));
+    if (gust) {   // Ultra: rolling gust fronts sweep across the meadow, bending whole patches together
+      const gw = sin(p.x.mul(0.09).add(p.y.mul(0.05)).sub(TIME.mul(1.1))).mul(0.5).add(0.5);
+      v.x.addAssign(gw.mul(gw).mul(0.16).mul(tip).mul(ht).mul(SWAY)); v.z.addAssign(gw.mul(gw).mul(0.07).mul(tip).mul(ht).mul(SWAY));
+    }
     for (let n = 0; n < 4; n++) {
       const P = pushU.element(n), dv = p.sub(P.xy), dd = length(dv);
       const f = float(1).sub(smoothstep(P.z.mul(0.25), P.z.mul(1.1), dd)).mul(P.w).mul(step(0.0001, P.w));
@@ -182,15 +196,23 @@ function initGrass() {
   m.colorNode = mix(base, tipC, yv.pow(0.8));
   m.emissiveNode = vec3(0.35, 0.5, 0.12).mul(yv.pow(3)).mul(0.04);   // a hint of light through the tips
   if (/gdbg/.test(location.search)) { m.colorNode = varying(vec3(g.y, 0, 0)); m.positionNode = Fn(() => vec3(p.x, g.x.add(0.05), p.y).add(raw.mul(vec3(4, 0.6, 4))))(); }
-  grass = new THREE.InstancedMesh(bladeGeometry(), m, COUNT);
-  grass.frustumCulled = false; grass.castShadow = false; grass.receiveShadow = true; grass.renderOrder = 1;
-  ctx.scene.add(grass);
-  GPU_STATS.grass = COUNT;
+  const mesh = new THREE.InstancedMesh(bladeGeometry(), m, COUNT);
+  mesh.frustumCulled = false; mesh.castShadow = false; mesh.receiveShadow = true; mesh.renderOrder = 1;
+  ctx.scene.add(mesh);
+  return mesh;
 }
 export function updateGrassField(p, q) {
   if (!grass) return;
   const S = BACKEND.name === 'WebGPU' ? 0.26 : 0.34;
   G_ORIGIN.value.set(Math.round(p.x / S) * S, Math.round(p.z / S) * S);
-  G_ON.value = q === 'low' || inCave(p.x, p.z) ? 0 : 1;
+  const ultra = q === 'ultra' && !inCave(p.x, p.z);
+  if (ultra && grassU === null) initUltraGrass();
+  const useU = ultra && !!grassU;
+  G_ON.value = q === 'low' || inCave(p.x, p.z) || useU ? 0 : 1;
   grass.visible = G_ON.value > 0;
+  if (grassU) {
+    GU_ON.value = useU ? 1 : 0; grassU.visible = useU;
+    if (useU) GU_ORIGIN.value.set(Math.round(p.x / GU.S) * GU.S, Math.round(p.z / GU.S) * GU.S);
+    GPU_STATS.grass = useU ? grassU.count : grass.count;
+  }
 }

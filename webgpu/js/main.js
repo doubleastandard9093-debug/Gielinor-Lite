@@ -131,7 +131,7 @@ function giveXP(skill, amount) {
 // Low = plain render at a lower resolution for slower phones.
 const gfx = { quality: 'high', auto: true, slowFrames: 0, frames: 0, sum: 0 };
 function applyGfx() {
-  gfx.auto = player.settings.gfx !== 'high' && player.settings.gfx !== 'low';
+  gfx.auto = player.settings.gfx !== 'high' && player.settings.gfx !== 'low' && player.settings.gfx !== 'ultra';
   gfx.quality = gfx.auto && gfx.autoLow ? 'low' : resolveQuality(player.settings.gfx);
   renderer.setPixelRatio(pixelRatioFor(gfx.quality));
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -141,6 +141,8 @@ function applyGfx() {
   renderer.toneMappingExposure = gfx.quality === 'low' ? 1.12 : 1.18;
   GRADE.sat.value = gfx.quality === 'low' ? 1.12 : 1.5; post.needsUpdate(); setGpuQuality(gfx.quality);
   sky.setQuality(gfx.quality);
+  // Ultra (WebGPU release only): full-res GTAO with more samples, full-res water reflections, 4096 px cascades out to 480 m, dense gusting grass
+  try { post.setQuality && post.setQuality(gfx.quality); waterRefl.setQuality && waterRefl.setQuality(gfx.quality); } catch (e) { console.warn('[webgpu] ultra setup', e); }
   setDecorQuality(gfx.quality); setVfxQuality(gfx.quality);
   SWAY.value = gfx.quality === 'low' ? 0 : 1;
   setLodRange(gfx.quality);
@@ -152,7 +154,7 @@ function applyGfx() {
   lightBase = null;
 }
 function gfxLabel() {
-  return player.settings.gfx === 'high' ? 'High' : player.settings.gfx === 'low' ? 'Low' : `Auto (${gfx.quality === 'low' ? 'Low' : 'High'})`;
+  return player.settings.gfx === 'ultra' ? 'Ultra' : player.settings.gfx === 'high' ? 'High' : player.settings.gfx === 'low' ? 'Low' : `Auto (${gfx.quality === 'low' ? 'Low' : 'High'})`;
 }
 // Auto mode on phones: if frames stay slow after loading, drop to Low once.
 function watchFrameRate(dt) {
@@ -170,7 +172,7 @@ function watchFrameRate(dt) {
 function shadowsOn() {
   if (gfx.quality === 'low') return false;
   // Default: on for desktop and whenever High is chosen explicitly (console/PC target); phones on Auto start without.
-  return player.settings.shadows === null || player.settings.shadows === undefined ? (!IS_TOUCH || player.settings.gfx === 'high') : !!player.settings.shadows;
+  return player.settings.shadows === null || player.settings.shadows === undefined ? (!IS_TOUCH || player.settings.gfx === 'high' || player.settings.gfx === 'ultra') : !!player.settings.shadows;
 }
 
 // ---------------------------------------------------------------------------
@@ -488,7 +490,7 @@ function setting(act) {
     if (gfx.quality === 'low') { log('Shadows are off on Low graphics. Switch to High to use them.', 'warn'); }
     else { s.shadows = !shadowsOn(); setShadows(renderer, dirLight, s.shadows, gfx.quality); }
   }
-  else if (act === 'gfx') { s.gfx = s.gfx === 'high' ? 'low' : s.gfx === 'low' ? null : 'high'; gfx.autoLow = false; applyGfx(); log(`Graphics: ${gfxLabel()}.`, 'game'); }
+  else if (act === 'gfx') { s.gfx = s.gfx === 'high' ? 'ultra' : s.gfx === 'ultra' ? 'low' : s.gfx === 'low' ? null : 'high'; gfx.autoLow = false; applyGfx(); log(`Graphics: ${gfxLabel()}.`, 'game'); }
   else if (act === 'retaliate') s.autoRetaliate = !s.autoRetaliate;
   else if (act === 'run') toggleRun();
   else if (act === 'autoloot') s.autoLoot = !s.autoLoot;

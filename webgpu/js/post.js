@@ -98,6 +98,7 @@ export function createPost(renderer, scene, camera) {
   post.outputNode = graded;
   return {
     GRADE,
+    setQuality(q) { const u = q === 'ultra'; try { aoPass.resolutionScale = u ? 1.0 : 0.5; aoPass.samples.value = u ? 24 : 16; aoPass.radius.value = u ? 1.15 : 0.9; } catch (e) { console.warn('[webgpu] AO quality', e); } },
     gtao: { set enabled(v) { aoOn.value = v ? 1 : 0; }, get enabled() { return aoOn.value > 0.5; }, node: aoPass },
     bloom: bl,
     render() { post.render(); },
