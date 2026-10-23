@@ -495,6 +495,8 @@ export function createInventoryUI(api) {
       ${t('dpad', 'On-screen D-pad', s.showDpad)}
       <button class="toggle" data-act="camera">Reset camera</button>
       <div class="craftskill">Sound</div>
+      ${t('sfx', 'Game sounds', s.sfx !== false)}
+      ${s.sfx !== false ? v('sfxvolume', 'Game volume', Math.round((s.sfxVolume ?? 0.5) * 100) + '%') + t('ambience', 'Town & wild ambience', s.ambience !== false) : ''}
       ${t('uisound', 'Interface sounds', !!s.uiSound)}
       ${s.uiSound ? v('uivolume', 'Volume', Math.round((s.uiVolume || 0.5) * 100) + '%') : ''}
       <div class="craftskill">Gameplay</div>

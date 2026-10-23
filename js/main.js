@@ -7,6 +7,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { updateDay, DAY, dayLabel } from './daycycle.js';
 import { poseGait, tailSway } from './gait.js';
+import { updateSound, soundStats } from './sound.js';
 import { PUSH } from './models.js';
 import { initVfx, updateVfx, addFire, removeFireVfx, burst, setVfxQuality, setLeafSources } from './vfx.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
@@ -516,6 +517,9 @@ function setting(act) {
   else if (act === 'ao') { s.ao = s.ao === false; applyGfx(); }
   else if (act === 'timeofday') { s.timeOfDay = (s.timeOfDay || 'cycle') === 'cycle' ? 'day' : 'cycle'; log(s.timeOfDay === 'day' ? 'Time of day: always morning.' : `Time of day: day/night cycle (it is ${dayLabel()} now).`, 'game'); }
   else if (act === 'nameplates') s.nameplates = s.nameplates === false;
+  else if (act === 'sfx') s.sfx = s.sfx === false;
+  else if (act === 'sfxvolume') { const opts = [0.25, 0.5, 1]; s.sfxVolume = opts[(opts.indexOf(s.sfxVolume ?? 0.5) + 1) % opts.length]; }
+  else if (act === 'ambience') s.ambience = s.ambience === false;
   else if (act === 'uisound') s.uiSound = !s.uiSound;
   else if (act === 'uivolume') { const opts = [0.25, 0.5, 1]; s.uiVolume = opts[(opts.indexOf(s.uiVolume || 0.5) + 1) % opts.length]; }
   else if (act === 'dpad') { s.showDpad = !s.showDpad; inputCtl.setDpadVisible(s.showDpad); }
@@ -2055,6 +2059,7 @@ function animate(now) {
   const running = player.settings.run && player.runEnergy > 0;
   routeThroughDoors();
   const moved = crossing ? 0 : updatePlayer(pm, keys, dt, running, rig.yaw);
+  updateSound(pm, dt, player.settings, DAY.night < 0.5);
   updateCrossing(dt);
   if (running && moved > 0) {
     player.runEnergy = Math.max(0, player.runEnergy - moved * 0.7);
@@ -2125,7 +2130,7 @@ document.addEventListener('pointerdown', e => {
 window.gielinor = {
   gfx, terrainHeight, applyLook() { applyEquipmentLook(pm, player.equipment); }, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
   renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
-  get queued() { return queuedAbility; }, cooldowns, buffs,
+  soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
