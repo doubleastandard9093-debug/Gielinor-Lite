@@ -317,6 +317,8 @@ export function faceToward(pm, x, z) {
 // Returns distance travelled this frame (used to drain run energy).
 // Skilling poses (t: 0..1 through one action). Each fully overrides the arms and torso for that action.
 const ease = k => k * k * (3 - 2 * k), seg = (t, a, b) => ease(Math.min(1, Math.max(0, (t - a) / (b - a))));
+// impact pulse: a quick damped jolt starting at t0 (1 at contact, rings down over len)
+const pulse = (t, t0, len = 0.18) => t < t0 || t > t0 + len ? 0 : Math.exp(-((t - t0) / len) * 4) * Math.cos(((t - t0) / len) * Math.PI * 2.5);
 // Lean the torso about the hips (not the feet), like the agility rig does.
 function hipPivot(p, extraY = 0) { const H = 0.9, bx = p.body.rotation.x, bz = p.body.rotation.z;
   p.body.position.set(H * Math.sin(bz), H * (1 - Math.cos(bx) * Math.cos(bz)) + extraY, -H * Math.sin(bx)); }
@@ -334,6 +336,9 @@ const SKILL_POSES = {
       elbow(p.rightArm).rotation.x = -1.2 * ch * (1 - cut) - 0.2;
       p.body.rotation.y = dir * (-0.45 * ch + 0.85 * cut) * hold; p.body.rotation.x = 0.04 + 0.16 * cut * hold;
     }
+    // contact: the blade jars back a touch, the body settles through the follow-through
+    const imp = pulse(t, 0.5, 0.2); p.rightArm.rotation.x -= 0.22 * imp; elbow(p.rightArm).rotation.x -= 0.12 * imp; p.body.rotation.x += 0.05 * imp;
+    p.rightArm.rotation.y = -0.25 * cut * hold; // wrist rolls the edge over through the cut
     p.leftArm.rotation.x = -0.5 * hold - 0.2; p.leftArm.rotation.z = -0.25; elbow(p.leftArm).rotation.x = -0.9;   // guard hand up
     const lunge = Math.sin(Math.PI * seg(t, 0.1, 0.85));
     p.leftLeg.rotation.x = -0.45 * lunge; knee(p.leftLeg).rotation.x = 0.35 * lunge; p.rightLeg.rotation.x = 0.3 * lunge; knee(p.rightLeg).rotation.x = 0.2 * lunge;
@@ -341,22 +346,32 @@ const SKILL_POSES = {
   },
   // two-handed axe: wind back over the right shoulder, drive across into the trunk, follow through
   chop(p, t, knee, elbow) {
-    const w = seg(t, 0, 0.35), s = seg(t, 0.35, 0.55), r = seg(t, 0.6, 1);
-    const twist = -0.7 * w + 1.1 * s - 0.4 * r;
-    p.body.rotation.y = twist; p.body.rotation.x = 0.12 + 0.12 * s * (1 - r);
-    p.rightArm.rotation.x = -1.2 - 0.9 * w + 0.7 * s; p.rightArm.rotation.z = 0.3 * w - 0.2 * s;
-    p.leftArm.rotation.x = -1.0 - 0.8 * w + 0.6 * s; p.leftArm.rotation.z = -0.5 + 0.2 * w;
-    elbow(p.rightArm).rotation.x = -0.9 + 0.6 * s; elbow(p.leftArm).rotation.x = -1.3 + 0.7 * s;
-    knee(p.leftLeg).rotation.x = 0.18; knee(p.rightLeg).rotation.x = 0.18; p.leftLeg.rotation.z = 0.08; p.rightLeg.rotation.z = -0.08;
+    // a small anticipation dip, weight onto the back foot for the wind-up, drive the hips through onto the front foot,
+    // the axe bites (arms jar back), then recover. The head keeps its eyes on the cut.
+    const a = Math.sin(Math.PI * seg(t, 0, 0.12)) * 0.5, w = seg(t, 0.05, 0.38), s = seg(t, 0.38, 0.52), r = seg(t, 0.62, 1), imp = pulse(t, 0.52, 0.2);
+    const twist = -0.8 * w + 1.2 * s - 0.4 * r - 0.08 * imp;
+    p.body.rotation.y = twist; p.body.rotation.x = 0.1 + 0.06 * a + 0.16 * s * (1 - r) + 0.04 * imp; p.body.rotation.z = -0.05 * w + 0.07 * s * (1 - r);
+    p.rightArm.rotation.x = -1.2 - 0.95 * w + 0.75 * s + 0.2 * imp; p.rightArm.rotation.z = 0.3 * w - 0.2 * s;
+    p.leftArm.rotation.x = -1.0 - 0.85 * w + 0.65 * s + 0.18 * imp; p.leftArm.rotation.z = -0.5 + 0.2 * w;
+    elbow(p.rightArm).rotation.x = -0.9 + 0.6 * s - 0.15 * imp; elbow(p.leftArm).rotation.x = -1.3 + 0.7 * s - 0.15 * imp;
+    const back = w * (1 - s), front = s * (1 - r);
+    p.leftLeg.rotation.x = -0.18 * front + 0.05 * back; p.rightLeg.rotation.x = 0.12 * front - 0.06 * back;
+    knee(p.leftLeg).rotation.x = 0.16 + 0.16 * front + 0.08 * a + 0.06 * imp; knee(p.rightLeg).rotation.x = 0.16 + 0.14 * back + 0.08 * a;
+    p.leftLeg.rotation.z = 0.08; p.rightLeg.rotation.z = -0.08;
+    if (p.headG) { p.headG.rotation.y = -twist * 0.65; p.headG.rotation.x = 0.08 + 0.1 * s * (1 - r); }
   },
   // pickaxe: raise overhead with both hands, bring it down with the whole back, knees absorbing the impact
   mine(p, t, knee, elbow) {
-    const up = seg(t, 0, 0.4), dn = seg(t, 0.4, 0.58), r = seg(t, 0.65, 1), hit = Math.max(0, 1 - Math.abs(t - 0.58) * 8);
-    const a = -0.7 - 2.1 * up + 2.2 * dn * (1 - r * 0.2);
-    p.rightArm.rotation.x = a; p.leftArm.rotation.x = a + 0.1; p.leftArm.rotation.z = -0.25; p.rightArm.rotation.z = 0.15;
-    elbow(p.rightArm).rotation.x = -0.4 - 0.6 * up * (1 - dn); elbow(p.leftArm).rotation.x = -0.5 - 0.6 * up * (1 - dn);
-    p.body.rotation.x = -0.12 * up + 0.42 * dn - 0.2 * r; p.body.rotation.y = 0;
-    const k = 0.2 + 0.35 * dn * (1 - r) + hit * 0.1; knee(p.leftLeg).rotation.x = k; knee(p.rightLeg).rotation.x = k; p.leftLeg.rotation.x = -k * 0.5; p.rightLeg.rotation.x = -k * 0.3;
+    // dip, raise overhead with the back arching, whip down with the whole back, the pick rings off the rock
+    // (arms bounce, knees take the shock), lever it free and reset.
+    const a = Math.sin(Math.PI * seg(t, 0, 0.1)) * 0.5, up = seg(t, 0.06, 0.4), dn = seg(t, 0.4, 0.56), r = seg(t, 0.66, 1), imp = pulse(t, 0.56, 0.24);
+    const lever = Math.sin(Math.PI * seg(t, 0.6, 0.85));
+    const ar = -0.7 + 0.15 * a - 2.15 * up + 2.25 * dn * (1 - r * 0.2) - 0.3 * imp + 0.15 * lever;
+    p.rightArm.rotation.x = ar; p.leftArm.rotation.x = ar + 0.1; p.leftArm.rotation.z = -0.25; p.rightArm.rotation.z = 0.15;
+    elbow(p.rightArm).rotation.x = -0.4 - 0.6 * up * (1 - dn) - 0.2 * imp; elbow(p.leftArm).rotation.x = -0.5 - 0.6 * up * (1 - dn) - 0.2 * imp;
+    p.body.rotation.x = 0.05 * a - 0.16 * up + 0.46 * dn - 0.2 * r - 0.06 * lever + 0.05 * imp; p.body.rotation.y = 0.06 * up - 0.04 * dn; p.body.rotation.z = 0;
+    const k = 0.2 + 0.1 * a + 0.35 * dn * (1 - r) + 0.12 * Math.abs(imp); knee(p.leftLeg).rotation.x = k; knee(p.rightLeg).rotation.x = k * 0.9; p.leftLeg.rotation.x = -k * 0.5; p.rightLeg.rotation.x = -k * 0.3;
+    if (p.headG) { p.headG.rotation.x = 0.15 + 0.25 * dn * (1 - r) - 0.2 * up * (1 - dn); p.headG.rotation.y = 0; }
   },
   // rod or net held out over the water, with small jigs and the occasional strike
   fish(p, t, knee, elbow, pm) {
@@ -456,6 +471,13 @@ export function updatePlayer(pm, keys, dt, running, camYaw) {
   pm.mesh.rotation.y += diff * Math.min(1, dt * 14);
   pm.turnLeft = diff;
 
+  // undo last frame's foot-planting offsets so the poses below (some of which ease from the current value) never see them
+  if (pm.plantOff) { const o = pm.plantOff, q = pm.parts; pm.mesh.position.y += o[0]; q.leftLeg.rotation.x += o[1]; q.rightLeg.rotation.x += o[2];
+    q.leftLeg.userData.knee.rotation.x -= o[1] * 2; q.rightLeg.userData.knee.rotation.x -= o[2] * 2; q.body.rotation.z -= o[3]; o.fill(0); }
+  // Snapshot the rig so a change of state (start/stop walking, start or finish a skill) can cross-fade instead of snapping.
+  const JOINTS = pm.joints ??= (() => { const q = pm.parts, l = [q.body, q.leftArm, q.rightArm, q.leftLeg, q.rightLeg, q.leftArm.userData.elbow, q.rightArm.userData.elbow, q.leftLeg.userData.knee, q.rightLeg.userData.knee]; if (q.headG) l.push(q.headG); return l; })();
+  const snap = pm.jointSnap ??= new Float32Array(JOINTS.length * 3);
+  for (let i = 0; i < JOINTS.length; i++) { const r = JOINTS[i].rotation; snap[i * 3] = r.x; snap[i * 3 + 1] = r.y; snap[i * 3 + 2] = r.z; }
   // Animation: walk/run cycle blended by speed (pm.runK) and eased in/out (pm.moveK), with slope adaptation
   const p = pm.parts;
   const knee = l => l.userData.knee, elbow = a => a.userData.elbow;
@@ -529,6 +551,27 @@ export function updatePlayer(pm, keys, dt, running, camYaw) {
       p.rightArm.rotation.x += (0 - p.rightArm.rotation.x) * k;
       elbow(p.rightArm).rotation.x += (-0.25 - elbow(p.rightArm).rotation.x) * k;
       p.leftArm.rotation.z += (-0.05 - p.leftArm.rotation.z) * k; p.rightArm.rotation.z += (0.05 - p.rightArm.rotation.z) * k;
+    }
+  }
+  // cross-fade: for a short while after the state changes, ease each joint from last frame's pose toward the new one
+  { const st = pm.moving ? (running ? 'run' : 'walk') : pm.actionAnim > 0 ? pm.actionKind : 'idle';
+    if (st !== pm.animState) { if (pm.animState !== undefined) pm.blendT = 0.28; pm.animState = st; }
+    if (pm.blendT > 0) { pm.blendT -= dt; const a = Math.min(1, dt * 11 + Math.max(0, 1 - pm.blendT / 0.28) * 0.15);
+      for (let i = 0; i < JOINTS.length; i++) { const r = JOINTS[i].rotation; r.set(snap[i * 3] + (r.x - snap[i * 3]) * a, snap[i * 3 + 1] + (r.y - snap[i * 3 + 1]) * a, snap[i * 3 + 2] + (r.z - snap[i * 3 + 2]) * a); } } }
+  // foot planting: standing (or skilling) on a slope, the body drops to the lower foot and the uphill leg bends to
+  // reach the ground, so neither foot floats or sinks. While walking it fades out (the stride already handles it).
+  { const plant = 1 - Math.min(1, pm.moveK ?? 0), f = pm.mesh.rotation.y, rx = Math.cos(f) * 0.13, rz = -Math.sin(f) * 0.13, fx = Math.sin(f) * 0.04, fz = Math.cos(f) * 0.04;
+    const hL = terrainHeight(pos.x - rx + fx, pos.z - rz + fz), hR = terrainHeight(pos.x + rx + fx, pos.z + rz + fz), gc = terrainHeight(pos.x, pos.z);
+    const low = Math.min(hL, hR), drop = Math.min(0.25, gc - low) * plant;
+    pm.plantY = (pm.plantY ?? 0) + (drop - (pm.plantY ?? 0)) * Math.min(1, dt * 10);
+    if (plant > 0.01) {
+      const o = pm.plantOff ??= new Float32Array(4);
+      pm.mesh.position.y -= pm.plantY; o[0] = pm.plantY;
+      [[p.leftLeg, hL, 1], [p.rightLeg, hR, 2]].forEach(([leg, h, i]) => {
+        const dh = Math.max(0, Math.min(0.3, h - low)) * plant, ang = Math.acos(Math.max(0.3, 1 - dh / 0.78));
+        leg.rotation.x -= ang; knee(leg).rotation.x += ang * 2; o[i] = ang;
+      });
+      o[3] = Math.max(-0.12, Math.min(0.12, (hR - hL) * 0.6)) * plant; p.body.rotation.z += o[3]; // hips tilt with the ground
     }
   }
   // cape: damped spring that flares back with speed, lags behind turns and flutters while running
