@@ -85,6 +85,12 @@ export function createPlayer(scene) {
   const hair = new THREE.Group(); headG.add(hair);
   const cap = mesh(new THREE.SphereGeometry(0.275, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.56), hairMat, 0, 0.27, -0.02, hair); cap.rotation.x = -0.3;
   const fringe = mesh(capsule(0.06, 0.26), hairMat, 0, 0.42, 0.18, hair); fringe.rotation.z = Math.PI / 2;
+  // back of the head: the cap only reaches the crown, so a nape shell covers the back and sides down to the neck
+  // (double-sided so no gap shows looking up from behind), tapering in at the bottom like a short cut.
+  hairMat.side = THREE.DoubleSide;
+  const napeG = new THREE.SphereGeometry(0.268, 20, 8, Math.PI * 1.5 - 1.45, 2.9, Math.PI * 0.3, Math.PI * 0.42);
+  { const q = napeG.attributes.position; for (let i = 0; i < q.count; i++) { const y = q.getY(i), k = y < 0 ? 1 + y * 0.9 : 1; q.setX(i, q.getX(i) * k); q.setZ(i, q.getZ(i) * (y < 0 ? 1 + y * 0.5 : 1)); } napeG.computeVertexNormals(); }
+  mesh(napeG, hairMat, 0, 0.255, -0.012, hair);
 
   // Arms and legs hang from pivots at the shoulder/hip so they can swing; elbows and knees bend.
   function arm(x) {

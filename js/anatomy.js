@@ -384,6 +384,9 @@ function hairGeos(look, S) {
   const capG = (r, cover = 0.56) => { const g = new THREE.SphereGeometry(r, S + 4, 12, 0, Math.PI * 2, 0, Math.PI * cover); g.deleteAttribute('uv'); const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const k = 1 + 0.06 * snoise(p.getX(i) * 30, p.getY(i) * 30, p.getZ(i) * 30, 2); p.setXYZ(i, p.getX(i) * k, p.getY(i) * k, p.getZ(i) * k); } g.computeVertexNormals(); return g; };
   if (st === 'curly') { for (let i = 0; i < 22; i++) { const a = i * 2.4, e = 0.25 + (i % 5) * 0.2; hp(prim.sphere(0.06, 8, 6), Math.cos(a) * Math.cos(e) * 0.25, 0.27 + Math.sin(e) * 0.24, Math.sin(a) * Math.cos(e) * 0.24 - 0.02); } return out; }
   hp(capG(0.27, st === 'cap' ? 0.5 : 0.56), 0, 0.27, -0.015, -0.3);
+  if (st !== 'long') { const ng = new THREE.SphereGeometry(0.262, S + 4, 8, Math.PI * 1.5 - 1.45, 2.9, Math.PI * 0.3, Math.PI * 0.4); ng.deleteAttribute('uv');
+    const q = ng.attributes.position; for (let i = 0; i < q.count; i++) { const y = q.getY(i), k = y < 0 ? 1 + y * 0.9 : 1; q.setX(i, q.getX(i) * k); q.setZ(i, q.getZ(i) * (y < 0 ? 1 + y * 0.5 : 1)); }
+    ng.computeVertexNormals(); hp(ng, 0, 0.25, -0.01); } // nape: covers the back of the head below the cap
   if (st === 'short' || st === 'cap') hp(sq(prim.capsule(0.05, 0.24, 3, 10), 1, 1, 0.7), 0, 0.43, 0.17, 0, 0, Math.PI / 2 + 0.15);
   if (st === 'spiky') for (let i = 0; i < 9; i++) { const a = (i / 9) * Math.PI * 2; hp(prim.cone(0.05, 0.16, 6), Math.cos(a) * 0.15, 0.5, Math.sin(a) * 0.15 - 0.03, Math.sin(a) * 0.7, 0, -Math.cos(a) * 0.7); }
   if (st === 'long') { hp(sq(lathe([[0.25, 0], [0.27, -0.15], [0.24, -0.38], [0.2, -0.42]], S), 1, 1, 0.75), 0, 0.3, -0.07); }
