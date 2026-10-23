@@ -130,8 +130,8 @@ export function createSky(scene) {
       const T = float(1).toVar(), lit = vec3(0).toVar();
       const sunC = mix(mix(vec3(1.0, 0.97, 0.92), sunCol, 0.35).mul(1.08), vec3(1.0, 0.62, 0.36).mul(1.2), GOLD);
       const shadeC = mix(mix(horizon, top, 0.5).mul(vec3(0.6, 0.65, 0.78)), vec3(0.6, 0.38, 0.52), GOLD.mul(0.85));
-      const HB = 1.0, HT = 1.38, NS = 12;
-      const hh = max(h, 0.04), t0 = float(HB).div(hh), t1 = min(float(HT).div(hh), t0.add(3.0)), dt = t1.sub(t0).div(NS);
+      const HB = 1.0, HT = 1.38, NS = 24, NSk = mix(12.0, 24.0, ULTRA);   // Ultra: twice the march steps
+      const hh = max(h, 0.04), t0 = float(HB).div(hh), t1 = min(float(HT).div(hh), t0.add(3.0)), dt = t1.sub(t0).div(NSk);
       const jit = fract(sin(dot(screenCoordinate.xy, vec2(12.9898, 78.233))).mul(43758.5453));
       const hg = mix(1.0, pow(sd, 6.0).mul(1.6).add(1.0), 0.8);
       const dens = (p) => { const yf = p.y.sub(HB).div(HT - HB); const uv = p.xz.mul(0.16).add(wind);
@@ -141,10 +141,14 @@ export function createSky(scene) {
       Loop(NS, ({ i }) => {
         const p = d.mul(t0.add(float(i).add(jit).mul(dt)));
         const D = dens(p);
-        const den = clamp(D.d.sub(noiseL(D.uv.mul(6.0).add(D.yf.mul(0.25)).add(0.7)).b.mul(0.25).mul(float(1).sub(D.d))), 0, 1).mul(dt).mul(7.0);
+        If(float(i).greaterThanEqual(NSk), () => { Break(); });
+        // erosion: Ultra adds a second, finer octave so cloud edges are wispy instead of soft blobs
+        const ero = noiseL(D.uv.mul(6.0).add(D.yf.mul(0.25)).add(0.7)).b.mul(0.25).add(noiseL(D.uv.mul(15.0).add(TIME.mul(0.004))).r.mul(0.14).mul(ULTRA));
+        const den = clamp(D.d.sub(ero.mul(float(1).sub(D.d))), 0, 1).mul(dt).mul(7.0);
         If(den.greaterThan(0.002), () => {
           const od = float(0).toVar();
           for (let k = 1; k <= 2; k++) { const Q = dens(p.add(sunDir.mul(0.07 * k))); od.addAssign(Q.d.mul(Q.shape)); }
+          { const Q = dens(p.add(sunDir.mul(0.24))); od.addAssign(Q.d.mul(Q.shape).mul(ULTRA).mul(0.8)); }   // Ultra: a far light sample for self-shadowed bases
           const beer = exp(od.mul(-1.6)), powder = float(1).sub(exp(den.mul(-6.0)));
           const sh = beer.mul(mix(1.0, powder, 0.5)).mul(D.yf.mul(0.4).add(0.6));
           const Lc = mix(shadeC, sunC.mul(hg), sh).add(sunCol.mul(pow(sd, 8.0)).mul(beer).mul(0.5)).add(vec3(1.0, 0.45, 0.18).mul(pow(sd, 3.0)).mul(beer).mul(GOLD).mul(0.7));
@@ -156,6 +160,17 @@ export function createSky(scene) {
       const c = float(1).sub(T).mul(smoothstep(0.0, 0.2, h));
       const cc = lit.div(max(float(1).sub(T), 1e-3)).mul(mix(vec3(1), vec3(0.16, 0.2, 0.32), night));
       col.assign(mix(col, cc, c.mul(0.92)));
+      If(ULTRA.greaterThan(0.5), () => {
+        const cu = d.xz.div(max(h, 0.06)).mul(0.09).add(vec2(TIME.mul(0.004), TIME.mul(0.0015)));
+        const ci = smoothstep(0.55, 0.85, noiseL(cu.mul(vec2(0.35, 2.2))).g.mul(0.6).add(noiseL(cu.mul(1.7)).r.mul(0.4))).mul(smoothstep(0.03, 0.25, h)).mul(float(1).sub(c)).mul(0.45);
+        const cic = mix(mix(vec3(1.0, 0.98, 0.95), vec3(1.0, 0.6, 0.55), GOLD), vec3(0.12, 0.14, 0.22), night).add(sunCol.mul(pow(sd, 10.0)).mul(0.4));
+        col.assign(mix(col, cic, ci));
+        const mw = smoothstep(0.32, 0.0, abs(dot(d, normalize(vec3(0.3, 0.5, -0.81))))).mul(noiseL(d.xz.mul(3.0).add(d.y)).r.mul(0.8).add(0.2));
+        col.addAssign(vec3(0.5, 0.55, 0.75).mul(mw).mul(0.07).mul(night).mul(smoothstep(0.05, 0.35, h)).mul(float(1).sub(c)));
+        const sp2 = floor(d.mul(520.0)), r2 = fract(sin(dot(sp2, vec3(39.3468, 11.135, 83.155))).mul(43758.5453));
+        const tw = sin(TIME.mul(3.0).add(r2.mul(80.0))).mul(0.4).add(0.6);
+        col.addAssign(vec3(0.85, 0.9, 1.0).mul(select(r2.greaterThan(0.9975), tw, float(0))).mul(night).mul(smoothstep(0.05, 0.3, h)).mul(float(1).sub(c)).mul(0.8));
+      });
       const sp = floor(d.mul(260.0)), r = fract(sin(dot(sp, vec3(12.9898, 78.233, 37.719))).mul(43758.5453));
       col.addAssign(vec3(0.9, 0.95, 1.0).mul(select(r.greaterThan(0.9965), float(1), float(0))).mul(night).mul(smoothstep(0.05, 0.3, h)).mul(float(1).sub(c)));
       const md = max(dot(d, sunDir.negate()), 0.0);

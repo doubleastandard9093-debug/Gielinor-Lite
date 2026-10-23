@@ -3,7 +3,7 @@
 // light shafts + saturation + split-tone + vignette grade.
 import * as THREE from 'three';
 import { pass, mrt, output, normalView, directionToColor, colorToDirection, sample, uniform, float, vec2, vec3, vec4, mix, smoothstep, dot, length, select,
-  uv, Fn, Loop, renderOutput, max } from 'three/tsl';
+  uv, Fn, Loop, If, Break, renderOutput, max } from 'three/tsl';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 export const POSTFX = { bloom: null };
@@ -66,7 +66,7 @@ export function createPost(renderer, scene, camera) {
         if (prevA) prevA.apply(this, arguments);
       };
       const vPass = pass(scene, volCam, { depthBuffer: false });
-      vPass.setLayers(layers); vPass.setResolution(+(Qs.get('volres') || 0.25));
+      vPass.setLayers(layers); vPass.setResolution(+(Qs.get('volres') || 0.25)); VOL.pass = vPass;
       const vol = guard(gaussianBlur(vPass, 1.0)).rgb;
       // keep the in-scatter warm/neutral: drive it by luminance, tinted by the light's own hue, so no colour cast leaks in
       const vl = dot(vol, vec3(0.2126, 0.7152, 0.0722));
@@ -77,15 +77,18 @@ export function createPost(renderer, scene, camera) {
   const bl = bloom(vec4(litV, 1), 0.3, 0.45, 0.9);
   POSTFX.bloom = bl;   // strength/threshold are retuned per frame by stage7.js (day/night, cave)
   const hdr = vec4(litV.add(guard(bl).rgb), 1);
-  const GRADE = { sat: uniform(1.12), vig: uniform(0.32), sunUV: uniform(new THREE.Vector2(0.5, 0.8)), shaftK: uniform(0), shaftCol: uniform(new THREE.Color(1, 0.9, 0.7)) };
+  const GRADE = { sat: uniform(1.12), vig: uniform(0.32), sunUV: uniform(new THREE.Vector2(0.5, 0.8)), shaftK: uniform(0), shaftCol: uniform(new THREE.Color(1, 0.9, 0.7)), ultra: uniform(0) };
   const graded = Fn(() => {
     const c = renderOutput(hdr).toVar();
     const vUv = uv();
     // light shafts: march toward the sun gathering bright sky pixels from the scene colour
-    const dl = vUv.sub(GRADE.sunUV).div(24.0), suv = vUv.toVar(), acc = float(0).toVar(), w = float(1).toVar();
-    Loop(24, () => { suv.subAssign(dl); const sc = guard(col.sample(suv)).rgb; acc.addAssign(smoothstep(0.82, 1.0, dot(sc, vec3(0.33))).mul(w)); w.mulAssign(0.95); });
-    const fall = float(1).sub(smoothstep(0.0, 0.75, length(vUv.sub(GRADE.sunUV).mul(vec2(1.6, 1.0)))));
-    c.rgb.addAssign(GRADE.shaftCol.mul(acc.div(24.0)).mul(GRADE.shaftK).mul(fall));
+    // Ultra: 48 finer samples reaching further from the sun (so gaps in tree canopies throw long shafts), a lower
+    // brightness threshold that also catches lit leaf edges, and a stronger, wider falloff
+    const U = GRADE.ultra, NSs = mix(24.0, 48.0, U), decay = mix(0.95, 0.972, U), thr = mix(0.82, 0.7, U);
+    const dl = vUv.sub(GRADE.sunUV).div(NSs).mul(mix(1.0, 1.25, U)), suv = vUv.toVar(), acc = float(0).toVar(), w = float(1).toVar();
+    Loop(48, ({ i }) => { If(float(i).greaterThanEqual(NSs), () => { Break(); }); suv.subAssign(dl); const sc = guard(col.sample(suv)).rgb; acc.addAssign(smoothstep(thr, 1.0, dot(sc, vec3(0.33))).mul(w)); w.mulAssign(decay); });
+    const fall = float(1).sub(smoothstep(0.0, mix(0.75, 1.0, U), length(vUv.sub(GRADE.sunUV).mul(vec2(1.6, 1.0)))));
+    c.rgb.addAssign(GRADE.shaftCol.mul(acc.div(NSs).mul(mix(1.0, 1.6, U))).mul(GRADE.shaftK).mul(fall));
     const l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
     c.rgb.assign(mix(vec3(l), c.rgb, GRADE.sat));
     c.rgb.assign(mix(c.rgb, smoothstep(0.0, 1.0, c.rgb), GRADE.sat.sub(1.12).mul(0.9)));
@@ -98,7 +101,9 @@ export function createPost(renderer, scene, camera) {
   post.outputNode = graded;
   return {
     GRADE,
-    setQuality(q) { const u = q === 'ultra'; try { aoPass.resolutionScale = u ? 1.0 : 0.5; aoPass.samples.value = u ? 24 : 16; aoPass.radius.value = u ? 1.15 : 0.9; } catch (e) { console.warn('[webgpu] AO quality', e); } },
+    setQuality(q) { const u = q === 'ultra'; GRADE.ultra.value = u ? 1 : 0;
+      try { if (VOL.pass && !Qs.has('volres')) VOL.pass.setResolution(u ? 0.5 : 0.25); } catch (e) { console.warn('[webgpu] volume res', e); }
+      try { aoPass.resolutionScale = u ? 1.0 : 0.5; aoPass.samples.value = u ? 24 : 16; aoPass.radius.value = u ? 1.15 : 0.9; } catch (e) { console.warn('[webgpu] AO quality', e); } },
     gtao: { set enabled(v) { aoOn.value = v ? 1 : 0; }, get enabled() { return aoOn.value > 0.5; }, node: aoPass },
     bloom: bl,
     render() { post.render(); },

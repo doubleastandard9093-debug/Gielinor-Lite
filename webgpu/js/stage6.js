@@ -53,7 +53,11 @@ addStage6('volumetric', (c) => {
   VOL.mesh.visible = q !== 'low';
   VOL.mesh.position.set(ctx.camera.position.x, 14, ctx.camera.position.z);
   const gold = DAY.gold || 0, night = DAY.night || 0;
-  VOL.density.value = 0.8 + gold * 0.9 + night * 0.4;
+  const u = q === 'ultra' ? 1 : 0;
+  // Ultra: thicker shafts through the canopy (more in-scatter, strongest at golden hour) and cool moonlit haze at night
+  VOL.density.value = (0.8 + gold * 0.9 + night * 0.4) * (1 + 0.5 * u);
+  VOL.intensity.value = 0.22 + 0.1 * u * (1 - night) + 0.04 * u * night;
+  VOL.tint.value.setRGB(1.0 - 0.35 * night * u, 0.92 - 0.12 * night * u, 0.8 + 0.2 * night * u);
 });
 
 // ---------------------------------------------------------------------------------------------------------------

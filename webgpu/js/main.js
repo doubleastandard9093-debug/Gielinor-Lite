@@ -139,7 +139,7 @@ function applyGfx() {
   // High: AgX filmic tone mapping (wider highlight roll-off, no hue shift on bright skies) with a saturation lift; Low keeps ACES
   renderer.toneMapping = gfx.quality === 'low' ? THREE.ACESFilmicToneMapping : THREE.AgXToneMapping;
   renderer.toneMappingExposure = gfx.quality === 'low' ? 1.12 : 1.18;
-  GRADE.sat.value = gfx.quality === 'low' ? 1.12 : 1.5; post.needsUpdate(); setGpuQuality(gfx.quality);
+  GRADE.sat.value = gfx.quality === 'low' ? 1.12 : 1.5; post.needsUpdate(); setGpuQuality(gfx.quality); post.setQuality(gfx.quality);
   sky.setQuality(gfx.quality);
   setDecorQuality(gfx.quality); setVfxQuality(gfx.quality);
   SWAY.value = gfx.quality === 'low' ? 0 : 1;
