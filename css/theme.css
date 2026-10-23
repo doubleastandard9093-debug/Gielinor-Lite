@@ -293,8 +293,10 @@ button.on, .style.on, .subtabs button.on, .chips button.on, .qtybar button.on, #
 .nameplate .np-hp b { display: block; height: 100%; background: linear-gradient(180deg, #8af06a, #2a9a20); }
 .hpbar { height: 7px; border-radius: 3px; background: linear-gradient(180deg, #5a0a06, #2a0302); box-shadow: 0 0 0 1px rgba(181, 134, 46, .5); overflow: hidden; }
 .hpbar i { background: linear-gradient(180deg, #9af07a, #2fae25 55%, #1a7a12); }
-.splat { font-family: var(--f-num); box-shadow: 0 2px 4px rgba(0, 0, 0, .6); animation: splatIn .18s var(--ease-pop); }
-@keyframes splatIn { from { scale: .4; } to { scale: 1; } }
+.splat { font-family: var(--f-num); box-shadow: 0 2px 4px rgba(0, 0, 0, .6); animation: splatIn .26s cubic-bezier(.2, 1.6, .4, 1); }
+.splat.big { width: 32px; height: 32px; font-size: 16px; margin: -3px 0 0 -3px; box-shadow: 0 0 10px rgba(255, 170, 60, .85), 0 2px 4px rgba(0, 0, 0, .6); animation-name: splatBig; }
+@keyframes splatIn { 0% { scale: 1.7; filter: brightness(2.2); } 60% { scale: .92; } 100% { scale: 1; filter: none; } }
+@keyframes splatBig { 0% { scale: 2.2; filter: brightness(2.6); rotate: -8deg; } 55% { scale: .9; rotate: 3deg; } 100% { scale: 1; filter: none; rotate: 0deg; } }
 
 /* Dialogue: stone frame with a parchment speech panel and a painted portrait */
 #dialogue { padding: 10px; gap: 10px; align-items: stretch; }

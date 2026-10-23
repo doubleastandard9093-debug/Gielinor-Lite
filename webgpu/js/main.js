@@ -19,7 +19,7 @@ import { createWorld, createPileMesh, SPAWN, setDecorQuality, updateDecorChunks,
 import { updateLod, setLodRange, poseHumanoid } from '../../js/anatomy.js';
 import { createCritters } from '../../js/critters.js';
 import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt, moveWithCollision } from '../../js/player.js';
-import { createCameraRig, rotateRig, zoomRig, updateRig } from '../../js/camera.js';
+import { createCameraRig, rotateRig, zoomRig, updateRig, shakeRig } from '../../js/camera.js';
 import { setupInput } from '../../js/input.js';
 import { setupUI } from '../../js/ui.js';
 import { createOverlays } from '../../js/overlays.js';
@@ -484,6 +484,7 @@ function setting(act) {
   else if (act === 'sfx') s.sfx = s.sfx === false;
   else if (act === 'sfxvolume') { const opts = [0.25, 0.5, 1]; s.sfxVolume = opts[(opts.indexOf(s.sfxVolume ?? 0.5) + 1) % opts.length]; }
   else if (act === 'ambience') s.ambience = s.ambience === false;
+  else if (act === 'shake') { s.shake = s.shake === false; rig.shakeOff = s.shake === false; }
   else if (act === 'uisound') s.uiSound = !s.uiSound;
   else if (act === 'uivolume') { const opts = [0.25, 0.5, 1]; s.uiVolume = opts[(opts.indexOf(s.uiVolume || 0.5) + 1) % opts.length]; }
   else if (act === 'dpad') { s.showDpad = !s.showDpad; inputCtl.setDpadVisible(s.showDpad); }
@@ -1426,7 +1427,10 @@ function playerAttack(mon, now) {
     dmg += d;
     if (d > 0) { mon.hitT = 1; mon.hitK = Math.min(1.4, 0.6 + d / Math.max(4, mon.maxHp * 0.25)); } else mon.blockT = 1;
     overlays.splat(mon, d, now + i * 150);
-    { const mp = mon.mesh.position; if (d > 0) burst('hit', mp.x, mp.y + 1.0, mp.z, 10 + Math.min(20, d)); else burst('dust', mp.x, mp.y, mp.z, 6); }
+    { const mp = mon.mesh.position, k = Math.min(1, d / Math.max(4, mon.maxHp * 0.3)); const hy = mp.y + Math.min(1.1, (mon.barHeight || 2) * 0.5);
+      if (d > 0) { const fire = () => { burst('hit', mp.x, hy, mp.z, 12 + Math.min(24, d * 2)); if (k > 0.5) burst('dust', mp.x, mp.y, mp.z, 5); shakeRig(rig, 0.35 + 0.45 * k); };
+        if (i) setTimeout(fire, i * 150); else fire(); }
+      else burst('dust', mp.x, mp.y, mp.z, 6); }
     if (mods.procs && mods.procs.includes('bigHit')) log(`${ITEMS[player.equipment.weapon].special.split(':')[0]}!`, 'combat');
     // Unique weapon specials
     const pr = weaponProcs(player, d);
@@ -1483,7 +1487,7 @@ function bonusHit(mon, now, label) {
   if (!mon.alive || mon.hp <= 0) return;
   const d = rollPlayerHit(player, skills, mon);
   mon.hp -= d;
-  overlays.splat(mon, d, now + 120);
+  overlays.splat(mon, d, now + 120); if (d > 0) { const mp = mon.mesh.position; mon.hitT = 1; mon.hitK = 0.8; burst('hit', mp.x, mp.y + 1, mp.z, 14); shakeRig(rig, 0.4); }
   for (const [s, v] of Object.entries(combatXp(player, d))) giveXP(s, v);
   if (d > 0) log(`${label}!`, 'combat');
   if (mon.hp <= 0) killMonster(mon, now);
@@ -1505,7 +1509,7 @@ function monsterAttack(mon, now) {
   if (dmg > 0 && mon.poison && Math.random() < mon.poison.chance && applyPoison(player, mon.poison.dmg, true)) log(`You have been poisoned by the ${mon.name}!`, 'warn');
   player.hp = Math.max(0, player.hp - dmg);
   playerEnt.lastHitAt = now;
-  if (dmg > 0) { pm.hitT = 1; pm.hitK = Math.min(1.4, 0.5 + dmg / Math.max(5, player.maxHp * 0.2)); pm.hitSide = Math.random() < 0.5 ? -1 : 1; }
+  if (dmg > 0) { shakeRig(rig, 0.45 + 0.5 * Math.min(1, dmg / Math.max(5, player.maxHp * 0.2))); pm.hitT = 1; pm.hitK = Math.min(1.4, 0.5 + dmg / Math.max(5, player.maxHp * 0.2)); pm.hitSide = Math.random() < 0.5 ? -1 : 1; }
   else if (player.equipment.shield || raw > 0) pm.blockT = 1;
   overlays.splat(playerEnt, dmg, now);
   mon.lungeT = 1;
@@ -1690,11 +1694,12 @@ function updateMonsters(dt, now) {
       m.mesh.rotation.x = quad ? 0 : -0.25 * Math.sin(stag * Math.PI) * (1 - fall);
       if (m.body) m.body.position.z = -0.25 * Math.sin(stag * Math.PI * 0.5) * (1 - fall * 0.5);
       if (m.rigHi) { const u = m.rigHi.userData; if (u && u.legs) { u.legs.forEach(l => { if (l.userData.knee) l.userData.knee.rotation.x = 0.9 * Math.min(1, D / 0.5); }); u.arms?.forEach((a, i) => { a.rotation.z = (i ? 1 : -1) * 0.9 * fall; }); } }
+      if (!m.thumped && D > 0.8) { m.thumped = true; burst('dust', pos.x + side * 0.6, pos.y, pos.z, 14); if (Math.hypot(pos.x - pm.mesh.position.x, pos.z - pm.mesh.position.z) < 12) shakeRig(rig, 0.3); }
       m.legs?.forEach((l, i) => { if (l.userData.knee) l.userData.knee.rotation.x = (l.userData.kneeRest || 0) + 0.7 * fall * (i % 2 ? 1 : 0.6); });
       const sink = Math.max(0, (D - 1.6) / 0.6);
       pos.y = terrainHeight(pos.x, pos.z) + (quad ? 0.05 : 0.15) * Math.sin(fall * Math.PI * 0.5) - sink * 0.9;
       const t = Math.min(1, D / 2.2);
-      if (t >= 1) { m.mesh.rotation.x = 0; m.deathSide = null; if (m.body) m.body.position.z = 0; m.dying = false; m.mesh.visible = false; m.respawnAt = now + (m.respawn || 15000); }
+      if (t >= 1) { m.mesh.rotation.x = 0; m.deathSide = null; m.thumped = false; if (m.body) m.body.position.z = 0; m.dying = false; m.mesh.visible = false; m.respawnAt = now + (m.respawn || 15000); }
       continue;
     }
     if (!m.alive) continue;
@@ -1747,11 +1752,13 @@ function updateMonsters(dt, now) {
     if (m.lungeT > 0) { m.lungeT = Math.max(0, m.lungeT - dt * 3); m.body.position.z = Math.sin(m.lungeT * Math.PI) * 0.35; }
     // hit react: knocked back and rocked by the blow (scaled by damage); a stopped hit is a quick brace instead
     if (m.hitT > 0) { m.hitT = Math.max(0, m.hitT - dt * 3.5); const h = Math.sin(m.hitT * Math.PI) * (m.hitK || 1);
-      m.body.position.z = -0.22 * h; m.body.rotation.x = -0.22 * h; m.body.rotation.z = 0.1 * h * Math.sin(m.spawnX);
+      m.body.position.z = -0.3 * h; m.body.rotation.x = -0.3 * h; m.body.rotation.z = 0.14 * h * Math.sin(m.spawnX);
+      { const sq = Math.sin(Math.min(1, (1 - m.hitT) * 3) * Math.PI) * 0.07 * (m.hitK || 1), bs = m.body.userData.bs ??= m.body.scale.clone(); m.body.scale.set(bs.x * (1 + sq * 0.5), bs.y * (1 - sq), bs.z * (1 + sq * 0.5)); }
       if (m.rigHi) { const u = m.rigHi.userData; if (u && u.head) u.head.rotation.x = -0.4 * h; } }
     else if (m.blockT > 0) { m.blockT = Math.max(0, m.blockT - dt * 3); const b = Math.sin(m.blockT * Math.PI);
       m.body.rotation.x = 0.1 * b; if (m.rigHi) { const u = m.rigHi.userData; if (u && u.arms) { u.arms[0].rotation.x = -1.4 * b; u.arms[0].userData.elbow.rotation.x = -1.2 * b; } } }
     else if (m.body && !m.lungeT) { m.body.rotation.x *= 0.8; m.body.rotation.z *= 0.8; }
+    if (m.body && !m.hitT && m.body.userData.bs) m.body.scale.copy(m.body.userData.bs);
   }
 }
 
@@ -2047,6 +2054,7 @@ function animate(now) {
   updateFish(dt);
   updateFires(now);
   updateArrow(dt);
+  rig.shakeOff = player.settings.shake === false;
   updateRig(rig, camera, pm.mesh.position.x, pm.mesh.position.z, dt, crossing ? pm.mesh.position.y * 0.6 + terrainHeight(pm.mesh.position.x, pm.mesh.position.z) * 0.4 : terrainHeight(pm.mesh.position.x, pm.mesh.position.z));
   updateCave(dt);
   followLight(dirLight, rig.fx, rig.fz, DAY.lightDir);

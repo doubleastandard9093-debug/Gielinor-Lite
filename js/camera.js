@@ -36,4 +36,12 @@ export function updateRig(rig, camera, px, pz, dt, py = 0) {
     rig.fz + Math.cos(rig.yaw) * cp * rig.dist
   );
   camera.lookAt(rig.fx, rig.fy + 1, rig.fz);
+  // light screen shake: a short, decaying jitter (never more than ~6 cm / 0.6 degrees)
+  if (rig.shake > 0.001) {
+    rig.shakeT = (rig.shakeT || 0) + dt; const s = rig.shake * rig.shake, t = rig.shakeT * 38;
+    camera.position.x += Math.sin(t * 1.3) * 0.06 * s; camera.position.y += Math.sin(t * 1.7 + 1) * 0.05 * s;
+    camera.rotation.z += Math.sin(t * 1.1 + 2) * 0.011 * s;
+    rig.shake = Math.max(0, rig.shake - dt * 3.2);
+  }
 }
+export function shakeRig(rig, amt) { if (rig.shakeOff) return; rig.shake = Math.min(1, Math.max(rig.shake || 0, amt)); }

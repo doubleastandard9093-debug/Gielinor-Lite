@@ -62,7 +62,10 @@ export function createOverlays() {
     s.ox = [0, -16, 16, 0][busy % 4];
     s.oy = [0, 8, 8, 16][busy % 4];
     s.el.textContent = dmg;
-    s.el.className = poison ? 'splat poison' : dmg > 0 ? 'splat hit' : 'splat miss';
+    s.born = now;
+    const big = !poison && dmg > 0 && dmg >= Math.max(5, (ent.maxHp || 10) * 0.3);
+    s.el.className = (poison ? 'splat poison' : dmg > 0 ? 'splat hit' : 'splat miss') + (big ? ' big' : '');
+    s.el.style.animation = 'none'; void s.el.offsetWidth; s.el.style.animation = '';
     s.el.style.display = 'block';
   }
 
@@ -72,7 +75,9 @@ export function createOverlays() {
       if (now > s.until || !s.ent.mesh.visible) { s.ent = null; s.el.style.display = 'none'; continue; }
       if (!toScreen(s.ent, (s.ent.barHeight || 2) * 0.55, camera)) { s.el.style.display = 'none'; continue; }
       s.el.style.display = 'block';
-      s.el.style.transform = `translate(${(v.x + s.ox - 13) | 0}px, ${(v.y + s.oy - 13) | 0}px)`;
+      const age = Math.max(0, now - (s.born || now)), rise = Math.min(1, age / 1000) * 22;   // drift up as it fades
+      s.el.style.transform = `translate(${(v.x + s.ox - 13) | 0}px, ${(v.y + s.oy - 13 - rise) | 0}px)`;
+      s.el.style.opacity = age > 850 ? Math.max(0, 1 - (age - 850) / 350).toFixed(2) : '';
     }
     for (const ent of entities) {
       const show = ent.mesh.visible && ent.hp !== undefined && now - (ent.lastHitAt || -1e9) < 6000 && (ent.alive !== false || ent.dying);
