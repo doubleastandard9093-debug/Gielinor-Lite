@@ -234,7 +234,8 @@ export function terrainMaterial(maskTex, maskSize) {
   const tri = (s, ch) => noiseNode(W.zy.mul(s))[ch].mul(tw.x).add(noiseNode(W.xz.mul(s))[ch].mul(tw.y)).add(noiseNode(W.xy.mul(s))[ch].mul(tw.z));
   const r3 = tri(0.45, 'b'), r4 = tri(1.9, 'r'), r2 = tri(0.07, 'g');
   const strata = sin(W.y.mul(3.1).add(r2.mul(6.0))).mul(0.5).add(0.5);
-  let rockC = mix(vec3(0.42, 0.40, 0.37), vec3(0.6, 0.58, 0.54), r3).mul(r4.mul(0.3).add(0.85));
+  let rockC = mix(vec3(0.29, 0.29, 0.28), vec3(0.54, 0.53, 0.50), r3).mul(r4.mul(0.3).add(0.85));
+  rockC = mix(rockC, vec3(0.29, 0.353, 0.165), smoothstep(0.6, 0.9, fwn.y).mul(0.75)); // moss on rock tops (#4A5A2A)
   rockC = mix(rockC, vec3(0.32, 0.3, 0.28), smoothstep(0.6, 0.8, r2).mul(0.5)).mul(strata.mul(slope).mul(0.16).add(0.88));
   col = mix(col, rockC, hrock);
   const valley = smoothstep(-0.3, -2.5, W.y);

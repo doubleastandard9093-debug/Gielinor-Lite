@@ -163,6 +163,7 @@ function giveXP(skill, amount) {
 
 // Graphics quality. High = bloom, colour grade, clouds, sway, full resolution.
 // Low = plain render at a lower resolution for slower phones.
+const HIGH_FOG_LIFT = [5.0, 5.8, 7.0];   // per-channel daytime fog/horizon lift on High (AgX + grade darken and grey it)
 const gfx = { quality: 'high', auto: true, slowFrames: 0, frames: 0, sum: 0 };
 function applyGfx() {
   gfx.auto = player.settings.gfx !== 'high' && player.settings.gfx !== 'low';
@@ -175,13 +176,14 @@ function applyGfx() {
   // High: AgX filmic tone mapping (wider highlight roll-off, no hue shift on bright skies) with a saturation lift; Low keeps ACES
   renderer.toneMapping = gfx.quality === 'low' ? THREE.ACESFilmicToneMapping : THREE.AgXToneMapping;
   renderer.toneMappingExposure = gfx.quality === 'low' ? 1.05 : 1.0;
-  gradePass.uniforms.sat.value = gfx.quality === 'low' ? 1.12 : 1.05;
+  gradePass.uniforms.sat.value = gfx.quality === 'low' ? 1.12 : 1.15;
   sky.setQuality(gfx.quality);
   setDecorQuality(gfx.quality); setVfxQuality(gfx.quality);
   SWAY.value = gfx.quality === 'low' ? 0 : 1;
   setLodRange(gfx.quality);
   // High: thinner fog and a longer view so the northern mountains read clearly from town
-  scene.fog.density = gfx.quality === 'low' ? 0.0064 : 0.0042;
+  scene.fog.density = gfx.quality === 'low' ? 0.0064 : 0.0033;
+  if (gfx.quality === 'low') DAY.fogLift.setRGB(1, 1, 1); else DAY.fogLift.setRGB(...HIGH_FOG_LIFT);   // High: lift the daytime fog/horizon so AgX + exposure 1.0 lands near #C9D3D6 on screen
   camera.far = gfx.quality === 'low' ? 520 : 760; camera.updateProjectionMatrix();
   setShadows(renderer, dirLight, shadowsOn(), gfx.quality);
   if (lightsRef) tuneLights(lightsRef, gfx.quality);

@@ -14,14 +14,14 @@ const PAL = {
   hemiSky: { night: C(0x5a6fa8), gold: C(0xffd2b0), day: C(0xcfe4ff) }
 };
 const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-const _c = new THREE.Color();
+const _c = new THREE.Color(), _lift = new THREE.Color();
 function pick(p, w) { // w: { night, gold, day } weights summing to 1
   _c.setRGB(0, 0, 0);
   for (const k of ['night', 'gold', 'day']) { _c.r += p[k].r * w[k]; _c.g += p[k].g * w[k]; _c.b += p[k].b * w[k]; }
   return _c;
 }
 export const DAY = { t: 0.32, sunH: 0.6, night: 0, lightDir: new THREE.Vector3(0.55, 0.62, 0.42).normalize(),
-  hemiK: 1, dirK: 1, fillK: 1, exposureK: 1, fog: new THREE.Color(0xc9d3d6), lightCol: new THREE.Color(0xf2e6d0), hemiCol: new THREE.Color(0xcfe4ff) };
+  fogLift: new THREE.Color(1, 1, 1), hemiK: 1, dirK: 1, fillK: 1, exposureK: 1, fog: new THREE.Color(0xc9d3d6), lightCol: new THREE.Color(0xf2e6d0), hemiCol: new THREE.Color(0xcfe4ff) };
 
 // t: 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset.
 export function dayTimeNow(mode) {
@@ -38,7 +38,7 @@ export function updateDay(mode, tOverride) {
   DAY.sunH = h;
   const night = sm(0.04, -0.16, h), gold = (1 - night) * (1 - sm(0.12, 0.42, h)), day = 1 - night - gold;
   const w = { night, gold, day }; DAY.night = night; DAY.gold = gold; SKY.gold = gold;
-  SKY.top.copy(pick(PAL.top, w)); SKY.horizon.copy(pick(PAL.horizon, w)); SKY.sun.copy(pick(PAL.sun, w));
+  SKY.top.copy(pick(PAL.top, w)); SKY.horizon.copy(pick(PAL.horizon, w)).multiply(_lift.setRGB(1, 1, 1).lerp(DAY.fogLift, w.day)); SKY.sun.copy(pick(PAL.sun, w));
   DAY.fog.copy(SKY.horizon); DAY.lightCol.copy(pick(PAL.light, w)); DAY.hemiCol.copy(pick(PAL.hemiSky, w));
   // the shadow-casting light follows the sun by day and the moon (opposite side, high) by night,
   // never dropping below ~14 degrees so shadows stay a sensible length
