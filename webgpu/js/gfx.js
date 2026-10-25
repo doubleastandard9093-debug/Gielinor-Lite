@@ -11,7 +11,7 @@ import { reflector } from 'three/tsl';
 export const SUN_DIR = new THREE.Vector3(0.55, 0.62, 0.42).normalize();
 export const SKY = {
   top: new THREE.Color(0x3f7fd0),
-  horizon: new THREE.Color(0xbfdcf0),
+  horizon: new THREE.Color(0xc9d3d6),
   sun: new THREE.Color(0xfff0c8)
 };
 // Shared, ticking time uniform used by water, foliage sway and clouds.
@@ -215,8 +215,8 @@ export function terrainMaterial(maskTex, maskSize) {
   const n1 = noiseNode(wp.mul(0.012)).r, n2 = noiseNode(wp.mul(0.07)).g;
   const st3 = mix(noiseNode(wp.mul(0.45)), stoch(wp.mul(0.45)), HIQ).b, st4 = mix(noiseNode(wp.mul(1.9)), stoch(wp.mul(1.9)), HIQ).r;
   const n3 = mix(0.5, st3, fineK.mul(0.5).add(0.5)), n4 = mix(0.5, st4, fineK);
-  let grass = mix(vec3(0.27, 0.50, 0.14), vec3(0.45, 0.63, 0.19), smoothstep(0.3, 0.7, n1));
-  grass = mix(grass, vec3(0.20, 0.40, 0.12), smoothstep(0.55, 0.85, n2).mul(0.55));
+  let grass = mix(vec3(0.24, 0.37, 0.20), vec3(0.42, 0.54, 0.23), smoothstep(0.3, 0.7, n1));
+  grass = mix(grass, vec3(0.12, 0.23, 0.17), smoothstep(0.55, 0.85, n2).mul(0.55));
   grass = mix(grass, vec3(0.55, 0.62, 0.24), smoothstep(0.62, 0.9, n3).mul(0.3)).mul(n4.mul(0.36).add(0.82));
   let dirt = mix(vec3(0.47, 0.35, 0.21), vec3(0.58, 0.45, 0.29), n3).mul(n4.mul(0.35).add(0.8));
   dirt = mix(dirt, vec3(0.62, 0.6, 0.55), smoothstep(0.72, 0.8, n4).mul(0.6));

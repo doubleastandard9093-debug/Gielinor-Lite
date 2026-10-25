@@ -26,7 +26,7 @@ initGpuExtras({ scene, camera, renderer, dirLight, lightsRef });`);
 rep(`  composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(window.innerWidth, window.innerHeight);
 `, '');
-rep("gradePass.uniforms.sat.value = gfx.quality === 'low' ? 1.12 : 1.5;", "GRADE.sat.value = gfx.quality === 'low' ? 1.12 : 1.5; post.needsUpdate(); setGpuQuality(gfx.quality); post.setQuality(gfx.quality);");
+rep("gradePass.uniforms.sat.value = gfx.quality === 'low' ? 1.12 : 1.05;", "GRADE.sat.value = gfx.quality === 'low' ? 1.12 : 1.05; post.needsUpdate(); setGpuQuality(gfx.quality); post.setQuality(gfx.quality);");
 rep('const U = gradePass.uniforms;', 'const U = GRADE;');
 rep(`  composer.setSize(window.innerWidth, window.innerHeight);
   bloom.resolution.set(window.innerWidth, window.innerHeight);

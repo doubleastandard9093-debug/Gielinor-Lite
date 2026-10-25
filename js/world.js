@@ -103,7 +103,7 @@ const G = {
 const matCache = new Map();
 function mat(color, opts) {
   const key = color + (opts ? JSON.stringify(opts) : '');
-  if (!matCache.has(key)) matCache.set(key, new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.08, ...(opts || {}) }));
+  if (!matCache.has(key)) matCache.set(key, new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0.0, ...(opts || {}) }));
   return matCache.get(key);
 }
 

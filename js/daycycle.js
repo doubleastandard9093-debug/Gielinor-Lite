@@ -8,9 +8,9 @@ export const DAY_SECONDS = 1800; // 30 minutes per in-game day
 const C = h => new THREE.Color(h);
 const PAL = {
   top:     { night: C(0x081226), gold: C(0x4d6aa6), day: C(0x3f7fd0) },
-  horizon: { night: C(0x1a2440), gold: C(0xeeb487), day: C(0xbfdcf0) },
+  horizon: { night: C(0x1a2440), gold: C(0xeeb487), day: C(0xc9d3d6) },
   sun:     { night: C(0x9ab0ff), gold: C(0xffa25a), day: C(0xfff0c8) },
-  light:   { night: C(0x7f9cff), gold: C(0xffa868), day: C(0xffdcae) },
+  light:   { night: C(0x7f9cff), gold: C(0xffa868), day: C(0xf2e6d0) },
   hemiSky: { night: C(0x5a6fa8), gold: C(0xffd2b0), day: C(0xcfe4ff) }
 };
 const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -21,7 +21,7 @@ function pick(p, w) { // w: { night, gold, day } weights summing to 1
   return _c;
 }
 export const DAY = { t: 0.32, sunH: 0.6, night: 0, lightDir: new THREE.Vector3(0.55, 0.62, 0.42).normalize(),
-  hemiK: 1, dirK: 1, fillK: 1, exposureK: 1, fog: new THREE.Color(0xbfdcf0), lightCol: new THREE.Color(0xffdcae), hemiCol: new THREE.Color(0xcfe4ff) };
+  hemiK: 1, dirK: 1, fillK: 1, exposureK: 1, fog: new THREE.Color(0xc9d3d6), lightCol: new THREE.Color(0xf2e6d0), hemiCol: new THREE.Color(0xcfe4ff) };
 
 // t: 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset.
 export function dayTimeNow(mode) {

@@ -7,12 +7,12 @@ export const IS_TOUCH = (typeof window !== 'undefined') && ('ontouchstart' in wi
 export const BACKEND = { name: 'pending', forced: null };
 
 // Height fog: thicker in valleys, thinning with altitude (same curve as the WebGL game).
-export const FOG = { color: uniform(new THREE.Color(0xbfdcf0)), density: uniform(0.0064) };
+export const FOG = { color: uniform(new THREE.Color(0xc9d3d6)), density: uniform(0.0064) };
 export function createScene() {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xbfdcf0);
+  scene.background = new THREE.Color(0xc9d3d6);
   // keep a FogExp2 object so shared code (scene.fog.color.copy(...)) keeps working; the node below does the real fog
-  scene.fog = new THREE.FogExp2(0xbfdcf0, 0.0064);
+  scene.fog = new THREE.FogExp2(0xc9d3d6, 0.0064);
   FOG.color.value = scene.fog.color;
   const fogH = float(0.7).add(exp(max(positionWorld.y.add(1.0), 0.0).mul(-0.08)).mul(0.55));
   const d = FOG.density.mul(fogH), z = positionView.z.negate();
@@ -47,7 +47,7 @@ export async function createRenderer() {
 export function createLights(scene) {
   const hemi = new THREE.HemisphereLight(0xcfe4ff, 0x6a5a34, 1.15);
   scene.add(hemi);
-  const dirLight = new THREE.DirectionalLight(0xffdcae, 2.7);
+  const dirLight = new THREE.DirectionalLight(0xf2e6d0, 2.7);
   dirLight.position.set(22, 25, 17);
   dirLight.castShadow = true;
   dirLight.shadow.mapSize.set(2048, 2048);
@@ -98,8 +98,8 @@ export function setShadows(renderer, dirLight, on, quality = 'high') {
   }
 }
 export function tuneLights(lights, quality) {
-  lights.hemi.intensity = quality === 'low' ? 1.2 : 0.95;
-  lights.hemi.groundColor.setHex(0x5a4a2c);
-  lights.dirLight.intensity = quality === 'low' ? 2.6 : 3.0;
-  lights.fill.intensity = quality === 'low' ? 0.4 : 0.55;
+  lights.hemi.intensity = quality === 'low' ? 1.2 : 1.25;
+  lights.hemi.groundColor.setHex(0x3a3a26);
+  lights.dirLight.intensity = quality === 'low' ? 2.6 : 2.2;
+  lights.fill.intensity = quality === 'low' ? 0.4 : 0.35;
 }

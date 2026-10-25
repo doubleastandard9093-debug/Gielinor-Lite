@@ -52,8 +52,8 @@ THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
 export function createScene() {
   const scene = new THREE.Scene();
   // Fog matches the sky's horizon colour so distant land fades into the sky dome.
-  scene.background = new THREE.Color(0xbfdcf0);
-  scene.fog = new THREE.FogExp2(0xbfdcf0, 0.0064);
+  scene.background = new THREE.Color(0xc9d3d6);
+  scene.fog = new THREE.FogExp2(0xc9d3d6, 0.0064);
   return scene;
 }
 
@@ -82,7 +82,7 @@ export function createLights(scene) {
   scene.add(hemi);
 
   // Warm golden sun (matches the sun in the sky dome).
-  const dirLight = new THREE.DirectionalLight(0xffdcae, 2.7);
+  const dirLight = new THREE.DirectionalLight(0xf2e6d0, 2.7);
   dirLight.position.set(22, 25, 17);
   dirLight.castShadow = true;
   dirLight.shadow.mapSize.set(2048, 2048);
@@ -119,13 +119,13 @@ export function setShadows(renderer, dirLight, on, quality = 'high') {
   }
   dirLight.shadow.normalBias = quality === 'low' ? 0.04 : 0.018;
   dirLight.shadow.bias = quality === 'low' ? -0.0004 : -0.00015;
-  dirLight.shadow.radius = quality === 'low' ? 2 : 4;
-  dirLight.shadow.blurSamples = quality === 'low' ? 8 : 16;
+  dirLight.shadow.radius = quality === 'low' ? 2 : 6;
+  dirLight.shadow.blurSamples = quality === 'low' ? 8 : 24;
 }
 // Light balance: slightly less flat sky fill, a touch more sun for form-revealing shading.
 export function tuneLights(lights, quality) {
-  lights.hemi.intensity = quality === 'low' ? 1.2 : 0.95;
-  lights.hemi.groundColor.setHex(0x5a4a2c);
-  lights.dirLight.intensity = quality === 'low' ? 2.6 : 3.0;
-  lights.fill.intensity = quality === 'low' ? 0.4 : 0.55;
+  lights.hemi.intensity = quality === 'low' ? 1.2 : 1.25;
+  lights.hemi.groundColor.setHex(0x3a3a26);
+  lights.dirLight.intensity = quality === 'low' ? 2.6 : 2.2;
+  lights.fill.intensity = quality === 'low' ? 0.4 : 0.35;
 }

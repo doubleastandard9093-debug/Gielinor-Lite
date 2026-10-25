@@ -7,7 +7,7 @@ import { IS_TOUCH } from './scene.js';
 export const SUN_DIR = new THREE.Vector3(0.55, 0.62, 0.42).normalize();
 export const SKY = {
   top: new THREE.Color(0x3f7fd0),
-  horizon: new THREE.Color(0xbfdcf0),
+  horizon: new THREE.Color(0xc9d3d6),
   sun: new THREE.Color(0xfff0c8)
 };
 // Shared, ticking time uniform used by water, foliage sway and clouds.
@@ -189,8 +189,8 @@ export function terrainMaterial(maskTex, maskSize) {
         float n2 = texture2D(tNoise, wp * 0.07).g;
         float n3 = texture2D(tNoise, wp * 0.45).b;
         float n4 = texture2D(tNoise, wp * 1.9).r;
-        vec3 grass = mix(vec3(0.27, 0.50, 0.14), vec3(0.45, 0.63, 0.19), smoothstep(0.3, 0.7, n1));
-        grass = mix(grass, vec3(0.20, 0.40, 0.12), smoothstep(0.55, 0.85, n2) * 0.55);
+        vec3 grass = mix(vec3(0.24, 0.37, 0.20), vec3(0.42, 0.54, 0.23), smoothstep(0.3, 0.7, n1));
+        grass = mix(grass, vec3(0.12, 0.23, 0.17), smoothstep(0.55, 0.85, n2) * 0.55);
         grass = mix(grass, vec3(0.55, 0.62, 0.24), smoothstep(0.62, 0.9, n3) * 0.3);
         // shader LOD: fine grain fades out with distance (less shimmer on phones)
         float fineK = 1.0 - smoothstep(40.0, 70.0, length(cameraPosition - vWPos));
@@ -220,7 +220,8 @@ export function terrainMaterial(maskTex, maskSize) {
         float r4 = texture2D(tNoise, vWPos.zy * 1.9).r * tw.x + n4 * tw.y + texture2D(tNoise, vWPos.xy * 1.9).r * tw.z;
         float r2 = texture2D(tNoise, vWPos.zy * 0.07).g * tw.x + n2 * tw.y + texture2D(tNoise, vWPos.xy * 0.07).g * tw.z;
         float strata = 0.5 + 0.5 * sin(vWPos.y * 3.1 + r2 * 6.0);   // horizontal layering on cliff faces
-        vec3 rockC = mix(vec3(0.42, 0.40, 0.37), vec3(0.6, 0.58, 0.54), r3) * (0.85 + 0.3 * r4);
+        vec3 rockC = mix(vec3(0.29, 0.29, 0.28), vec3(0.54, 0.53, 0.50), r3) * (0.85 + 0.3 * r4);
+        rockC = mix(rockC, vec3(0.29, 0.353, 0.165), smoothstep(0.6, 0.9, fwn.y) * 0.75); // moss on rock tops (#4A5A2A)
         rockC = mix(rockC, vec3(0.32, 0.3, 0.28), smoothstep(0.6, 0.8, r2) * 0.5);
         rockC *= 0.88 + 0.16 * strata * slope;
         col = mix(col, rockC, hrock);

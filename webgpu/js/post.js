@@ -74,7 +74,7 @@ export function createPost(renderer, scene, camera) {
       VOL.on = true;
     } catch (e) { console.warn('[webgpu] volumetric light unavailable', e); }
   }
-  const bl = bloom(vec4(litV, 1), 0.3, 0.45, 0.9);
+  const bl = bloom(vec4(litV, 1), 0.15, 0.4, 0.95);
   POSTFX.bloom = bl;   // strength/threshold are retuned per frame by stage7.js (day/night, cave)
   const hdr = vec4(litV.add(guard(bl).rgb), 1);
   const GRADE = { sat: uniform(1.12), vig: uniform(0.32), sunUV: uniform(new THREE.Vector2(0.5, 0.8)), shaftK: uniform(0), shaftCol: uniform(new THREE.Color(1, 0.9, 0.7)), ultra: uniform(0) };
@@ -91,7 +91,7 @@ export function createPost(renderer, scene, camera) {
     c.rgb.addAssign(GRADE.shaftCol.mul(acc.div(NSs).mul(mix(1.0, 1.6, U))).mul(GRADE.shaftK).mul(fall));
     const l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
     c.rgb.assign(mix(vec3(l), c.rgb, GRADE.sat));
-    c.rgb.assign(mix(c.rgb, smoothstep(0.0, 1.0, c.rgb), GRADE.sat.sub(1.12).mul(0.9)));
+    c.rgb.assign(mix(c.rgb, smoothstep(0.0, 1.0, c.rgb), GRADE.sat.sub(1.12).max(0.0).mul(0.9)));
     const lum = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
     c.rgb.addAssign(vec3(-0.012, 0.0, 0.03).mul(float(1).sub(smoothstep(0.0, 0.45, lum))).add(vec3(0.03, 0.012, -0.02).mul(smoothstep(0.45, 1.0, lum))));
     const d = vUv.sub(0.5);

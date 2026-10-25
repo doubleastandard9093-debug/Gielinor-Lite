@@ -120,5 +120,5 @@ addStage6('bloomtune', () => {}, (dt) => {
   const g = window.gielinor, cave = g ? Math.min(1, g.caveK || 0) : 0, indoor = g && g.indoorsNow ? 0.6 : 0;
   const k = Math.max(DAY.night || 0, cave, indoor);
   bk += (k - bk) * Math.min(1, dt * 2);
-  b.strength.value = 0.28 + 0.32 * bk; b.threshold.value = 0.92 - 0.3 * bk; b.radius.value = 0.45 + 0.15 * bk;
+  b.strength.value = 0.15 + 0.32 * bk; b.threshold.value = 0.95 - 0.33 * bk; b.radius.value = 0.4 + 0.2 * bk;
 });
