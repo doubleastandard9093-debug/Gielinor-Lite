@@ -176,10 +176,12 @@ const DETAIL_TEX = { value: null };
 export function enableTexDetail(on) {
   TEX_DETAIL.value = on ? 1 : 0;
   if (on && !DETAIL_TEX.value) {
-    DETAIL_TEX.value = new THREE.TextureLoader().load('textures/detail_terrain.webp');
-    DETAIL_TEX.value.wrapS = DETAIL_TEX.value.wrapT = THREE.RepeatWrapping; DETAIL_TEX.value.anisotropy = 4;
+    const ld = f => { const t = new THREE.TextureLoader().load('textures/' + f); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t; };
+    DETAIL_TEX.value = ld('detail_terrain.webp');
+    DETAIL_N0.value = ld('detail_terrain_n0.webp'); DETAIL_N1.value = ld('detail_terrain_n1.webp'); DETAIL_R.value = ld('detail_terrain_r.webp');   // M2: normal (RG per set) + mean-normalised roughness
   }
 }
+const DETAIL_N0 = { value: null }, DETAIL_N1 = { value: null }, DETAIL_R = { value: null };
 const BLANK_DETAIL = new THREE.DataTexture(new Uint8Array([128, 128, 128, 128]), 1, 1); BLANK_DETAIL.needsUpdate = true;
 export function terrainMaterial(maskTex, maskSize) {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0.0 });
@@ -189,12 +191,15 @@ export function terrainMaterial(maskTex, maskSize) {
     sh.uniforms.maskSize = { value: maskSize };
     sh.uniforms.texOn = TEX_DETAIL;
     sh.uniforms.tDetail = { get value() { return DETAIL_TEX.value || BLANK_DETAIL; } };
+    sh.uniforms.tDN0 = { get value() { return DETAIL_N0.value || BLANK_DETAIL; } };
+    sh.uniforms.tDN1 = { get value() { return DETAIL_N1.value || BLANK_DETAIL; } };
+    sh.uniforms.tDR = { get value() { return DETAIL_R.value || BLANK_DETAIL; } };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
       .replace('#include <project_vertex>', '#include <project_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        varying vec3 vWPos; uniform sampler2D tMask, tNoise, tDetail; uniform float maskSize, texOn;
+        varying vec3 vWPos; uniform sampler2D tMask, tNoise, tDetail, tDN0, tDN1, tDR; uniform float maskSize, texOn;
         vec3 lin(vec3 c){ return pow(c, vec3(2.2)); }`)
       .replace('#include <map_fragment>', `
         vec2 wp = vWPos.xz;
@@ -255,6 +260,8 @@ export function terrainMaterial(maskTex, maskSize) {
           float dd = mix(mix(mix(dA.r, dB.g, isDi), cb, isSt), dR, hrock) * (1.0 - snow);
           col *= 1.0 + dd * mix(0.9, 0.35, isSt * (1.0 - hrock)) * dk;
           tDet = dd * dk;
+          float sk = (1.0 - hrock) * (1.0 - snow);
+          tW = vec4((1.0 - isDi) * (1.0 - isSt) * sk, isDi * (1.0 - isSt) * sk, isSt * sk, hrock * tw.y * (1.0 - snow)); tDk = dk; tWr = wr; tCbK = smoothstep(0.35, 0.65, n1 * 0.6 + n2 * 0.4);
         }
         diffuseColor.rgb *= lin(col);
         // procedural height for bump shading and per-surface roughness
@@ -264,8 +271,11 @@ export function terrainMaterial(maskTex, maskSize) {
         tRough = mix(mix(mix(0.95, 0.88, isDirt), 0.72, isStone), 0.8 - 0.15 * r4, hrock);
         tRough = mix(tRough, 0.55, snow) * (1.0 - smoothstep(-0.3, -2.5, vWPos.y) * 0.12);
       `)
-      .replace('void main() {', 'float tHeight = 0.0; float tRough = 0.95; float tDet = 0.0;\nvoid main() {')
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = tRough;')
+      .replace('void main() {', 'float tHeight = 0.0; float tRough = 0.95; float tDet = 0.0; vec4 tW = vec4(0.0); float tDk = 0.0; vec2 tWr = vec2(0.0); float tCbK = 0.0;\nvoid main() {')
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = tRough;
+        if (texOn > 0.5) { vec2 wq = vWPos.xz; vec4 rg = vec4(texture2D(tDR, wq * 0.25).r, texture2D(tDR, wq * 0.5 + 0.37).g, texture2D(tDR, wq * 0.3).b, texture2D(tDR, wq * 0.2).a) * 2.0;
+          float rm = dot(rg, tW) + (1.0 - tW.x - tW.y - tW.z - tW.w); roughnessFactor = clamp(tRough * mix(1.0, rm, 0.6 * tDk), 0.3, 1.0); }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         { // screen-space bump from tHeight (Mikkelsen) gives grass clumps, dirt grain, cobble grout and rock strata real relief
           vec3 sp = -vViewPosition, dpx = dFdx(sp), dpy = dFdy(sp);
@@ -273,6 +283,13 @@ export function terrainMaterial(maskTex, maskSize) {
           vec3 r1 = cross(dpy, normal), rr2 = cross(normal, dpx); float det = dot(dpx, r1);
           vec3 grad = sign(det) * (dhx * r1 + dhy * rr2);
           vec3 bn = abs(det) * normal - grad; if (dot(bn, bn) > 1e-12) normal = normalize(bn);
+        }
+        if (texOn > 0.5 && tDk > 0.0) { // photo normal maps (GL, RG) in a world x/z tangent frame, tinted materials only perturb
+          vec2 wq = vWPos.xz;
+          vec2 nG = texture2D(tDN0, wq * 0.25).rg, nD = texture2D(tDN0, wq * 0.5 + 0.37).ba;
+          vec2 nC = mix(texture2D(tDN1, wq * 0.3).rg, mat2(0.799, 0.602, -0.602, 0.799) * (texture2D(tDN1, tWr * 0.3 + 0.53).rg - 0.5) + 0.5, tCbK), nR = texture2D(tDN1, wq * 0.2).ba;
+          vec2 pn = ((nG - 0.5) * tW.x * 0.8 + (nD - 0.5) * tW.y + (nC - 0.5) * tW.z * 1.4 + (nR - 0.5) * tW.w) * 2.0 * tDk;
+          normal = normalize(normal + (viewMatrix * vec4(pn.x, 0.0, pn.y, 0.0)).xyz);
         }`);
   };
   return m;

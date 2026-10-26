@@ -12,3 +12,6 @@ No attribution is required; credited here anyway.
 
 Colour maps were reduced to zero-mean luminance at 1024x1024; the game's palette supplies the colour in the shader.
 Used on High graphics only (not downloaded on Low).
+
+`detail_terrain_n0/n1.webp` hold the NormalGL maps of the same four sets (RG per set: n0 = grass, dirt; n1 = cobbles, rock).
+`detail_terrain_r.webp` holds their Roughness maps, mean-normalised (128 = the shader's palette roughness), one set per channel.
