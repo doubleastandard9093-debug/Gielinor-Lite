@@ -7,7 +7,7 @@ import { addFire } from './vfx.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise, WATER_MESHES } from './gfx.js';
 import { buildHumanoidRig, apronGeo, varyLook, hashStr, contactShadow, plateCharMat, chainCharMat } from './anatomy.js';
 import { buildCreatureRig, rollVariant, namedVariant, loColours } from './creatures.js';
-import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap, treeMat, treeDepthMat, setMat, woodAxis, buildMat } from './models.js';
+import { vcMat, foliageMat, bakedMesh, treeGeometry, rockGeometry, stumpGeometry, emptyRockGeometry, blob, paint, place as put, prim, col, snoise, bake, makeFoliageMat, tuftGeometry, flowerGeometry, humanoidParts, npcExtras, legPivot, creatureParts, hairCap, treeMat, treeDepthMat, setMat, woodAxis, buildMat, addFadeDither } from './models.js';
 
 // The world is about 440 x 440. Chunked decor + instance packing keep phones smooth.
 export const WORLD_HALF = 300;
@@ -444,7 +444,7 @@ export function createWorld(scene) {
       const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
       const a = new THREE.PlaneGeometry(5.2, 10.4); a.translate(0, 5.2, 0); const b = a.clone(); b.rotateY(Math.PI / 2);
       const geo = mergeImpostorGeos(a, b);
-      const mat = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide });
+      const mat = addFadeDither(new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide }), -1);
       impostors = new THREE.InstancedMesh(geo, mat, 4096); impostors.frustumCulled = false; impostors.castShadow = false; scene.add(impostors);
     }
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);

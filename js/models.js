@@ -247,6 +247,27 @@ function leafAtlas() {
 }
 export const treeMat = (typeof document !== 'undefined') ? makeFoliageMat({ map: leafAtlas(), alphaTest: 0.5, side: THREE.DoubleSide }) : foliageMat;
 // shadow-pass twin of treeMat: same alpha-cut leaf atlas and the same wind sway, so leaf shadows move with the leaves
+
+// Mesh <-> impostor crossfade (Tier L fix): screen-space dither across an 8-10 m band at the cull radius.
+// FADE.r = (start, end) distance from the player; sign 1 fades OUT with distance (full trees), -1 fades IN (impostors).
+export const FADE = { c: { value: new THREE.Vector2() }, r: { value: new THREE.Vector2(1e6, 1e6 + 1) } };
+export function addFadeDither(m, sign) {
+  const prev = m.onBeforeCompile; const prevKey = m.customProgramCacheKey;
+  m.onBeforeCompile = (sh, rd) => { if (prev) prev.call(m, sh, rd);
+    sh.uniforms.fadeC = FADE.c; sh.uniforms.fadeR = FADE.r;
+    sh.vertexShader = 'varying vec2 vFadeXZ;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+      { vec4 fw = vec4(transformed, 1.0);
+      #ifdef USE_INSTANCING
+        fw = instanceMatrix * fw;
+      #endif
+      vFadeXZ = (modelMatrix * fw).xz; }`);
+    sh.fragmentShader = 'uniform vec2 fadeC, fadeR; varying vec2 vFadeXZ;\n' + sh.fragmentShader.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+      { float k = smoothstep(fadeR.x, fadeR.y, distance(vFadeXZ, fadeC)); float th = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        if (${sign > 0 ? 'th < k' : 'th >= k'}) discard; }`); };
+  m.customProgramCacheKey = () => (prevKey ? prevKey.call(m) : '') + '|fade' + sign;
+  m.needsUpdate = true; return m;
+}
+addFadeDither(treeMat, 1);
 export const treeDepthMat = (() => { const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: treeMat.map || null, alphaTest: 0.5, side: THREE.DoubleSide });
   m.onBeforeCompile = sh => swayShader(sh, 1); m.customProgramCacheKey = () => 'tree-depth-sway'; return m; })();
 // One leaf card: a quad whose UVs cover the leaf half of the atlas

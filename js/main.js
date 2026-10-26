@@ -9,7 +9,7 @@ import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { updateDay, DAY, dayLabel } from './daycycle.js';
 import { poseGait, tailSway } from './gait.js';
 import { updateSound, soundStats } from './sound.js';
-import { PUSH } from './models.js';
+import { PUSH, FADE } from './models.js';
 import { initVfx, updateVfx, addFire, removeFireVfx, burst, setVfxQuality, setLeafSources } from './vfx.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, SUN_DIR, createWaterReflection } from './gfx.js';
@@ -2048,7 +2048,8 @@ function cullWorld() {
     else if (!far && o.userData.culled) { o.visible = m.alive || m.dying; o.userData.culled = false; }
   }
   if (scene.userData.packGatherInstances) scene.userData.packGatherInstances();
-  if (scene.userData.packImpostors) scene.userData.packImpostors(gfx.quality !== 'low' && !IS_TOUCH, px, pz, R - 6, camera.far * 0.9);   // desktop High only
+  if (scene.userData.packImpostors) { const imp = gfx.quality !== 'low' && !IS_TOUCH; scene.userData.packImpostors(imp, px, pz, R - 10, camera.far * 0.9);   // desktop High only
+    FADE.c.value.set(px, pz); if (imp) FADE.r.value.set(R - 10, R - 1); else FADE.r.value.set(1e6, 1e6 + 1); }   // 9 m dithered crossfade mesh -> card   // desktop High only
   const cx = camera.position.x, cz = camera.position.z;
   for (const e of lodList) if (e.mesh.parent || e.lod.hi) updateLod(e, px, pz);
   for (const m of monsters) if (m.lod && updateLod(m, px, pz)) syncMonsterRig(m);
