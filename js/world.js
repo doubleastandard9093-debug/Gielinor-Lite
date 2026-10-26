@@ -1545,7 +1545,8 @@ let decorOk = null, localGrass = null;
 // Dense near-player meadow (High): an 8x8 ring of 4 m blocks around the player. Each block owns a fixed slice of one
 // InstancedMesh; when the player crosses a 4 m cell only the blocks that scrolled into range are regenerated (a strip of
 // 8 blocks, ~1,800 placement tests) instead of the whole 32 m square, so walking no longer hitches.
-const LG_B = 8, LG_SZ = 4, LG_CAP = 240, LG_S = 0.27;
+// Tier M #6: wider near meadow on desktop High (10 x 4 m = 40 m square); phones keep 8 (32 m) to protect frame time
+const LG_B = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) ? 8 : 10, LG_SZ = 4, LG_CAP = 240, LG_S = 0.27;
 export function updateLocalGrass(scene, px, pz, on) {
   if (!decorOk) return;
   if (!localGrass) {
