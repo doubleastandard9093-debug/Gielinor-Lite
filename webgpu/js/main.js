@@ -146,7 +146,7 @@ function applyGfx() {
   SWAY.value = gfx.quality === 'low' ? 0 : 1;
   setLodRange(gfx.quality);
   // High: thinner fog and a longer view so the northern mountains read clearly from town
-  scene.fog.density = gfx.quality === 'low' ? 0.0064 : 0.0033;
+  scene.fog.density = gfx.quality === 'low' ? 0.0064 : 0.0022;
   if (gfx.quality === 'low') DAY.fogLift.setRGB(1, 1, 1); else DAY.fogLift.setRGB(...HIGH_FOG_LIFT);   // High: lift the daytime fog/horizon so AgX + exposure 1.0 lands near #C9D3D6 on screen
   camera.far = gfx.quality === 'low' ? 520 : 760; camera.updateProjectionMatrix();
   setShadows(renderer, dirLight, shadowsOn(), gfx.quality);
