@@ -12,6 +12,7 @@ import { updateSound, soundStats } from './sound.js';
 import { PUSH, FADE } from './models.js';
 import { initVfx, updateVfx, addFire, removeFireVfx, burst, setVfxQuality, setLeafSources } from './vfx.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { updateDrizzle } from './weather.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, enableTexDetail, SUN_DIR, createWaterReflection } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
 import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from './chunk.js';
@@ -2108,6 +2109,7 @@ function animate(now) {
   followLight(dirLight, rig.fx, rig.fz, DAY.lightDir);
   sky.follow(camera);
   updatePushers(); updateLocalGrass(scene, pm.mesh.position.x, pm.mesh.position.z, gfx.quality !== 'low' && !inCave(pm.mesh.position.x, pm.mesh.position.z));
+  updateDrizzle(scene, camera, dt, gfx.quality, inCave(pm.mesh.position.x, pm.mesh.position.z));
   updateVfx(dt, pm.mesh.position.x, pm.mesh.position.z, camera, now, Math.max(DAY.night, caveK), inCave(pm.mesh.position.x, pm.mesh.position.z));
   if (gfx.quality === 'low') { waterRefl.update(false); renderer.render(scene, camera); } else { updateShafts(); waterRefl.update(true); composer.render(); }
 

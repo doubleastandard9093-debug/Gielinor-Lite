@@ -31,6 +31,9 @@ rep("gradePass.uniforms.sat.value = gfx.quality === 'low' ? 1.12 : 1.45;", "GRAD
 rep('renderer.setPixelRatio(pr); composer.setPixelRatio(pr);', 'renderer.setPixelRatio(pr);');
 // WebGPU post grades differently (no extra darkening), so the root fog lift washes it out: smaller lift here
 rep('const HIGH_FOG_LIFT = [2.8, 3.6, 5.2];', 'const HIGH_FOG_LIFT = [2.0, 2.4, 3.1];');
+// WebGPU has its own TSL weather (stage 5); the WebGL drizzle's ShaderMaterial can't run on WebGPURenderer
+rep("import { updateDrizzle } from '../../js/weather.js';\n", '');
+rep('\n  updateDrizzle(scene, camera, dt, gfx.quality, inCave(pm.mesh.position.x, pm.mesh.position.z));', '');
 rep('const U = gradePass.uniforms;', 'const U = GRADE;');
 rep(`  composer.setSize(window.innerWidth, window.innerHeight);
   bloom.resolution.set(window.innerWidth, window.innerHeight);
