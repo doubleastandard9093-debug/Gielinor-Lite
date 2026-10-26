@@ -431,6 +431,37 @@ export function createWorld(scene) {
     let n = 0; for (const e of g.ents) { if (!e.alive || e.mesh.userData.culled || e.camHidden) continue; if (n++ === i) return { e, g }; } return null; };
   scene.userData.repackInstance = g => packGroup(g);
   scene.userData.packGatherInstances = () => { for (const g of instanceGroups) packGroup(g); };
+  // Tier L #5: conifer skyline impostors (High only). Trees past the cull radius draw as two crossed alpha-tested
+  // cards with a PNW conifer silhouette, so the far hills are not bare. One InstancedMesh, packed with the cull pass.
+  let impostors = null;
+  scene.userData.packImpostors = (on, px, pz, rIn, rOut) => {
+    if (!on) { if (impostors) impostors.visible = false; return; }
+    if (!impostors) {
+      const cv = document.createElement('canvas'); cv.width = 64; cv.height = 128; const x = cv.getContext('2d');
+      x.fillStyle = '#4A3424'; x.fillRect(29, 104, 6, 24);
+      for (let i = 0; i < 6; i++) { const y = 8 + i * 17, w = 8 + i * 4.6; x.fillStyle = i % 2 ? '#2F4A2C' : '#34502F';
+        x.beginPath(); x.moveTo(32, y - 6); x.lineTo(32 + w, y + 20); x.quadraticCurveTo(32, y + 14, 32 - w, y + 20); x.closePath(); x.fill(); }
+      const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+      const a = new THREE.PlaneGeometry(5.2, 10.4); a.translate(0, 5.2, 0); const b = a.clone(); b.rotateY(Math.PI / 2);
+      const geo = mergeImpostorGeos(a, b);
+      const mat = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide });
+      impostors = new THREE.InstancedMesh(geo, mat, 4096); impostors.frustumCulled = false; impostors.castShadow = false; scene.add(impostors);
+    }
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+    let n = 0; const i2 = rIn * rIn, o2 = rOut * rOut;
+    for (const g of instanceGroups) for (const e of g.ents) {
+      if (e.type !== 'tree' || !e.alive) continue; const dx = e.x - px, dz = e.z - pz, d2 = dx * dx + dz * dz;
+      if (d2 <= i2 || d2 > o2 || n >= 4096) continue;
+      const k = e.instScale || 1; q.setFromAxisAngle(up, e.instRy || 0); p.set(e.x, terrainHeight(e.x, e.z) - 0.1, e.z); s.set(k, k * 1.1, k);
+      impostors.setMatrixAt(n++, m.compose(p, q, s));
+    }
+    impostors.count = n; impostors.instanceMatrix.needsUpdate = true; impostors.visible = n > 0;
+  };
+  function mergeImpostorGeos(a, b) {
+    const g = new THREE.BufferGeometry(); const A = a.toNonIndexed(), B = b.toNonIndexed();
+    for (const k of ['position', 'normal', 'uv']) { const x = A.attributes[k], y = B.attributes[k]; const arr = new Float32Array(x.array.length + y.array.length); arr.set(x.array); arr.set(y.array, x.array.length); g.setAttribute(k, new THREE.BufferAttribute(arr, x.itemSize)); }
+    return g;
+  }
 
   // ---- Fishing spots ----
   const ringMat = new THREE.MeshBasicMaterial({ color: 0xd8f0ff, transparent: true, opacity: 0.8, side: THREE.DoubleSide });

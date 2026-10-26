@@ -2048,6 +2048,7 @@ function cullWorld() {
     else if (!far && o.userData.culled) { o.visible = m.alive || m.dying; o.userData.culled = false; }
   }
   if (scene.userData.packGatherInstances) scene.userData.packGatherInstances();
+  if (scene.userData.packImpostors) scene.userData.packImpostors(gfx.quality !== 'low' && !IS_TOUCH, px, pz, R - 6, camera.far * 0.9);   // desktop High only
   const cx = camera.position.x, cz = camera.position.z;
   for (const e of lodList) if (e.mesh.parent || e.lod.hi) updateLod(e, px, pz);
   for (const m of monsters) if (m.lod && updateLod(m, px, pz)) syncMonsterRig(m);
