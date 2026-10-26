@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { IS_TOUCH } from './scene.js';
 import { Fn, uniform, texture, float, vec2, vec3, vec4, mix, smoothstep, pow, max, min, clamp, abs, sin, cos, fract, floor, exp, dot, normalize, length,
   reflect, positionLocal, positionWorld, positionView, normalView, normalWorld, cameraPosition, screenCoordinate, Loop, If, Break, select, attribute, cross, sign, step,
-  screenUV, viewportSharedTexture, viewportDepthTexture, perspectiveDepthToViewZ, cameraNear, cameraFar } from 'three/tsl';
+  screenUV, viewportSharedTexture, cameraViewMatrix, viewportDepthTexture, perspectiveDepthToViewZ, cameraNear, cameraFar } from 'three/tsl';
 import { reflector } from 'three/tsl';
 
 export const SUN_DIR = new THREE.Vector3(0.55, 0.62, 0.42).normalize();
@@ -193,6 +193,20 @@ export function createSky(scene) {
 // ---------------------------------------------------------------------------
 // Terrain (TSL): splat mask + noise detail, slope/height rock with triplanar strata, snow, procedural bump and roughness.
 // ---------------------------------------------------------------------------
+// Photo terrain detail (Tier S/M2 port): colour/height detail, cobble set, RG normal maps and mean-normalised roughness.
+// Strictly High: the four webp files are fetched only on the first enableTexDetail(true); Low samples a 1x1 grey texture.
+const BLANK_DETAIL = new THREE.DataTexture(new Uint8Array([128, 128, 128, 128]), 1, 1); BLANK_DETAIL.needsUpdate = true;
+export const TEX_ON = uniform(0);
+const DETAIL_NODES = { d: [], n0: [], n1: [], r: [] };
+let detailLoaded = false;
+export function enableTexDetail(on) {
+  TEX_ON.value = on ? 1 : 0;
+  if (!on || detailLoaded) return;
+  detailLoaded = true;
+  const ld = (f, k) => new THREE.TextureLoader().load('../textures/' + f, t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.needsUpdate = true; for (const n of DETAIL_NODES[k]) n.value = t; });
+  ld('detail_terrain.webp', 'd'); ld('detail_terrain_n0.webp', 'n0'); ld('detail_terrain_n1.webp', 'n1'); ld('detail_terrain_r.webp', 'r');
+}
+const dtex = (k, uv) => { const n = texture(BLANK_DETAIL, uv); DETAIL_NODES[k].push(n); return n; };
 export const TERRAIN_MASK = { tex: null, size: 1 };
 export function terrainMaterial(maskTex, maskSize) {
   TERRAIN_MASK.tex = maskTex; TERRAIN_MASK.size = maskSize;
@@ -242,13 +256,33 @@ export function terrainMaterial(maskTex, maskSize) {
   col = mix(col, mix(col, vec3(0.32, 0.42, 0.16), 0.5), valley);
   const snow = smoothstep(19.0, 24.0, W.y.add(n2.sub(0.5).mul(5.0))).mul(float(1).sub(smoothstep(0.55, 0.75, slope)));
   col = mix(col, vec3(0.92, 0.94, 0.97).mul(n4.mul(0.1).add(0.92)), snow);
+  // photo detail, tinted: each set only modulates its own palette colour (TEX_ON gates it; textures are blank until High loads them)
+  const dk = fineK.mul(0.75).add(0.25).mul(TEX_ON), nh = float(1).sub(hrock), ns = float(1).sub(snow);
+  const dA = dtex('d', wp.mul(0.25)).sub(0.5), dB = dtex('d', wp.mul(0.5).add(0.37)).sub(0.5);
+  const dR = dtex('d', W.zy.mul(0.2)).a.mul(tw.x).add(dtex('d', W.xz.mul(0.2)).a.mul(tw.y)).add(dtex('d', W.xy.mul(0.2)).a.mul(tw.z)).sub(0.5);
+  const cbK = smoothstep(0.35, 0.65, n1.mul(0.6).add(n2.mul(0.4)));
+  const wr = vec2(wp.x.mul(0.799).add(wp.y.mul(0.602)), wp.x.mul(-0.602).add(wp.y.mul(0.799)));
+  const cb = mix(dtex('d', wp.mul(0.3)).b, dtex('d', wr.mul(0.3).add(0.53)).b, cbK).sub(0.5);
+  const stoneT = mix(vec3(0.27, 0.27, 0.24), mix(vec3(0.52, 0.5, 0.46), vec3(0.66, 0.63, 0.57), cv), smoothstep(-0.22, 0.12, cb)).mul(n4.mul(0.12).add(0.92));
+  col = mix(col, stoneT, isStone0.mul(nh).mul(ns).mul(TEX_ON));
+  const dd = mix(mix(mix(dA.r, dB.g, isDirt0), cb, isStone0), dR, hrock).mul(ns);
+  col = col.mul(dd.mul(mix(0.9, 0.35, isStone0.mul(nh))).mul(dk).add(1));
+  const tDet = dd.mul(dk), sk = nh.mul(ns);
+  const tW = vec4(float(1).sub(isDirt0).mul(float(1).sub(isStone0)).mul(sk), isDirt0.mul(float(1).sub(isStone0)).mul(sk), isStone0.mul(sk), hrock.mul(tw.y).mul(ns));
   m.colorNode = lin(col);
   const isStone = isStone0.mul(float(1).sub(hrock)), isDirt = isDirt0.mul(float(1).sub(hrock));
-  let tH = mix(n4.mul(0.6).add(n3.mul(0.4)), float(1).sub(grout).mul(-0.55).add(n4.mul(0.3)), isStone);
-  tH = mix(tH, r4.mul(0.6).add(r3.mul(0.6)).add(strata.mul(0.3).mul(slope)), hrock).mul(float(1).sub(snow.mul(0.7))).mul(fineK);
-  m.normalNode = bumpFrom(tH.mul(0.14));
-  m.roughnessNode = mix(mix(mix(mix(0.95, 0.88, isDirt), 0.72, isStone), float(0.8).sub(r4.mul(0.15)), hrock), 0.55, snow).mul(float(1).sub(valley.mul(0.12)))
-    .add(n4.sub(0.5).mul(0.12)).sub(grout.oneMinus().mul(isStone).mul(-0.1)).clamp(0.3, 1.0);
+  let tH = mix(n4.mul(0.6).add(n3.mul(0.4)), mix(float(1).sub(grout).mul(-0.55).add(n4.mul(0.3)), 0.0, TEX_ON), isStone);
+  tH = mix(tH, r4.mul(0.6).add(r3.mul(0.6)).add(strata.mul(0.3).mul(slope)), hrock).mul(float(1).sub(snow.mul(0.7))).mul(fineK).add(tDet.mul(0.8));
+  const wq = W.xz;
+  const nG = dtex('n0', wq.mul(0.25)).rg, nD = dtex('n0', wq.mul(0.5).add(0.37)).ba;
+  const nC1 = dtex('n1', wr.mul(0.3).add(0.53)).rg.sub(0.5);
+  const nC = mix(dtex('n1', wq.mul(0.3)).rg, vec2(nC1.x.mul(0.799).sub(nC1.y.mul(0.602)), nC1.x.mul(0.602).add(nC1.y.mul(0.799))).add(0.5), cbK), nR = dtex('n1', wq.mul(0.2)).ba;
+  const pn = nG.sub(0.5).mul(tW.x.mul(0.8)).add(nD.sub(0.5).mul(tW.y)).add(nC.sub(0.5).mul(tW.z.mul(1.4))).add(nR.sub(0.5).mul(tW.w)).mul(dk.mul(2.0));
+  m.normalNode = normalize(bumpFrom(tH.mul(0.14)).add(cameraViewMatrix.mul(vec4(pn.x, 0.0, pn.y, 0.0)).xyz));
+  const rg = vec4(dtex('r', wq.mul(0.25)).r, dtex('r', wq.mul(0.5).add(0.37)).g, dtex('r', wq.mul(0.3)).b, dtex('r', wq.mul(0.2)).a).mul(2.0);
+  const rm = dot(rg, tW).add(float(1).sub(tW.x).sub(tW.y).sub(tW.z).sub(tW.w));
+  m.roughnessNode = mix(1.0, rm, dk.mul(0.6)).mul(mix(mix(mix(mix(0.95, 0.88, isDirt), 0.72, isStone), float(0.8).sub(r4.mul(0.15)), hrock), 0.55, snow).mul(float(1).sub(valley.mul(0.12)))
+    .add(n4.sub(0.5).mul(0.12)).sub(grout.oneMinus().mul(isStone).mul(-0.1))).clamp(0.3, 1.0);
   // cavity AO: grout lines, rock crevices and the low points of the parallax march
   m.aoNode = mix(1.0, float(1).sub(grout.oneMinus().mul(isStone).mul(0.55)).mul(float(1).sub(smoothstep(0.35, 0.0, r4).mul(hrock).mul(0.35))).mul(mix(1.0, layer.mul(0.4).add(0.6), pomK)), fineK);
   return m;

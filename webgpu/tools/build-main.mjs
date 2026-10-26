@@ -17,16 +17,18 @@ import { attachPendingReflectors } from './gfx.js';
 import { initGpuExtras, updateGpuExtras, setGpuQuality } from './extras.js';
 import { BACKEND } from './scene.js';`);
 rep('const renderer = createRenderer();', 'const renderer = await createRenderer();');
-cut('const composer = new EffectComposer(renderer);', 'composer.addPass(gradePass);',
+cut('const composer = new EffectComposer(renderer', 'if (smaa) composer.addPass(smaa);',
   `const post = createPost(renderer, scene, camera);
-const { gtao, GRADE } = post;`);
+const { gtao, GRADE } = post;
+const smaa = null;   // WebGPU: AA comes from the renderer / post pipeline`);
 rep('const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);', `const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);
 attachPendingReflectors(scene); upgradeShared(); upgradeScene(scene);
 initGpuExtras({ scene, camera, renderer, dirLight, lightsRef });`);
 rep(`  composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(window.innerWidth, window.innerHeight);
 `, '');
-rep("gradePass.uniforms.sat.value = gfx.quality === 'low' ? 1.12 : 1.15;", "GRADE.sat.value = gfx.quality === 'low' ? 1.12 : 1.15; post.needsUpdate(); setGpuQuality(gfx.quality); post.setQuality(gfx.quality);");
+rep("gradePass.uniforms.sat.value = gfx.quality === 'low' ? 1.12 : 1.45;", "GRADE.sat.value = gfx.quality === 'low' ? 1.12 : 1.45; post.needsUpdate(); setGpuQuality(gfx.quality); post.setQuality(gfx.quality);");
+rep('renderer.setPixelRatio(pr); composer.setPixelRatio(pr);', 'renderer.setPixelRatio(pr);');
 rep('const U = gradePass.uniforms;', 'const U = GRADE;');
 rep(`  composer.setSize(window.innerWidth, window.innerHeight);
   bloom.resolution.set(window.innerWidth, window.innerHeight);

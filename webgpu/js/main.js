@@ -9,9 +9,9 @@ import { agilityStyle, agilityDuration, agilityVariation, agilityPose3 as agilit
 import { updateDay, DAY, dayLabel } from '../../js/daycycle.js';
 import { poseGait, tailSway } from '../../js/gait.js';
 import { updateSound, soundStats } from '../../js/sound.js';
-import { PUSH } from '../../js/models.js';
+import { PUSH, FADE } from '../../js/models.js';
 import { initVfx, updateVfx, addFire, removeFireVfx, burst, setVfxQuality, setLeafSources } from './vfx.js';
-import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, SUN_DIR, createWaterReflection } from './gfx.js';
+import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, enableTexDetail, SUN_DIR, createWaterReflection } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
 import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from '../../js/chunk.js';
 import { terrainHeight, insideLake, WORLD_HALF, TOWNS, CAVE, inCave } from '../../js/world.js';
@@ -49,8 +49,10 @@ import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, apply
 const scene = createScene();
 const camera = createCamera();
 const renderer = await createRenderer();
+// Tier S #1: the composer's own target needs MSAA or renderer antialias is lost on High. Desktop: 4x MSAA; touch: SMAA pass (cheaper).
 const post = createPost(renderer, scene, camera);
 const { gtao, GRADE } = post;
+const smaa = null;   // WebGPU: AA comes from the renderer / post pipeline
 document.body.prepend(renderer.domElement);
 const lightsRef = createLights(scene);
 const waterRefl = createWaterReflection(renderer, scene, camera);
@@ -134,8 +136,10 @@ const gfx = { quality: 'high', auto: true, slowFrames: 0, frames: 0, sum: 0 };
 function applyGfx() {
   gfx.auto = player.settings.gfx !== 'high' && player.settings.gfx !== 'low';
   gfx.quality = gfx.auto && gfx.autoLow ? 'low' : resolveQuality(player.settings.gfx);
+  { const f = new URLSearchParams(location.search).get('gfx'); if (f === 'low' || f === 'high') { gfx.quality = f; gfx.auto = false; } }   // ?gfx=low|high: forced tier (audits, low-end testing)
   renderer.setPixelRatio(pixelRatioFor(gfx.quality));
   renderer.setSize(window.innerWidth, window.innerHeight);
+  gfx.dynScale = 1; if (smaa) smaa.enabled = gfx.quality !== 'low';
   gtao.enabled = gfx.quality !== 'low' && player.settings.ao !== false;
   // High: AgX filmic tone mapping (wider highlight roll-off, no hue shift on bright skies) with a saturation lift; Low keeps ACES
   renderer.toneMapping = gfx.quality === 'low' ? THREE.ACESFilmicToneMapping : THREE.AgXToneMapping;
@@ -144,6 +148,7 @@ function applyGfx() {
   sky.setQuality(gfx.quality);
   setDecorQuality(gfx.quality); setVfxQuality(gfx.quality);
   SWAY.value = gfx.quality === 'low' ? 0 : 1;
+  enableTexDetail(gfx.quality !== 'low');
   setLodRange(gfx.quality);
   // High: thinner fog and a longer view so the northern mountains read clearly from town
   scene.fog.density = gfx.quality === 'low' ? 0.0064 : 0.0022;
@@ -165,6 +170,8 @@ function watchFrameRate(dt) {
   if (gfx.frames >= 390) {
     const fps = 300 / gfx.sum;
     gfx.frames = 0; gfx.sum = 0;
+    // Tier S #10: on High touch, step pixel ratio down (to 0.75x) before giving up on High, so phones keep shadows and AO
+    if (fps < 26 && gfx.quality !== 'low' && gfx.dynScale > 0.76) { gfx.dynScale = Math.max(0.75, gfx.dynScale - 0.125); const pr = pixelRatioFor(gfx.quality) * gfx.dynScale; renderer.setPixelRatio(pr); return; }
     if (fps < 26) { gfx.autoLow = true; applyGfx(); log('Graphics set to Low to keep the game smooth. Change it in Settings.', 'game'); markDirty(); }
   }
 }
@@ -2004,6 +2011,8 @@ function cullWorld() {
     else if (!far && o.userData.culled) { o.visible = m.alive || m.dying; o.userData.culled = false; }
   }
   if (scene.userData.packGatherInstances) scene.userData.packGatherInstances();
+  if (scene.userData.packImpostors) { const imp = gfx.quality !== 'low' && !IS_TOUCH; scene.userData.packImpostors(imp, px, pz, R - 10, camera.far * 0.9);   // desktop High only
+    FADE.c.value.set(px, pz); if (imp) FADE.r.value.set(R - 10, R - 1); else FADE.r.value.set(1e6, 1e6 + 1); }   // 9 m dithered crossfade mesh -> card   // desktop High only
   const cx = camera.position.x, cz = camera.position.z;
   for (const e of lodList) if (e.mesh.parent || e.lod.hi) updateLod(e, px, pz);
   for (const m of monsters) if (m.lod && updateLod(m, px, pz)) syncMonsterRig(m);

@@ -49,30 +49,47 @@ export function initGpuExtras(c) {
       if (flashes.length > FLASH) flashes.shift();
     };
   }
+  setBadge();
+}
+// High-only GPU features (GPU grass, CSM, stage 5 fog/particles/weather/crowds, stage 6 volumetrics/dense foliage) are
+// built on the first non-Low frame, so a Low session never allocates, compiles or runs them.
+let heavy = false, csmOn = false;
+function initHeavy() {
+  heavy = true;
   initGrass();
   // Stage 4, cascaded shadow maps: the sun's shadow is split into cascades along the view, so contact shadows stay
   // sharp at your feet while hills, trees and buildings far off still cast. ?nocsm turns it off.
-  if (!/nocsm/.test(location.search)) {
+  if (!/nocsm/.test(location.search) && !matchMedia('(pointer: coarse)').matches) {   // desktop High only; phones keep one shadow map
     try {
       const gpu = BACKEND.name === 'WebGPU', L = ctx.dirLight;
       L.shadow.mapSize.set(2048, 2048);
-      const csm = new CSMShadowNode(L, { cascades: gpu ? 4 : 3, maxFar: gpu ? 300 : 200, mode: 'practical', lightMargin: 80 });
+      const csm = new CSMShadowNode(L, { cascades: 3, maxFar: 220, mode: 'practical', lightMargin: 80 });   // P3: 3 x 2048 to 220 m (both backends)
       csm.fade = true;
       L.shadow.shadowNode = csm; CASCADE.csm = csm; GPU_STATS.cascades = csm.cascades;
     } catch (e) { console.warn('[webgpu] CSM unavailable', e); }
   }
   initStage5(ctx);
   initStage6(ctx);
+  csmOn = !!CASCADE.csm;
+  setBadge();
+}
+function setBadge() {
   const narrow = innerWidth < 520;
   badge.style.whiteSpace = 'nowrap';
-  badge.textContent = (BACKEND.name === 'WebGPU' ? 'WebGPU' : narrow ? 'WebGL2' : 'WebGL2 fallback') + (tiled ? (narrow ? ' · tiled' : ' · tiled lights') : '') + (CASCADE.csm ? ' · CSM' : '') + (S5.particles ? (narrow ? ' · FX' : ' · compute FX') : '');
+  badge.textContent = (BACKEND.name === 'WebGPU' ? 'WebGPU' : narrow ? 'WebGL2' : 'WebGL2 fallback') + (tiled ? (narrow ? ' · tiled' : ' · tiled lights') : '') + (csmOn ? ' · CSM' : '') + (S5.particles ? (narrow ? ' · FX' : ' · compute FX') : '');
 }
 export function setGpuQuality(q) { quality = q; }
 
 export function updateGpuExtras(dt, now, p, q) {
-  updateGrassField(p, q);
-  updateStage5(dt, now, p, q);
-  updateStage6(dt, now, p, q);
+  if (!heavy && q !== 'low') initHeavy();
+  if (heavy) {
+    // CSM is High only: Low drops back to the plain directional shadow map, High re-attaches the same cascades
+    const wantCsm = q !== 'low' && !!CASCADE.csm;
+    if (wantCsm !== csmOn) { const L = ctx.dirLight; L.shadow.shadowNode = wantCsm ? CASCADE.csm : null; if (L.shadow.map) { L.shadow.map.dispose(); L.shadow.map = null; } L.shadow.needsUpdate = true; csmOn = wantCsm; setBadge(); }
+    updateGrassField(p, q);
+    updateStage5(dt, now, p, q);
+    updateStage6(dt, now, p, q);
+  }
   if (!tiled) return;
   const t = now * 0.001;
   const near = [];
