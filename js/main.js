@@ -166,7 +166,7 @@ function giveXP(skill, amount) {
 
 // Graphics quality. High = bloom, colour grade, clouds, sway, full resolution.
 // Low = plain render at a lower resolution for slower phones.
-const HIGH_FOG_LIFT = [5.0, 5.8, 7.0];   // per-channel daytime fog/horizon lift on High (AgX + grade darken and grey it)
+const HIGH_FOG_LIFT = [2.8, 3.6, 5.2];   // per-channel daytime fog/horizon lift on High (AgX + grade darken and grey it)
 const gfx = { quality: 'high', auto: true, slowFrames: 0, frames: 0, sum: 0 };
 function applyGfx() {
   gfx.auto = player.settings.gfx !== 'high' && player.settings.gfx !== 'low';
