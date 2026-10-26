@@ -131,7 +131,7 @@ function giveXP(skill, amount) {
 
 // Graphics quality. High = bloom, colour grade, clouds, sway, full resolution.
 // Low = plain render at a lower resolution for slower phones.
-const HIGH_FOG_LIFT = [2.8, 3.6, 5.2];   // per-channel daytime fog/horizon lift on High (AgX + grade darken and grey it)
+const HIGH_FOG_LIFT = [2.0, 2.4, 3.1];   // per-channel daytime fog/horizon lift on High (AgX + grade darken and grey it)
 const gfx = { quality: 'high', auto: true, slowFrames: 0, frames: 0, sum: 0 };
 function applyGfx() {
   gfx.auto = player.settings.gfx !== 'high' && player.settings.gfx !== 'low';
@@ -144,7 +144,7 @@ function applyGfx() {
   // High: AgX filmic tone mapping (wider highlight roll-off, no hue shift on bright skies) with a saturation lift; Low keeps ACES
   renderer.toneMapping = gfx.quality === 'low' ? THREE.ACESFilmicToneMapping : THREE.AgXToneMapping;
   renderer.toneMappingExposure = gfx.quality === 'low' ? 1.05 : 1.05;
-  GRADE.sat.value = gfx.quality === 'low' ? 1.12 : 1.45; post.needsUpdate(); setGpuQuality(gfx.quality); post.setQuality(gfx.quality);
+  GRADE.sat.value = gfx.quality === 'low' ? 1.12 : 2.0; post.needsUpdate(); setGpuQuality(gfx.quality); post.setQuality(gfx.quality);
   sky.setQuality(gfx.quality);
   setDecorQuality(gfx.quality); setVfxQuality(gfx.quality);
   SWAY.value = gfx.quality === 'low' ? 0 : 1;

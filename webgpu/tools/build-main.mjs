@@ -27,8 +27,10 @@ initGpuExtras({ scene, camera, renderer, dirLight, lightsRef });`);
 rep(`  composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(window.innerWidth, window.innerHeight);
 `, '');
-rep("gradePass.uniforms.sat.value = gfx.quality === 'low' ? 1.12 : 1.45;", "GRADE.sat.value = gfx.quality === 'low' ? 1.12 : 1.45; post.needsUpdate(); setGpuQuality(gfx.quality); post.setQuality(gfx.quality);");
+rep("gradePass.uniforms.sat.value = gfx.quality === 'low' ? 1.12 : 1.45;", "GRADE.sat.value = gfx.quality === 'low' ? 1.12 : 2.0; post.needsUpdate(); setGpuQuality(gfx.quality); post.setQuality(gfx.quality);");
 rep('renderer.setPixelRatio(pr); composer.setPixelRatio(pr);', 'renderer.setPixelRatio(pr);');
+// WebGPU post grades differently (no extra darkening), so the root fog lift washes it out: smaller lift here
+rep('const HIGH_FOG_LIFT = [2.8, 3.6, 5.2];', 'const HIGH_FOG_LIFT = [2.0, 2.4, 3.1];');
 rep('const U = gradePass.uniforms;', 'const U = GRADE;');
 rep(`  composer.setSize(window.innerWidth, window.innerHeight);
   bloom.resolution.set(window.innerWidth, window.innerHeight);

@@ -47,7 +47,7 @@ function updateFog(q) {
   const d = ctx.scene.fog.density; F_BASE.value = d; FOG.density.value = d;
   F_SUN.value.copy(DAY.lightDir || SUN_DIR).normalize();
   F_SUNC.value.copy(SKY.sun).lerp(new THREE.Color(1, 0.6, 0.3), DAY.gold || 0).multiplyScalar(Math.max(0, 1 - (DAY.night || 0)));
-  F_H.value = q === 'low' ? 0.004 : 0.010;
+  F_H.value = q === 'low' ? 0.004 : 0.006;
   F_WET.value += ((S5.weather === 'clear' ? 0 : S5.precip) - F_WET.value) * 0.02;
 }
 
