@@ -1682,12 +1682,14 @@ function scatterDecor(scene, rng, occupied) {
   // M2: High-only ferns and moss cushions around tree and rock bases (capped at 4,000 + 2,000 instances)
   { let fs = 1234567; const frng = () => (fs = (fs * 1103515245 + 12345) >>> 0) / 4294967296;   // own stream: the world's rng sequence is untouched
     const anchors = occupied.filter(o => o.r >= 0.8 && o.r <= 1.6);
+    // P3: Auto picks High on phones, so touch devices get ~2,000 instead of 6,000
+    const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches, FC = touch ? 1340 : 4000, MC = touch ? 660 : 2000;
     let nf = 0, nm = 0;
-    for (let tries = 0; tries < 30000 && (nf < 4000 || nm < 2000) && anchors.length; tries++) {
+    for (let tries = 0; tries < 30000 && (nf < FC || nm < MC) && anchors.length; tries++) {
       const o = anchors[(frng() * anchors.length) | 0], a = frng() * 6.283, d = 0.9 + frng() * 2.6, x = o.x + Math.cos(a) * d, z = o.z + Math.sin(a) * d;
       if (Math.abs(x) > WORLD_HALF - 2 || Math.abs(z) > WORLD_HALF - 2 || !ok(x, z, 0.3)) continue;
-      if (nf < 4000 && frng() < 0.68) { bucket(x, z).ferns.push({ x, z, s: 0.7 + frng() * 0.7, ry: frng() * 6.283, c: new THREE.Color().setHSL(0.26 + frng() * 0.05, 0.4, 0.62 + frng() * 0.2) }); nf++; }
-      else if (nm < 2000) { bucket(x, z).moss.push({ x, z, s: 0.25 + frng() * 0.35, ry: frng() * 6.283, c: new THREE.Color().setHSL(0.23 + frng() * 0.05, 0.35, 0.4 + frng() * 0.1) }); nm++; }
+      if (nf < FC && frng() < 0.68) { bucket(x, z).ferns.push({ x, z, s: 0.7 + frng() * 0.7, ry: frng() * 6.283, c: new THREE.Color().setHSL(0.26 + frng() * 0.05, 0.4, 0.62 + frng() * 0.2) }); nf++; }
+      else if (nm < MC) { bucket(x, z).moss.push({ x, z, s: 0.25 + frng() * 0.35, ry: frng() * 6.283, c: new THREE.Color().setHSL(0.23 + frng() * 0.05, 0.35, 0.4 + frng() * 0.1) }); nm++; }
     } }
   const fernGeo = fernGeometry(), mossGeo = bake([paint(blob(0.45, 0.09, 0.4, { detail: 1, lump: 0.35, seed: 11, flat: 0.8 }), (x, y, z, nx, ny) => new THREE.Color(0x3f5a22).multiplyScalar(0.7 + 0.4 * ny))]);
   const fernMat = makeFoliageMat({}, 1.2);   // both windings are in the geometry, so front-side only keeps the up normal lit
