@@ -247,14 +247,19 @@ export function terrainMaterial(maskTex, maskSize) {
           vec4 dA = texture2D(tDetail, wp * 0.25) - 0.5, dB = texture2D(tDetail, wp * 0.5 + 0.37) - 0.5;
           float dR = (texture2D(tDetail, vWPos.zy * 0.2).a * tw.x + texture2D(tDetail, vWPos.xz * 0.2).a * tw.y + texture2D(tDetail, vWPos.xy * 0.2).a * tw.z) - 0.5;
           float isSt = smoothstep(0.4, 0.6, mk.b + edge * 0.4), isDi = smoothstep(0.38, 0.62, mk.r + edge);
-          float dd = mix(mix(mix(dA.r, dB.g, isDi), texture2D(tDetail, wp * 0.74).b - 0.5, isSt), dR, hrock) * (1.0 - snow);
-          col *= 1.0 + dd * 0.9 * dk;
+          // cobbles: irregular photo set, two samples (second rotated 37 deg and offset) mixed by low noise so the plaza never repeats
+          vec2 wr = mat2(0.799, -0.602, 0.602, 0.799) * wp;
+          float cb = mix(texture2D(tDetail, wp * 0.3).b, texture2D(tDetail, wr * 0.3 + 0.53).b, smoothstep(0.35, 0.65, n1 * 0.6 + n2 * 0.4)) - 0.5;
+          vec3 stoneT = mix(vec3(0.27, 0.27, 0.24), mix(vec3(0.52, 0.5, 0.46), vec3(0.66, 0.63, 0.57), cv), smoothstep(-0.22, 0.12, cb)) * (0.92 + 0.12 * n4);
+          col = mix(col, stoneT, isSt * (1.0 - hrock) * (1.0 - snow));
+          float dd = mix(mix(mix(dA.r, dB.g, isDi), cb, isSt), dR, hrock) * (1.0 - snow);
+          col *= 1.0 + dd * mix(0.9, 0.35, isSt * (1.0 - hrock)) * dk;
           tDet = dd * dk;
         }
         diffuseColor.rgb *= lin(col);
         // procedural height for bump shading and per-surface roughness
         float isStone = smoothstep(0.4, 0.6, mk.b + edge * 0.4) * (1.0 - hrock), isDirt = smoothstep(0.38, 0.62, mk.r + edge) * (1.0 - hrock);
-        tHeight = mix(n4 * 0.6 + n3 * 0.4, (1.0 - grout) * -0.55 + n4 * 0.3, isStone);
+        tHeight = mix(n4 * 0.6 + n3 * 0.4, mix((1.0 - grout) * -0.55 + n4 * 0.3, 0.0, texOn), isStone);
         tHeight = mix(tHeight, r4 * 0.6 + r3 * 0.6 + strata * 0.3 * slope, hrock) * (1.0 - snow * 0.7) * fineK + tDet * 0.8;
         tRough = mix(mix(mix(0.95, 0.88, isDirt), 0.72, isStone), 0.8 - 0.15 * r4, hrock);
         tRough = mix(tRough, 0.55, snow) * (1.0 - smoothstep(-0.3, -2.5, vWPos.y) * 0.12);
