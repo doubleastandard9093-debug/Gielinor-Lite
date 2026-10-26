@@ -12,7 +12,7 @@ import { updateSound, soundStats } from './sound.js';
 import { PUSH, FADE } from './models.js';
 import { initVfx, updateVfx, addFire, removeFireVfx, burst, setVfxQuality, setLeafSources } from './vfx.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, SUN_DIR, createWaterReflection } from './gfx.js';
+import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, enableTexDetail, SUN_DIR, createWaterReflection } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
 import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from './chunk.js';
 import { terrainHeight, insideLake, WORLD_HALF, TOWNS, CAVE, inCave } from './world.js';
@@ -184,6 +184,7 @@ function applyGfx() {
   sky.setQuality(gfx.quality);
   setDecorQuality(gfx.quality); setVfxQuality(gfx.quality);
   SWAY.value = gfx.quality === 'low' ? 0 : 1;
+  enableTexDetail(gfx.quality !== 'low');
   setLodRange(gfx.quality);
   // High: thinner fog and a longer view so the northern mountains read clearly from town
   scene.fog.density = gfx.quality === 'low' ? 0.0064 : 0.0022;

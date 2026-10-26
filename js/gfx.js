@@ -169,18 +169,32 @@ export function createSky(scene) {
 // Terrain material: splat-blends grass / dirt / sand / cobbles from a mask
 // texture painted in code, with procedural noise detail. One draw call.
 // ---------------------------------------------------------------------------
+// High only: CC0 ambientCG detail (see textures/CREDITS.md). Luminance of Moss002/Ground037/PavingStones070/Rock030 packed
+// into RGBA, zero-mean, and multiplied onto the palette colours so the art direction stays in the shader. Loaded on first High use.
+export const TEX_DETAIL = { value: 0 };
+const DETAIL_TEX = { value: null };
+export function enableTexDetail(on) {
+  TEX_DETAIL.value = on ? 1 : 0;
+  if (on && !DETAIL_TEX.value) {
+    DETAIL_TEX.value = new THREE.TextureLoader().load('textures/detail_terrain.webp');
+    DETAIL_TEX.value.wrapS = DETAIL_TEX.value.wrapT = THREE.RepeatWrapping; DETAIL_TEX.value.anisotropy = 4;
+  }
+}
+const BLANK_DETAIL = new THREE.DataTexture(new Uint8Array([128, 128, 128, 128]), 1, 1); BLANK_DETAIL.needsUpdate = true;
 export function terrainMaterial(maskTex, maskSize) {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0.0 });
   m.onBeforeCompile = sh => {
     sh.uniforms.tMask = { value: maskTex };
     sh.uniforms.tNoise = { value: getNoiseTexture() };
     sh.uniforms.maskSize = { value: maskSize };
+    sh.uniforms.texOn = TEX_DETAIL;
+    sh.uniforms.tDetail = { get value() { return DETAIL_TEX.value || BLANK_DETAIL; } };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
       .replace('#include <project_vertex>', '#include <project_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        varying vec3 vWPos; uniform sampler2D tMask, tNoise; uniform float maskSize;
+        varying vec3 vWPos; uniform sampler2D tMask, tNoise, tDetail; uniform float maskSize, texOn;
         vec3 lin(vec3 c){ return pow(c, vec3(2.2)); }`)
       .replace('#include <map_fragment>', `
         vec2 wp = vWPos.xz;
@@ -228,15 +242,24 @@ export function terrainMaterial(maskTex, maskSize) {
         col = mix(col, mix(col, vec3(0.32, 0.42, 0.16), 0.5), smoothstep(-0.3, -2.5, vWPos.y)); // lush valley floors
         float snow = smoothstep(19.0, 24.0, vWPos.y + (n2 - 0.5) * 5.0) * (1.0 - smoothstep(0.55, 0.75, slope));
         col = mix(col, vec3(0.92, 0.94, 0.97) * (0.92 + 0.1 * n4), snow);
+        if (texOn > 0.5) { // photo detail, tinted: each set only modulates its own palette colour
+          float dk = fineK * 0.75 + 0.25;
+          vec4 dA = texture2D(tDetail, wp * 0.25) - 0.5, dB = texture2D(tDetail, wp * 0.5 + 0.37) - 0.5;
+          float dR = (texture2D(tDetail, vWPos.zy * 0.2).a * tw.x + texture2D(tDetail, vWPos.xz * 0.2).a * tw.y + texture2D(tDetail, vWPos.xy * 0.2).a * tw.z) - 0.5;
+          float isSt = smoothstep(0.4, 0.6, mk.b + edge * 0.4), isDi = smoothstep(0.38, 0.62, mk.r + edge);
+          float dd = mix(mix(mix(dA.r, dB.g, isDi), texture2D(tDetail, wp * 0.74).b - 0.5, isSt), dR, hrock) * (1.0 - snow);
+          col *= 1.0 + dd * 0.9 * dk;
+          tDet = dd * dk;
+        }
         diffuseColor.rgb *= lin(col);
         // procedural height for bump shading and per-surface roughness
         float isStone = smoothstep(0.4, 0.6, mk.b + edge * 0.4) * (1.0 - hrock), isDirt = smoothstep(0.38, 0.62, mk.r + edge) * (1.0 - hrock);
         tHeight = mix(n4 * 0.6 + n3 * 0.4, (1.0 - grout) * -0.55 + n4 * 0.3, isStone);
-        tHeight = mix(tHeight, r4 * 0.6 + r3 * 0.6 + strata * 0.3 * slope, hrock) * (1.0 - snow * 0.7) * fineK;
+        tHeight = mix(tHeight, r4 * 0.6 + r3 * 0.6 + strata * 0.3 * slope, hrock) * (1.0 - snow * 0.7) * fineK + tDet * 0.8;
         tRough = mix(mix(mix(0.95, 0.88, isDirt), 0.72, isStone), 0.8 - 0.15 * r4, hrock);
         tRough = mix(tRough, 0.55, snow) * (1.0 - smoothstep(-0.3, -2.5, vWPos.y) * 0.12);
       `)
-      .replace('void main() {', 'float tHeight = 0.0; float tRough = 0.95;\nvoid main() {')
+      .replace('void main() {', 'float tHeight = 0.0; float tRough = 0.95; float tDet = 0.0;\nvoid main() {')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = tRough;')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         { // screen-space bump from tHeight (Mikkelsen) gives grass clumps, dirt grain, cobble grout and rock strata real relief
