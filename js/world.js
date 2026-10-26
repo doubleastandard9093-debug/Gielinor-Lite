@@ -1615,6 +1615,23 @@ export function updateLocalGrass(scene, px, pz, on) {
   if (dirty) { G.mesh.instanceMatrix.needsUpdate = true; G.mesh.instanceColor.needsUpdate = true; }
   G.filled = true;
 }
+// Fern: 7 arched, tapered fronds (both windings), dark at the crown, lighter at the tips. ~84 triangles.
+function fernGeometry() {
+  const pos = [], nor = [], colr = [], lo = new THREE.Color(0x24461a), hi = new THREE.Color(0x6f9a3c);
+  for (let f = 0; f < 7; f++) {
+    const a = f / 7 * 6.283 + (f % 2) * 0.3, L = 0.5 + ((f * 37) % 10) / 40, ca = Math.cos(a), sa = Math.sin(a), px = -sa, pz = ca;
+    const pt = t => [ca * L * t, 0.2 * Math.sin(t * 2.6) * (1 - t * 0.35), sa * L * t];
+    for (let k = 0; k < 3; k++) {
+      const t0 = k / 3, t1 = (k + 1) / 3, w0 = 0.09 * (1 - t0 * 0.8), w1 = 0.09 * (1 - t1 * 0.8), A = pt(t0), B = pt(t1);
+      const q = [[A[0] - px * w0, A[1], A[2] - pz * w0], [A[0] + px * w0, A[1], A[2] + pz * w0], [B[0] + px * w1, B[1], B[2] + pz * w1], [B[0] - px * w1, B[1], B[2] - pz * w1]];
+      const tri = [0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0];
+      for (const i of tri) { pos.push(...q[i]); nor.push(0, 1, 0); const c = lo.clone().lerp(hi, i < 2 ? t0 : t1); colr.push(c.r, c.g, c.b); }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(colr, 3));
+  return g;
+}
 function scatterDecor(scene, rng, occupied) {
   const ok = decorOk = (x, z, pad) => {
     if (Math.hypot(x, z) < 6.5 || Math.hypot(x - 50, z + 24) < 4) return false;
@@ -1642,7 +1659,7 @@ function scatterDecor(scene, rng, occupied) {
   function bucket(x, z) {
     const cx = Math.floor((x + WORLD_HALF) / CHUNK_SIZE), cz = Math.floor((z + WORLD_HALF) / CHUNK_SIZE);
     const key = cx + ',' + cz;
-    if (!buckets.has(key)) buckets.set(key, { grass: [], grassHi: [], flowers: [], bushes: [], pebbles: [] });
+    if (!buckets.has(key)) buckets.set(key, { grass: [], grassHi: [], flowers: [], bushes: [], pebbles: [], ferns: [], moss: [] });
     return buckets.get(key);
   }
   function scatterInto(kind, count, range, pad, scaleMin, scaleMax, colorFn) {
@@ -1662,6 +1679,18 @@ function scatterDecor(scene, rng, occupied) {
   scatterInto('flowers', Math.round(900 * Math.min(areaScale, 1.6)), WORLD_HALF - 2, 0.3, 0.8, 1.3, cc => cc.setHex(FLOWER[(rng() * FLOWER.length) | 0]));
   scatterInto('bushes', Math.round(320 * Math.min(areaScale, 1.5)), WORLD_HALF - 3, 1.0, 0.7, 1.4, cc => cc.setHSL(0.27 + rng() * 0.07, 0.4 + rng() * 0.2, 0.55 + rng() * 0.15));
   scatterInto('pebbles', Math.round(650 * Math.min(areaScale, 1.5)), WORLD_HALF - 2, 0.2, 0.6, 2.0, cc => cc.setScalar(0.75 + rng() * 0.35));
+  // M2: High-only ferns and moss cushions around tree and rock bases (capped at 4,000 + 2,000 instances)
+  { let fs = 1234567; const frng = () => (fs = (fs * 1103515245 + 12345) >>> 0) / 4294967296;   // own stream: the world's rng sequence is untouched
+    const anchors = occupied.filter(o => o.r >= 0.8 && o.r <= 1.6);
+    let nf = 0, nm = 0;
+    for (let tries = 0; tries < 30000 && (nf < 4000 || nm < 2000) && anchors.length; tries++) {
+      const o = anchors[(frng() * anchors.length) | 0], a = frng() * 6.283, d = 0.9 + frng() * 2.6, x = o.x + Math.cos(a) * d, z = o.z + Math.sin(a) * d;
+      if (Math.abs(x) > WORLD_HALF - 2 || Math.abs(z) > WORLD_HALF - 2 || !ok(x, z, 0.3)) continue;
+      if (nf < 4000 && frng() < 0.68) { bucket(x, z).ferns.push({ x, z, s: 0.7 + frng() * 0.7, ry: frng() * 6.283, c: new THREE.Color().setHSL(0.26 + frng() * 0.05, 0.4, 0.62 + frng() * 0.2) }); nf++; }
+      else if (nm < 2000) { bucket(x, z).moss.push({ x, z, s: 0.25 + frng() * 0.35, ry: frng() * 6.283, c: new THREE.Color().setHSL(0.23 + frng() * 0.05, 0.35, 0.4 + frng() * 0.1) }); nm++; }
+    } }
+  const fernGeo = fernGeometry(), mossGeo = bake([paint(blob(0.45, 0.09, 0.4, { detail: 1, lump: 0.35, seed: 11, flat: 0.8 }), (x, y, z, nx, ny) => new THREE.Color(0x3f5a22).multiplyScalar(0.7 + 0.4 * ny))]);
+  const fernMat = makeFoliageMat({}, 1.2);   // both windings are in the geometry, so front-side only keeps the up normal lit
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), sc = new THREE.Vector3();
   decorFine = [];
   for (const [key, lists] of buckets) {
@@ -1687,6 +1716,8 @@ function scatterDecor(scene, rng, occupied) {
     const g = makeInst(grassGeo, grassMat, lists.grass, false); if (g) fine.push(g);
     const gh = makeInst(grassGeo, grassMat, lists.grassHi, false); if (gh) fine.push(gh);
     const f = makeInst(flowerGeo, flowerMat, lists.flowers, false); if (f) fine.push(f);
+    const fe = makeInst(fernGeo, fernMat, lists.ferns, false); if (fe) fine.push(fe);
+    const mo = makeInst(mossGeo, vcMat, lists.moss, false); if (mo) fine.push(mo);
     makeInst(bushGeo, foliageMat, lists.bushes, true);
     makeInst(pebGeo, vcMat, lists.pebbles, false);
     scene.add(group);
