@@ -77,7 +77,7 @@ export function createPost(renderer, scene, camera) {
   const bl = bloom(vec4(litV, 1), 0.15, 0.4, 0.95);
   POSTFX.bloom = bl;   // strength/threshold are retuned per frame by stage7.js (day/night, cave)
   const hdr = vec4(litV.add(guard(bl).rgb), 1);
-  const GRADE = { sat: uniform(1.12), vig: uniform(0.32), sunUV: uniform(new THREE.Vector2(0.5, 0.8)), shaftK: uniform(0), shaftCol: uniform(new THREE.Color(1, 0.9, 0.7)), ultra: uniform(0) };
+  const GRADE = { sat: uniform(1.12), vig: uniform(0.18), sunUV: uniform(new THREE.Vector2(0.5, 0.8)), shaftK: uniform(0), shaftCol: uniform(new THREE.Color(1, 0.9, 0.7)), ultra: uniform(0) };
   const graded = Fn(() => {
     const c = renderOutput(hdr).toVar();
     const vUv = uv();

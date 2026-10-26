@@ -73,7 +73,7 @@ composer.addPass(bloom);
 composer.addPass(new OutputPass());
 // Final colour grade: a touch more saturation and a soft vignette (High quality only).
 const gradePass = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, sat: { value: 1.12 }, vig: { value: 0.32 }, sunUV: { value: new THREE.Vector2(0.5, 0.8) }, shaftK: { value: 0 }, shaftCol: { value: new THREE.Color(1, 0.9, 0.7) } },
+  uniforms: { tDiffuse: { value: null }, sat: { value: 1.12 }, vig: { value: 0.18 }, sunUV: { value: new THREE.Vector2(0.5, 0.8) }, shaftK: { value: 0 }, shaftCol: { value: new THREE.Color(1, 0.9, 0.7) } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: `uniform sampler2D tDiffuse; uniform float sat, vig, shaftK; uniform vec2 sunUV; uniform vec3 shaftCol; varying vec2 vUv;
     void main(){ vec4 c = texture2D(tDiffuse, vUv);
