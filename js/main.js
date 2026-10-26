@@ -5,6 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { updateDay, DAY, dayLabel } from './daycycle.js';
 import { poseGait, tailSway } from './gait.js';
 import { updateSound, soundStats } from './sound.js';
@@ -49,7 +50,8 @@ import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, apply
 const scene = createScene();
 const camera = createCamera();
 const renderer = createRenderer();
-const composer = new EffectComposer(renderer);
+// Tier S #1: the composer's own target needs MSAA or renderer antialias is lost on High. Desktop: 4x MSAA; touch: SMAA pass (cheaper).
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType, samples: IS_TOUCH ? 0 : 4 }));
 composer.addPass(new RenderPass(scene, camera));
 // NaN/Inf guard: one bad pixel from any material (e.g. a degenerate normal on a mobile GPU) gets smeared by the
 // bloom blur chain into a large black rectangle. Scrub non-finite and negative values before GTAO/bloom see them.
@@ -87,6 +89,7 @@ const gradePass = new ShaderPass({
       c.rgb += vec3(-0.012, 0.0, 0.03) * (1.0 - smoothstep(0.0, 0.45, lum)) + vec3(0.03, 0.012, -0.02) * smoothstep(0.45, 1.0, lum); vec2 d = vUv - 0.5; c.rgb *= 1.0 - vig * smoothstep(0.25, 0.85, dot(d, d) * 2.2); gl_FragColor = c; }`
 });
 composer.addPass(gradePass);
+const smaa = IS_TOUCH ? new SMAAPass(window.innerWidth, window.innerHeight) : null; if (smaa) composer.addPass(smaa);
 document.body.prepend(renderer.domElement);
 const lightsRef = createLights(scene);
 const waterRefl = createWaterReflection(renderer, scene, camera);
@@ -172,6 +175,7 @@ function applyGfx() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(window.innerWidth, window.innerHeight);
+  gfx.dynScale = 1; if (smaa) smaa.enabled = gfx.quality !== 'low';
   gtao.enabled = gfx.quality !== 'low' && player.settings.ao !== false;
   // High: AgX filmic tone mapping (wider highlight roll-off, no hue shift on bright skies) with a saturation lift; Low keeps ACES
   renderer.toneMapping = gfx.quality === 'low' ? THREE.ACESFilmicToneMapping : THREE.AgXToneMapping;
@@ -201,6 +205,8 @@ function watchFrameRate(dt) {
   if (gfx.frames >= 390) {
     const fps = 300 / gfx.sum;
     gfx.frames = 0; gfx.sum = 0;
+    // Tier S #10: on High touch, step pixel ratio down (to 0.75x) before giving up on High, so phones keep shadows and AO
+    if (fps < 26 && gfx.quality !== 'low' && gfx.dynScale > 0.76) { gfx.dynScale = Math.max(0.75, gfx.dynScale - 0.125); const pr = pixelRatioFor(gfx.quality) * gfx.dynScale; renderer.setPixelRatio(pr); composer.setPixelRatio(pr); return; }
     if (fps < 26) { gfx.autoLow = true; applyGfx(); log('Graphics set to Low to keep the game smooth. Change it in Settings.', 'game'); markDirty(); }
   }
 }

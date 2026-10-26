@@ -270,7 +270,7 @@ export function createWaterReflection(renderer, scene, camera) {
       let vis = false;
       if (enabled) for (const w of WATER_MESHES) { if (w.parent && near.copy(w.position).distanceTo(camera.position) < 140) { vis = true; break; } }
       WATER_REFL.on.value = vis ? 1 : 0; if (!vis || camera.position.y <= WATER_Y) return;
-      const sz = renderer.getDrawingBufferSize(new THREE.Vector2()); const w = Math.max(2, sz.x >> 1), h = Math.max(2, sz.y >> 1);
+      const sz = renderer.getDrawingBufferSize(new THREE.Vector2()); const k = Math.min(1, 1024 / Math.max(sz.x >> 1, sz.y >> 1, 1)); const w = Math.max(2, (sz.x >> 1) * k | 0), h = Math.max(2, (sz.y >> 1) * k | 0);   // cap at 1024
       if (rt.width !== w || rt.height !== h) rt.setSize(w, h);
       cam.fov = camera.fov; cam.aspect = camera.aspect; cam.near = camera.near; cam.far = camera.far; cam.updateProjectionMatrix();
       camera.getWorldDirection(fwd); tgt.copy(camera.position).add(fwd);
