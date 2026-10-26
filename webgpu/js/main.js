@@ -139,8 +139,8 @@ function applyGfx() {
   gtao.enabled = gfx.quality !== 'low' && player.settings.ao !== false;
   // High: AgX filmic tone mapping (wider highlight roll-off, no hue shift on bright skies) with a saturation lift; Low keeps ACES
   renderer.toneMapping = gfx.quality === 'low' ? THREE.ACESFilmicToneMapping : THREE.AgXToneMapping;
-  renderer.toneMappingExposure = gfx.quality === 'low' ? 1.05 : 1.0;
-  GRADE.sat.value = gfx.quality === 'low' ? 1.12 : 1.15; post.needsUpdate(); setGpuQuality(gfx.quality); post.setQuality(gfx.quality);
+  renderer.toneMappingExposure = gfx.quality === 'low' ? 1.05 : 1.05;
+  GRADE.sat.value = gfx.quality === 'low' ? 1.12 : 1.45; post.needsUpdate(); setGpuQuality(gfx.quality); post.setQuality(gfx.quality);
   sky.setQuality(gfx.quality);
   setDecorQuality(gfx.quality); setVfxQuality(gfx.quality);
   SWAY.value = gfx.quality === 'low' ? 0 : 1;
