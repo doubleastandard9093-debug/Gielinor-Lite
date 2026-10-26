@@ -1545,12 +1545,14 @@ export function createWorld(scene) {
 }
 
 // ---- Ground clutter (grass, flowers, bushes) in 64×64 chunks ----
-let decorFine = null;
+let decorFine = null; const decorPending = [];
 const decorChunks = new Map(); // key "cx,cz" -> { group, fine: meshes[] }
 let decorChunkActive = new Set();
 export function setDecorQuality(q) {
   if (!decorFine) return;
   const show = q !== 'low';
+  // P3: fine decor (grass layers, flowers, ferns, moss) is only built the first time a non-Low tier is used; Low never creates it
+  if (show && decorPending.length) { for (const fn of decorPending) fn(); decorPending.length = 0; }
   for (const m of decorFine) m.visible = show;
 }
 export function updateDecorChunks(px, pz, radius = 110) {
@@ -1580,6 +1582,7 @@ let decorOk = null, localGrass = null;
 const LG_B = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) ? 8 : 10, LG_SZ = 4, LG_CAP = 240, LG_S = 0.27;
 export function updateLocalGrass(scene, px, pz, on) {
   if (!decorOk) return;
+  if (!localGrass && !on) return;   // Low never allocates the near meadow
   if (!localGrass) {
     const N = LG_B * LG_B * LG_CAP, mat = makeFoliageMat({}, 2.5, true), geo = tuftGeometry(4, 0.34, 0.12);
     const mesh = new THREE.InstancedMesh(geo, mat, N); mesh.frustumCulled = false; mesh.receiveShadow = true;
@@ -1691,7 +1694,7 @@ function scatterDecor(scene, rng, occupied) {
       if (nf < FC && frng() < 0.68) { bucket(x, z).ferns.push({ x, z, s: 0.7 + frng() * 0.7, ry: frng() * 6.283, c: new THREE.Color().setHSL(0.26 + frng() * 0.05, 0.4, 0.62 + frng() * 0.2) }); nf++; }
       else if (nm < MC) { bucket(x, z).moss.push({ x, z, s: 0.25 + frng() * 0.35, ry: frng() * 6.283, c: new THREE.Color().setHSL(0.23 + frng() * 0.05, 0.35, 0.4 + frng() * 0.1) }); nm++; }
     } }
-  const fernGeo = fernGeometry(), mossGeo = bake([paint(blob(0.45, 0.09, 0.4, { detail: 1, lump: 0.35, seed: 11, flat: 0.8 }), (x, y, z, nx, ny) => new THREE.Color(0x3f5a22).multiplyScalar(0.7 + 0.4 * ny))]);
+  let fernG = null, mossG = null; const fernGeo = () => fernG ||= fernGeometry(), mossGeo = () => mossG ||= bake([paint(blob(0.45, 0.09, 0.4, { detail: 1, lump: 0.35, seed: 11, flat: 0.8 }), (x, y, z, nx, ny) => new THREE.Color(0x3f5a22).multiplyScalar(0.7 + 0.4 * ny))]);
   const fernMat = makeFoliageMat({}, 1.2);   // both windings are in the geometry, so front-side only keeps the up normal lit
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), sc = new THREE.Vector3();
   decorFine = [];
@@ -1715,17 +1718,12 @@ function scatterDecor(scene, rng, occupied) {
       group.add(inst);
       return inst;
     }
-    const g = makeInst(grassGeo, grassMat, lists.grass, false); if (g) fine.push(g);
-    const gh = makeInst(grassGeo, grassMat, lists.grassHi, false); if (gh) fine.push(gh);
-    const f = makeInst(flowerGeo, flowerMat, lists.flowers, false); if (f) fine.push(f);
-    const fe = makeInst(fernGeo, fernMat, lists.ferns, false); if (fe) fine.push(fe);
-    const mo = makeInst(mossGeo, vcMat, lists.moss, false); if (mo) fine.push(mo);
+    decorPending.push(() => { for (const [geo, mat, list] of [[grassGeo, grassMat, lists.grass], [grassGeo, grassMat, lists.grassHi], [flowerGeo, flowerMat, lists.flowers], [fernGeo(), fernMat, lists.ferns], [mossGeo(), vcMat, lists.moss]]) { const im = makeInst(geo, mat, list, false); if (im) { fine.push(im); decorFine.push(im); } } });
     makeInst(bushGeo, foliageMat, lists.bushes, true);
     makeInst(pebGeo, vcMat, lists.pebbles, false);
     scene.add(group);
     const [kx, kz] = key.split(',').map(Number);
     decorChunks.set(key, { group, fine, minX: kx * CHUNK_SIZE - WORLD_HALF, minZ: kz * CHUNK_SIZE - WORLD_HALF });
-    for (const m of fine) decorFine.push(m);
   }
   // Start with spawn neighbourhood visible.
   updateDecorChunks(0, 0, 60);

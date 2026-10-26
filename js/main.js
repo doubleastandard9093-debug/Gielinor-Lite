@@ -171,6 +171,7 @@ const gfx = { quality: 'high', auto: true, slowFrames: 0, frames: 0, sum: 0 };
 function applyGfx() {
   gfx.auto = player.settings.gfx !== 'high' && player.settings.gfx !== 'low';
   gfx.quality = gfx.auto && gfx.autoLow ? 'low' : resolveQuality(player.settings.gfx);
+  { const f = new URLSearchParams(location.search).get('gfx'); if (f === 'low' || f === 'high') { gfx.quality = f; gfx.auto = false; } }   // ?gfx=low|high: forced tier (audits, low-end testing)
   renderer.setPixelRatio(pixelRatioFor(gfx.quality));
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setPixelRatio(renderer.getPixelRatio());
