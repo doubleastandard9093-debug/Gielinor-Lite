@@ -1524,7 +1524,8 @@ export function createWorld(scene) {
   }
 
   // ---- Sworn Companions (Bonds & Choices): placed last with a free-spot search so nothing else moves ----
-  for (const c of COMPANIONS) {
+  const QM = { id: 'quartermaster', name: 'Quartermaster Odile', x: -63, z: -75, look: { body: 0xd8d8e0, legs: 0x3a3a4a, hat: 0xe8e0c0, hatH: 0.2, apron: 0x8a7a2a } };
+  for (const c of [...COMPANIONS, QM]) {
     let p = null;
     for (let i = 0; i < 80 && !p; i++) {
       const r = 0.5 + i * 0.15, a = i * 2.39996, x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r;
@@ -1534,8 +1535,8 @@ export function createWorld(scene) {
     }
     p = p || { x: c.x, z: c.z };
     occupied.push({ x: p.x, z: p.z, r: 0.8 });
-    const n = createNpc(p.x, p.z, 'comp_' + c.id, c.name, c.look, p.x + 1, p.z + 1);
-    n.companion = c.id; n.home = { x: p.x, z: p.z }; n.wander = true;
+    const n = createNpc(p.x, p.z, c === QM ? QM.id : 'comp_' + c.id, c.name, c.look, p.x + 1, p.z + 1);
+    if (c === QM) n.standing = true; else { n.companion = c.id; n.home = { x: p.x, z: p.z }; n.wander = true; }
     nodes.push(n);
   }
 

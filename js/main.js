@@ -44,6 +44,7 @@ import { QUESTS, questForNpc, questsForNpc, questTalk, onXp, onVisit, questStatu
 import { QUEST_NPCS } from './questnpcs.js';
 import { createInventoryUI } from './inventoryUI.js';
 import { COMPANIONS, companionById, normalizeCompanions, companionXpBonus, addBond, toneReaction, assistMax, assistEvery, GIFT_COOLDOWN_MS, BOND_MAX, BOND_PERKS } from './companions.js';
+import { FACTIONS, TIERS, TIER_REWARDS, BOUNTY_REP, factionById, factionNear, tierOf, nextTier, addRep, repOf } from './standing.js';
 import { STEEDS, steedById, normalizeSteeds, grantSteeds, buildSteed, buildBulwarkArmor, poseSteed, ROAD_BONUS, BULWARK } from './steeds.js';
 import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW } from './flow.js';
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from './save.js';
@@ -154,7 +155,7 @@ function refreshMaxHp() {
 function giveXP(skill, amount) {
   if (amount <= 0) return;
   amount *= xpMultiplier(player, skill); // quest + gear XP bonuses
-  amount *= 1 + companionXpBonus(player, skill); // Sworn Companion bond perk
+  amount *= 1 + companionXpBonus(player, skill) + standingXp(skill); // Sworn Companion bond and faction Standing perks
   addXP(skills, skill, amount, (s, l, old) => {
     const perks = perksBetween(s, old, l);
     ui.levelUp(s, SKILL_ICONS[s], l, perks);
@@ -995,6 +996,7 @@ function entExamine(ent) {
   if (ent.type === 'chest') return player.caveLoot ? 'The hoard is empty now. You already took everything.' : ent.examine;
   if (ent.type === 'forage') return ent.alive ? `A bush heavy with ${ent.item.toLowerCase()}. (Herblore ${ent.level})` : 'This bush has been picked clean. It will grow back soon.';
   if (ent.companion) return companionById(ent.companion).examine;
+  if (ent.standing) return 'She keeps the faction ledgers for every town.';
   if (ent.type === 'npc') return (NPC_INFO[ent.npc] || {}).examine || `It's ${ent.name}.`;
   if (ent.type === 'tree' && !ent.alive) return 'This tree has been cut down.';
   if (ent.type === 'rock' && !ent.alive) return 'There is currently no ore available in this rock.';
@@ -1348,6 +1350,35 @@ const questHelpers = {
     markDirty();
   }
 };
+// ---- Standing: faction reputation (tiers cached; quests are counted from the save, so old saves keep credit) ----
+const standTiers = {};
+function refreshStanding(announce) {
+  for (const f of FACTIONS) {
+    const t = tierOf(repOf(player, f.id));
+    if (announce && standTiers[f.id] !== undefined && t > standTiers[f.id]) log(`Your standing with the ${f.name} is now ${TIERS[t][1]}! Visit Quartermaster Odile in Falador for a reward.`, 'skill', '#ffd700');
+    standTiers[f.id] = t;
+  }
+}
+refreshStanding(false);
+function standingXp(skill) { let b = 0; for (const f of FACTIONS) if (f.skills.includes(skill)) b += (standTiers[f.id] || 0) * 0.01; return b; }
+function gainRep(fid, n) { const f = factionById(fid); addRep(player, fid, n); log(`+${n} standing with the ${f.name}.`, 'game'); refreshStanding(true); markDirty(); }
+function quartermasterTalk() {
+  refreshStanding(true);
+  const lines = [];
+  for (const f of FACTIONS) {
+    const t = standTiers[f.id] || 0, key = 'qm_' + f.id, got = (player.rep && player.rep[key]) || 0;
+    for (let i = got + 1; i <= t; i++) {
+      const r = TIER_REWARDS[i]; if (!r) continue;
+      if (r.item && !canAdd(player, r.item[0], r.item[1])) { lines.push(['npc', `Make room in your pack and I'll give you the ${f.name} ${TIERS[i][1]} reward.`]); break; }
+      player.gold += r.gold; if (r.item) addItem(player, r.item[0], r.item[1]);
+      player.rep[key] = i;
+      lines.push(['npc', `For reaching ${TIERS[i][1]} with the ${f.name}: ${r.gold} coins${r.item ? ` and ${r.item[1]} ${r.item[0]}` : ''}.`]);
+    }
+  }
+  markDirty();
+  if (!lines.length) lines.push(['npc', 'Every town keeps a ledger, and I keep the ledgers. Do quests and bounties and errands, and your standing will grow. Come back when it does.']);
+  return [['npc', 'Quartermaster Odile, keeper of the ledgers.'], ...lines, { choose: [['How do I stand?', FACTIONS.map(f => { const r = repOf(player, f.id), n = nextTier(r); return ['npc', `${f.icon} ${f.name}: ${TIERS[tierOf(r)][1]} (${r}${n ? ` / ${n}` : ''}).`]; })], ['Goodbye.', []]] }];
+}
 // ---- Sworn Companions: recruiting, gifts, following and combat assists ----
 player.companions = normalizeCompanions(player.companions);
 if (player.activeCompanion && !(player.companions[player.activeCompanion] || {}).recruited) player.activeCompanion = null;
@@ -1434,6 +1465,7 @@ function companionAssist(now) {
   if (mon.hp <= 0) killMonster(mon, now);
 }
 function talkTo(ent) {
+  if (ent.standing) { ui.dialogue(ent.name, '📜', quartermasterTalk(), () => markDirty()); return; }
   if (ent.companion) { const d = companionById(ent.companion); compTalking = d.id; ui.dialogue(d.name, d.face, companionTalk(ent), () => { compTalking = null; markDirty(); }); return; }
   const name = ent.name;
   const face = NPC_FACE[ent.npc] || (ent.type === 'shop' ? NPC_FACE.merchant : '🙂');
@@ -1487,6 +1519,7 @@ function bountyTalk(ent) {
   return [['npc', 'Well done! Here is your reward. Come back any time; there are always more.'], { run: () => {
     player.gold += B.gp; for (const [sk, xp] of Object.entries(B.xp)) giveXP(sk, xp);
     delete player.bounties[B.id]; player.bountiesDone = (player.bountiesDone || 0) + 1;
+    { const f = factionNear(ent.x, ent.z); if (f) gainRep(f.id, BOUNTY_REP); }
     log(`Bounty complete! You receive ${B.gp} coins and experience.`, 'loot', '#ffd700'); markDirty();
   } }];
 }
@@ -2310,6 +2343,7 @@ function animate(now) {
   if (frame % 15 === 0) cullWorld();
   if (frame % 5 === 2) updateRoofs();
   if (frame % 10 === 3) { setLoadRadius(gfx.quality === 'low' ? 2 : 3); updateChunks(pm.mesh.position.x, pm.mesh.position.z, scene); }
+  if (frame % 300 === 11) refreshStanding(true);
   if (frame % 30 === 7) { const vm = onVisit(player, pm.mesh.position.x, pm.mesh.position.z); for (const m of vm) log(m, 'game'); if (vm.length) markDirty(); }
   updateMonsters(dt, now);
   updatePatrols(dt, now);
