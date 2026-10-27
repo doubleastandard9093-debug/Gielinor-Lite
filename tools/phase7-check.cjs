@@ -21,8 +21,8 @@ const [,,path='',tier='low',sz='390x844',savef]=process.argv;const [w,h]=sz.spli
    for(let room=0;room<5&&D.run;room++){for(const m of D.alive())g.killMonster(m,performance.now());await S(300);D.tick();await S(300);}
    o.delveClear=P.delves.clears.sewers===1;await S(2500);o.delveOut=g.pm.mesh.position.x>-700;}
   // Stable Codex
-  if(E.codex){const C=E.codex;o.mounts=C.mounts().length>=2;o.fly=C.fly('Brightwater','Varrock');await S(500);o.flying=!!C.flight;C.finish();o.landed=Math.hypot(g.pm.mesh.position.x-120,g.pm.mesh.position.z+40)<20;
-   P.equipment.body=P.equipment.body||null;o.look=C.setLook('body','Rune platebody');o.wardrobe=P.codex.looks.body==='Rune platebody';
+  if(E.codex){const C=E.codex;o.mounts=C.mounts().length>=2;P.codex.skyrook=true;o.fly=C.fly('Brightwater','Varrock');await S(500);o.flying=!!C.flight;C.finish();o.landed=Math.hypot(g.pm.mesh.position.x-120,g.pm.mesh.position.z+40)<20;
+   P.equipment.body=P.equipment.body||null;P.codex.seen.push('Rune platebody');o.look=C.setLook('body','Rune platebody');o.wardrobe=P.codex.looks.body==='Rune platebody';
    let hi=0;g.scene.traverse(x=>{if(/skyrook-high|delve-high/.test(x.name))hi++;});o.hiMesh=hi;}
   const sv=JSON.parse((await import('/js/save.js')).getSaveData(g.skills,P,g.pm));o.ver=sv.version;
   o.saved=sv.player.path.id==='mender'&&sv.player.path.talents.length===7&&(!E.delves||sv.player.delves.clears.sewers===1)&&(!E.codex||!!sv.player.codex.looks.body);

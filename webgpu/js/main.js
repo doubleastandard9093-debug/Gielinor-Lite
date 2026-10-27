@@ -64,6 +64,7 @@ import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, apply
 import { CHECKS, normalizeTongue, checkLabel, resolveCheck, openQuestCheck, QUEST_PRIZE } from '../../js/tongue.js';
 import { QUEST_DATA } from '../../js/quests2.js';
 import { DELVES, ROLES, ROOM_CAP, DELVE, normalizeDelves, roleFx } from '../../js/delves.js';
+import { ROOSTS, FLIGHT, MOUNTS, LOOK_SLOTS, normalizeCodex } from '../../js/codex.js';
 import { PATHS as CPATHS, PATH_LEVEL, TALENTS, rowsOpen, normalizePath, pathFx } from '../../js/paths.js';
 import { STILL, SPOT, normalizeStill, addFocus } from '../../js/stillwatch.js';
 import { WRIT_FACTIONS, WRIT_REWARD, normalizeWrits, maybeRoll, writProgress, writLabel } from '../../js/writs.js';
@@ -287,7 +288,7 @@ const invUI = createInventoryUI({
 function afterEquip() {
   setPerkBoost(skills, capeBoosts(player)); // skill capes boost their skill's perks
   refreshMaxHp();
-  applyEquipmentLook(pm, player.equipment);
+  applyEquipmentLook(pm, lookEquip());
   markDirty();
 }
 
@@ -1805,6 +1806,69 @@ extTick.push(() => {
 extIncoming.push(dmg => delvesX.run ? Math.max(1, Math.round(dmg * (1 - roleFx(delvesX.run.role).red))) : dmg);
 extSwing.push((mon, swings) => { if (delvesX.run && mon.delve) { const d = roleFx(delvesX.run.role).dmg; for (const s of swings) s.dmg = (s.dmg || 0) + d; } });
 extDeath.push(() => { if (delvesX.run) delvesX.finish(false); });
+// ---- Stable Codex: mount collection, Skyrook flights between towns, wardrobe looks ----
+function lookEquip() {
+  const L = player.codex && player.codex.looks; if (!L) return player.equipment;
+  const e = { ...player.equipment }; for (const s of LOOK_SLOTS) if (L[s] && e[s]) e[s] = L[s]; return e;
+}
+player.codex = normalizeCodex(player.codex);
+let rook = null;
+function buildRook() {
+  if (rook) return rook;
+  const G = new THREE.Group(); G.name = 'skyrook';
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1, 3), plainMat(0x2a2a34)); body.position.y = 0.4; G.add(body);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.9), plainMat(0x34343e)); head.position.set(0, 0.9, 1.7); G.add(head);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.7, 4), plainMat(0xd0a040)); beak.rotation.x = Math.PI / 2; beak.position.set(0, 0.85, 2.4); G.add(beak);
+  const wm = plainMat(0x22222a), wings = [];
+  for (const sx of [-1, 1]) { const w = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.12, 1.6), wm); w.position.set(sx * 2.4, 0.6, 0); G.add(w); wings.push(w); }
+  if (gfx.quality !== 'low') for (const w of wings) { const f = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.6, 4), plainMat(0x3a3a48)); f.rotation.z = Math.PI / 2; f.position.set(Math.sign(w.position.x) * 1.9, 0, -0.4); f.name = 'skyrook-high-feather'; w.add(f); }
+  G.userData.wings = wings; G.visible = false; scene.add(G); rook = G; return G;
+}
+const codexX = {
+  flight: null,
+  mounts() { const own = (player.steeds || {}).owned || []; return MOUNTS.map(m => ({ ...m, owned: m.kind === 'flyer' ? player.codex.skyrook : own.includes(m.id) })); },
+  fly(from, to) {
+    const A = TOWNS[from], B = TOWNS[to]; if (!A || !B || from === to || codexX.flight || delvesX.run || duel) return false;
+    if (!player.codex.skyrook) { log('You need a Skyrook first. Talk to Roostmaster Hale.', 'warn'); return false; }
+    if (Math.hypot(pm.mesh.position.x - A.x, pm.mesh.position.z - A.z) > 40) { log(`You need to be at the ${from} roost.`, 'warn'); return false; }
+    if (riding()) dismount();
+    if (action) stopAction();
+    const d = Math.hypot(B.x - A.x, B.z - A.z);
+    codexX.flight = { from, to, ax: pm.mesh.position.x, az: pm.mesh.position.z, bx: B.x + 3, bz: B.z + 3, t0: performance.now(), ms: Math.max(FLIGHT.minMs, d / FLIGHT.speed * 1000) };
+    buildRook().visible = true; log(`Your Skyrook carries you from ${from} to ${to}.`, 'game'); return true;
+  },
+  finish() {
+    const f = codexX.flight; if (!f) return false; codexX.flight = null; if (rook) rook.visible = false;
+    pm.rideLift = 0; travelTo(f.bx, f.bz); player.codex.flights++; log(`You land at ${f.to}.`, 'game'); markDirty(); return true;
+  },
+  setLook(slot, item) {
+    if (!LOOK_SLOTS.includes(slot)) return false;
+    if (item == null) { delete player.codex.looks[slot]; applyEquipmentLook(pm, lookEquip()); markDirty(); return true; }
+    if (!ITEMS[item] || slotFor(item) !== slot || !player.codex.seen.includes(item)) return false;
+    player.codex.looks[slot] = item; applyEquipmentLook(pm, lookEquip()); markDirty(); return true;
+  },
+  script() {
+    const say = t => [['npc', t]], C = player.codex, near = Object.entries(TOWNS).filter(([n, t]) => ROOSTS.includes(n) && Math.hypot(pm.mesh.position.x - t.x, pm.mesh.position.z - t.z) < 40).map(([n]) => n)[0] || 'Brightwater';
+    if (!C.skyrook) return [['npc', 'Hale, roostmaster. Every rider keeps a Stable Codex: your steeds, your flyers, your looks. Here, take a Skyrook chick. It is grown by morning, which is to say now.'], { run: () => { C.skyrook = true; markDirty(); log('New mount: Skyrook. Fly between town roosts from Roostmaster Hale.', 'skill'); return say('Mind the beak.'); } }];
+    const opts = ROOSTS.filter(n => n !== near).map(n => [`Fly to ${n}.`, [{ run: () => { codexX.fly(near, n); return []; } }]]);
+    const seen = C.seen.filter(i => ITEMS[i]);
+    opts.push(['Open the wardrobe.', [{ choose: [...LOOK_SLOTS.map(s => [`${s}: ${C.looks[s] || 'as worn'}`, [{ choose: [['As worn.', [{ run: () => { codexX.setLook(s, null); return []; } }]], ...seen.filter(i => slotFor(i) === s).slice(0, 8).map(i => [i, [{ run: () => { codexX.setLook(s, i); return say(`Your ${s} now looks like ${i}.`); } }]])] }]]), ['Never mind.', []]] }]]);
+    opts.push(['Show my mounts.', [{ run: () => say(codexX.mounts().map(m => `${m.name}: ${m.owned ? 'owned' : m.how}`).join('. ') + '.') }]]);
+    opts.push(['Goodbye.', []]);
+    return [['npc', `Hale, roostmaster. ${C.flights} flights so far. Where to from ${near}?`], { choose: opts }];
+  }
+};
+EXT.codex = codexX;
+extTalk.codex = { face: '🪶', talk: () => codexX.script() };
+extFrame.push((dt, now) => {
+  const f = codexX.flight; if (!f) return;
+  const t = Math.min(1, (now - f.t0) / f.ms), x = f.ax + (f.bx - f.ax) * t, z = f.az + (f.bz - f.az) * t, y = terrainHeight(x, z) + Math.sin(t * Math.PI) * FLIGHT.height;
+  pm.target = null; pm.goal = null; pm.mesh.position.set(x, y + 1.2, z); pm.mesh.rotation.y = Math.atan2(f.bx - f.ax, f.bz - f.az);
+  if (rig.fx !== undefined) { rig.fx = x; rig.fz = z; }
+  rook.position.set(x, y, z); rook.rotation.y = pm.mesh.rotation.y; for (const [i, w] of rook.userData.wings.entries()) w.rotation.z = Math.sin(now / 140) * 0.5 * (i ? -1 : 1);
+  if (t >= 1) codexX.finish();
+});
+extTick.push(() => { if (tick % 5) return; const S = player.codex.seen; for (const s of LOOK_SLOTS) { const i = player.equipment[s]; if (i && !S.includes(i) && S.length < 400) S.push(i); } });
 // Self-cast Path skills (no target needed). Returns true when handled.
 function pathSelfSkill(id, cd) {
   if (id === 'wall') { buffs.wallUntil = tick + 7; log('Stalwart Wall! (60% less damage)', 'combat'); }
@@ -2976,7 +3040,7 @@ function updateStatus() {
 function afterLoad() {
   setPerkBoost(skills, capeBoosts(player));
   refreshMaxHp();
-  applyEquipmentLook(pm, player.equipment);
+  applyEquipmentLook(pm, lookEquip());
   inputCtl.setDpadVisible(!!player.settings.showDpad);
   applyGfx();
   rig.fx = pm.mesh.position.x; rig.fz = pm.mesh.position.z;
@@ -3221,6 +3285,7 @@ function animate(now) {
   updateCompanion(dt);
   updateCharacters(dt, now);
   updateCritters(dt, now, pm.mesh.position.x, pm.mesh.position.z);
+  for (const f of extFrame) f(dt, now);
   updateFish(dt);
   updateFires(now);
   updateArrow(dt);
@@ -3271,7 +3336,7 @@ document.addEventListener('pointerdown', e => {
   } catch (er) { /* audio unavailable */ }
 }, true);
 window.gielinor = {
-  gfx, terrainHeight, applyLook() { applyEquipmentLook(pm, player.equipment); }, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
+  gfx, terrainHeight, applyLook() { applyEquipmentLook(pm, lookEquip()); }, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
   renderer, player, skills, flow, doDodge, toggleRide, steedShift, steedState, checkSteeds, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, sagaMarks, minimap, sailing, cardsUI, digHere, readChart, seaTalk, talkTo, refreshQuick, bondsUI, finishErrands, refreshStanding,

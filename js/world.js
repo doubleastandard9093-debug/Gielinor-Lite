@@ -1553,6 +1553,7 @@ export function createWorld(scene) {
       { id: 'sefa', name: 'Arenamaster Sefa', x: 128, z: -34, look: { body: 0x7a2a2a, legs: 0x3a2a1a, hat: 0xb8902a, hatH: 0.12 }, flag: { arena: 'master' } },
       { id: 'ysolde', name: 'Apothecary Ysolde', x: 9, z: 18, look: { body: 0x4a6a5a, legs: 0x2a3a2a, apron: 0xd0c8a0, hat: 0x2a4a3a, hatH: 0.14 }, flag: { ext: 'quirks' } },
       { id: 'maelis', name: 'Writkeeper Maelis', x: -8, z: 19, look: { body: 0x6a5a3a, legs: 0x3a2a1a, hat: 0x8a6a2a, hatH: 0.1 }, flag: { ext: 'writs' } },
+      { id: 'hale', name: 'Roostmaster Hale', x: 14, z: 20, look: { body: 0x6a5a3a, legs: 0x3a3022, hat: 0x2a2a34, hatH: 0.2, beard: 0x9a8a6a }, flag: { ext: 'codex' } },
       { id: 'corvin', name: 'Delvemaster Corvin', x: -46, z: -80, look: { body: 0x3a4a3a, legs: 0x2a2a22, hat: 0x5a6a4a, hatH: 0.14, beard: 0x6a5a4a }, flag: { ext: 'delves' } },
       { id: 'idris', name: 'Pathwarden Idris', x: -54, z: -76, look: { body: 0x5a5a6a, legs: 0x2a2a32, hat: 0x6a6a7a, hatH: 0.16, beard: 0x8a8a8a }, flag: { ext: 'paths' } },
       { id: 'sorrel', name: 'Mama Sorrel', x: -88, z: 54, look: { body: 0x3a5a2a, legs: 0x2a2a1a, hat: 0x5a3a2a, hatW: 0.6, hatH: 0.12 }, flag: { sea: 'hexer' } }
