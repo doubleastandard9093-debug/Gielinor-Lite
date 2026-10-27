@@ -122,14 +122,14 @@ export function createHud({ player, skills, monsters, getTarget, levelColor, com
     for (const sel of OBST) { const el = document.querySelector(sel); if (!el) continue; const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden') continue; const r = el.getBoundingClientRect(); if (r.width * r.height > 1) rects.push(r); }
     const hit = (x, y, w, h) => x < 4 || y < 4 || x + w > W - 4 || y + h > H - 4 || rects.some(r => x < r.right + M && x + w > r.left - M && y < r.bottom + M && y + h > r.top - M);
     // Full-size buttons first (column, row, 2-wide grid); on very small screens, slightly smaller buttons (still 44 px touch targets).
-    for (const B of [52, 44]) for (const dir of ['column', 'row', 'grid']) {
-      if (dir === 'grid' && n < 3) continue;
-      const cols = dir === 'column' ? 1 : dir === 'row' ? n : 2, rows = Math.ceil(n / cols);
+    for (const B of [52, 44]) for (const dir of ['column', 'row', 'grid', 'grid3']) {
+      if ((dir === 'grid' && n < 3) || (dir === 'grid3' && n < 5)) continue;
+      const cols = dir === 'column' ? 1 : dir === 'row' ? n : dir === 'grid' ? 2 : 3, rows = Math.ceil(n / cols);
       const w = cols * B + (cols - 1) * G, h = rows * B + (rows - 1) * G;
       const xs = [W - w - 10, 10]; for (let x = W - w - 16; x > 16; x -= 12) xs.push(x); // edges first, then sweep inwards from the right
       for (const x of xs) for (let y = H - h - 10; y >= 60; y -= 6) {
         if (!hit(x, y, w, h)) {
-          qb.style.flexDirection = dir === 'column' ? 'column' : 'row'; qb.style.flexWrap = dir === 'grid' ? 'wrap' : 'nowrap'; qb.style.width = w + 'px';
+          qb.style.flexDirection = dir === 'column' ? 'column' : 'row'; qb.style.flexWrap = dir.startsWith('grid') ? 'wrap' : 'nowrap'; qb.style.width = w + 'px';
           for (const b of qb.children) { b.style.width = b.style.height = B + 'px'; }
           qb.style.left = x + 'px'; qb.style.top = y + 'px'; qb.style.right = qb.style.bottom = 'auto'; qb.style.visibility = 'visible'; qb.dataset.fit = '1'; qb.dataset.layout = dir + B; return;
         }

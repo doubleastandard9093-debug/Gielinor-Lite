@@ -65,6 +65,7 @@ import { CHECKS, normalizeTongue, checkLabel, resolveCheck, openQuestCheck, QUES
 import { QUEST_DATA } from '../../js/quests2.js';
 import { DELVES, ROLES, ROOM_CAP, DELVE, normalizeDelves, roleFx } from '../../js/delves.js';
 import { ROOSTS, FLIGHT, MOUNTS, LOOK_SLOTS, normalizeCodex } from '../../js/codex.js';
+import { SHAPES, shapeFor, inShape, MAX_TARGETS, CANCEL_MS, normalizeAim } from '../../js/aim.js';
 import { PATHS as CPATHS, PATH_LEVEL, TALENTS, rowsOpen, normalizePath, pathFx } from '../../js/paths.js';
 import { STILL, SPOT, normalizeStill, addFocus } from '../../js/stillwatch.js';
 import { WRIT_FACTIONS, WRIT_REWARD, normalizeWrits, maybeRoll, writProgress, writLabel } from '../../js/writs.js';
@@ -502,6 +503,7 @@ const inputCtl = setupInput(renderer.domElement, {
     else if (act === 'shift') steedShift();
     else if (act === 'bonds') bondsUI.toggle();
     else if (act === 'stillwatch') stillX.trigger();
+    else if (act === 'aim' && EXT.aim) EXT.aim.toggle();
     else if (act === 'map') minimap.toggleMap();
     else if (act === 'firePort') sailing.fire('port');
     else if (act === 'fireStar') sailing.fire('star');
@@ -942,6 +944,7 @@ function doRunecraft(a) {
 // Dodge-roll: rolls the way you are walking, or backwards from your facing when standing still.
 function doDodge() {
   if (crossing || stunned() || pm.dodge) return;
+  if (aimOn() && performance.now() - aimX.last < aimX.window()) { pm.actionAnim = 0; player.aim.cancels++; aimX.last = 0; }
   let x = 0, z = 0;
   if (keys.w) z -= 1; if (keys.s) z += 1; if (keys.a) x -= 1; if (keys.d) x += 1;
   if (x || z) { const c = Math.cos(rig.yaw), s = Math.sin(rig.yaw); const rx = x * c + z * s, rz = -x * s + z * c; x = rx; z = rz; }
@@ -966,6 +969,7 @@ function riding() { return !!steedState.mesh; }
 function quickExtras() {
   const x = [];
   if (player.still && (player.still.meter >= STILL.max || stillX.active())) x.push(['still', stillX.active() ? SPOT[player.still.spot].icon + SPOT[player.still.spot].name : 'Still', 'Stillwatch: slow the world (V); tap again to change aim']);
+  if (EXT.aim && (aimOn() || (action && action.kind === 'attack'))) x.push(['aim', aimOn() ? '🎯Aim' : 'Aim', 'True Aim: skills hit everything in a shape where you face (tap to toggle)']);
   return x;
 }
 function refreshQuick() {
@@ -1870,6 +1874,50 @@ extFrame.push((dt, now) => {
   if (t >= 1) codexX.finish();
 });
 extTick.push(() => { if (tick % 5) return; const S = player.codex.seen; for (const s of LOOK_SLOTS) { const i = player.equipment[s]; if (i && !S.includes(i) && S.length < 400) S.push(i); } });
+// ---- True Aim: optional free-aim mode; abilities fire as shapes where you face ----
+function aimOn() { return !!(player.aim && player.aim.on); }
+player.aim = normalizeAim(player.aim);
+const aimMarks = {};
+function aimMark(shape, x, z, yaw) {
+  let m = aimMarks[shape];
+  if (!m) {
+    const S = SHAPES[shape], mat = new THREE.MeshBasicMaterial({ color: 0xffd040, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false });
+    const g = shape === 'circle' ? new THREE.RingGeometry(S.r - 0.25, S.r, 32) : shape === 'line' ? new THREE.PlaneGeometry(S.width, S.range).translate(0, S.range / 2, 0) : new THREE.CircleGeometry(S.range, 20, Math.PI / 2 - S.half, S.half * 2);
+    m = new THREE.Mesh(g, mat); m.rotation.x = -Math.PI / 2; m.name = 'aim-marker'; m.renderOrder = 5; m.visible = false; scene.add(m); aimMarks[shape] = m;
+  }
+  const S = SHAPES[shape], ox = shape === 'circle' ? x + Math.sin(yaw) * S.ahead : x, oz = shape === 'circle' ? z + Math.cos(yaw) * S.ahead : z;
+  m.position.set(ox, terrainHeight(ox, oz) + 0.08, oz); m.rotation.z = shape === 'circle' ? 0 : yaw + Math.PI; m.visible = true;
+  clearTimeout(m.userData.t); m.userData.t = setTimeout(() => { m.visible = false; }, 350);
+}
+const aimX = {
+  last: 0,
+  toggle(on = !aimOn()) { player.aim.on = !!on; log(on ? 'True Aim on: skills fire where you face and hit everything in their shape.' : 'True Aim off: classic targeting.', 'game'); refreshQuick(); markDirty(); return player.aim.on; },
+  window() { return CANCEL_MS[(player.path && player.path.id) || 'none']; },
+  targets(shape) {
+    const p = pm.mesh.position, yaw = pm.facing ?? pm.mesh.rotation.y;
+    return monsters.filter(m => m.alive && !m.arena && m.mesh.visible && inShape(shape, p.x, p.z, yaw, m.mesh.position.x, m.mesh.position.z, Math.max(0.5, (m.mesh.scale.x || 1) * 0.5)))
+      .sort((a, b) => a.mesh.position.distanceToSquared(p) - b.mesh.position.distanceToSquared(p)).slice(0, MAX_TARGETS);
+  },
+  strike(id) {
+    const shape = shapeFor(id), p = pm.mesh.position, yaw = pm.facing ?? pm.mesh.rotation.y, now = performance.now();
+    aimMark(shape, p.x, p.z, yaw); pm.actionAnim = 1; pm.actionKind = isRangedWeapon(player.equipment.weapon) ? 'bow' : 'melee';
+    const hits = aimX.targets(shape); let total = 0;
+    const mods = { acc: 0.15, dmg: id === 'snipe' || id === 'rend' ? 0.6 : id === 'power' ? 0.4 : 0.1 };
+    for (const [i, m] of hits.entries()) {
+      const d = rollPlayerHit(player, skills, m, Math.random, { ...mods, dmg: mods.dmg - i * 0.08 });
+      m.hp -= d; total += d; overlays.splat(m, d, now + i * 80); if (d > 0) m.hitT = 1; else m.blockT = 1;
+      for (const f of extHit) f(m, d, now, false);
+      if (m.hp <= 0 && m.alive) killMonster(m, now); else if (m.state !== 'fight') { m.state = 'fight'; m.nextAttackTick = tick + 2; }
+    }
+    if (hits.length && !action) { const t = hits.find(m => m.alive); if (t) startAction({ kind: 'attack', mon: t }); }
+    for (const [s, v] of Object.entries(combatXp(player, total))) giveXP(s, v);
+    player.aim.strikes++; aimX.last = now;
+    log(`${abilityById(id) ? abilityById(id).name : 'Strike'} (${shape}): ${hits.length} hit${hits.length === 1 ? '' : 's'}, ${total} damage.`, 'combat');
+    return hits.length;
+  }
+};
+EXT.aim = aimX;
+EXT.quick.aim = () => aimX.toggle();
 // Self-cast Path skills (no target needed). Returns true when handled.
 function pathSelfSkill(id, cd) {
   if (id === 'wall') { buffs.wallUntil = tick + 7; log('Stalwart Wall! (60% less damage)', 'combat'); }
@@ -2514,10 +2562,12 @@ function useAbility(id) {
   const adr = hud ? hud.adrenaline : 0;
   if (cost && adr + 1e-6 < cost) { log(`${a.name} needs ${cost}% adrenaline (you have ${Math.floor(adr)}%). Use basic skills and land hits to build it.`, 'warn'); return; }
   const queuedNeedsTarget = !['fortify', 'rage', 'rejuv', 'wall', 'ward', 'mend'].includes(id);
-  if (queuedNeedsTarget && (!action || action.kind !== 'attack' || !action.mon.alive)) { log('Attack something first, then use that.', 'warn'); return; }
+  const aimed = aimOn() && queuedNeedsTarget && a.style !== 'magic';
+  if (queuedNeedsTarget && !aimed && (!action || action.kind !== 'attack' || !action.mon.alive)) { log('Attack something first, then use that.', 'warn'); return; }
   if (hud) { if (cost) hud.spend(cost); else hud.gain(adrenGain(a) * (a.style === 'magic' ? 1 + perk(skills, 'Combat', 'magicAdren') : 1)); }
   const cd = cooldownTicks(skills, a);
-  if (pathSelfSkill(id, cd)) { /* Combat Path self skill */ }
+  if (aimed) { cooldowns[id] = tick + cd; aimX.strike(id); }
+  else if (pathSelfSkill(id, cd)) { /* Combat Path self skill */ }
   else if (id === 'fortify') { buffs.fortifyUntil = tick + 10; cooldowns[id] = tick + cd; log('You brace yourself. (Fortify: 50% less damage)', 'combat'); }
   else if (id === 'rage') { buffs.rageUntil = tick + 15; cooldowns[id] = tick + cd; log('You fly into a rage! (Berserk)', 'combat'); }
   else if (id === 'rejuv') {
