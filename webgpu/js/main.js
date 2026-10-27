@@ -66,6 +66,7 @@ import { QUEST_DATA } from '../../js/quests2.js';
 import { DELVES, ROLES, ROOM_CAP, DELVE, normalizeDelves, roleFx } from '../../js/delves.js';
 import { ROOSTS, FLIGHT, MOUNTS, LOOK_SLOTS, normalizeCodex } from '../../js/codex.js';
 import { SHAPES, shapeFor, inShape, MAX_TARGETS, CANCEL_MS, normalizeAim } from '../../js/aim.js';
+import { COLOSSI, PARTS, BACK_BONUS, CHARGE, RESPAWN_MS, CHEST, isBehind, normalizeColossi } from '../../js/colossi.js';
 import { PATHS as CPATHS, PATH_LEVEL, TALENTS, rowsOpen, normalizePath, pathFx } from '../../js/paths.js';
 import { STILL, SPOT, normalizeStill, addFocus } from '../../js/stillwatch.js';
 import { WRIT_FACTIONS, WRIT_REWARD, normalizeWrits, maybeRoll, writProgress, writLabel } from '../../js/writs.js';
@@ -1918,6 +1919,79 @@ const aimX = {
 };
 EXT.aim = aimX;
 EXT.quick.aim = () => aimX.toggle();
+// ---- Colossi: huge roaming creatures around the Contested Wilds, one awake per area ----
+player.colossi = normalizeColossi(player.colossi);
+const colPool = {}, colNext = {};
+function colDetail(m) {
+  if (gfx.quality === 'low' || m.mesh.userData.colHi) return;
+  const G = new THREE.Group(); G.name = 'colossus-high-plates'; const mat = plainMat(0x5a4e44);
+  for (let i = 0; i < 5; i++) { const s = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.45, 5), mat); s.position.set(0, 1.4 + i * 0.05, -0.3 + i * 0.16); s.rotation.x = -0.5; G.add(s); }
+  m.mesh.add(G); m.mesh.userData.colHi = G;
+}
+const colossiX = {
+  list() { return Object.entries(COLOSSI).map(([id, c]) => ({ id, ...c, kills: player.colossi.kills[id] })); },
+  active() { return Object.values(colPool).filter(m => m.alive && m.colossus); },
+  park(m) { m.alive = false; m.dying = false; m.state = 'dead'; m.respawnAt = 0; m.mesh.visible = false; if (action && action.mon === m) stopAction(); },
+  wake(id) {
+    const C = COLOSSI[id]; if (!C) return null;
+    const same = colossiX.active().filter(m => m.colossus.area === C.area);
+    if (same.some(m => m.colossusId === id)) return same.find(m => m.colossusId === id);
+    for (const m of same) colossiX.park(m);
+    const [x, z] = C.route[0];
+    let m = colPool[id]; if (!m) { m = spawnMonster(C.base, x, z, 6); colPool[id] = m; }
+    Object.assign(m, { name: C.name, title: C.title, level: C.level, hp: C.hp, maxHp: C.hp, maxHit: C.maxHit, att: C.att, def: C.def, alive: true, dying: false, state: 'idle', respawnAt: 0, respawn: 1e12, spawnX: x, spawnZ: z, stunUntil: 0, venom: null, boss: false,
+      colossus: C, colossusId: id, leg: 0, parts: { horn: Math.round(C.hp * PARTS.horn), legs: Math.round(C.hp * PARTS.legs) }, noCharge: false, chargeAt: 0, barHeight: 2 * C.scale });
+    m.mesh.scale.setScalar(C.scale); m.mesh.visible = true; m.mesh.rotation.set(0, 0, 0); m.mesh.position.set(x, terrainHeight(x, z), z); colDetail(m);
+    return m;
+  },
+  backBonus(m, x, z) { return isBehind(m.mesh.position.x, m.mesh.position.z, m.mesh.rotation.y, x, z) ? BACK_BONUS : 0; },
+  damagePart(m, part, d) {
+    if (!m.parts || m.parts[part] <= 0) return false;
+    m.parts[part] -= d; if (m.parts[part] > 0) return false;
+    player.colossi.parts++;
+    if (part === 'horn') { m.noCharge = true; log(`You break ${m.name}'s horn! It can no longer charge.`, 'loot', '#ffd700'); }
+    else { m.speed = (m.speed || 4) + 2; log(`${m.name}'s legs buckle! It attacks more slowly.`, 'loot', '#ffd700'); }
+    markDirty(); return true;
+  }
+};
+EXT.colossi = colossiX;
+extSwing.push((mon, swings) => { if (mon.colossus) { const b = colossiX.backBonus(mon, pm.mesh.position.x, pm.mesh.position.z); if (b) for (const s of swings) s.dmg = (s.dmg || 0) + b; } });
+extHit.push((mon, d) => {
+  if (!mon.colossus || d <= 0) return;
+  const spot = stillX.active() && player.still ? player.still.spot : null;
+  if (spot === 'legs') colossiX.damagePart(mon, 'legs', d * 2);
+  else if (spot === 'head') colossiX.damagePart(mon, 'horn', d * 2);
+  else if (!colossiX.backBonus(mon, pm.mesh.position.x, pm.mesh.position.z)) colossiX.damagePart(mon, 'horn', d);
+  else colossiX.damagePart(mon, 'legs', d);
+});
+extKill.push(mon => {
+  if (!mon.colossus) return;
+  const id = mon.colossusId; player.colossi.kills[id]++; colNext[id] = Date.now() + RESPAWN_MS;
+  addItem(player, 'Coins', CHEST.coins); player.arena.tokens += CHEST.tokens; addRep(player, 'watch', CHEST.rep); refreshStanding(true);
+  log(`${mon.name} falls! Its chest holds ${CHEST.coins} coins and ${CHEST.tokens} Wilds tokens (+${CHEST.rep} Watch standing).`, 'loot', '#ffd700'); markDirty();
+});
+extTick.push(() => {
+  if (tick % 5) return;
+  const p = pm.mesh.position, now = Date.now();
+  if (!inInstance(p.x)) for (const [id, C] of Object.entries(COLOSSI)) {
+    const [cx, cz] = C.route[0], d = Math.hypot(p.x - cx, p.z - cz), m = colPool[id];
+    if (m && m.alive && d > 160) colossiX.park(m);
+    else if ((!m || (!m.alive && !m.dying)) && d < 110 && now >= (colNext[id] || 0) && !colossiX.active().some(o => o.colossus.area === C.area)) colossiX.wake(id);
+  }
+  for (const m of colossiX.active()) {
+    if (m.state !== 'fight' && tick % 25 === 0) { m.leg = (m.leg + 1) % m.colossus.route.length; [m.spawnX, m.spawnZ] = m.colossus.route[m.leg]; }
+    if (m.state === 'fight' && !m.noCharge) {
+      if (!m.chargeAt && tick % CHARGE.every === 0) { m.chargeAt = tick + CHARGE.warn; log(`${m.name} lowers its horn to charge! Get behind it or roll away.`, 'warn'); }
+      else if (m.chargeAt && tick >= m.chargeAt) {
+        m.chargeAt = 0; const mp = m.mesh.position;
+        if (Math.hypot(p.x - mp.x, p.z - mp.z) < CHARGE.range && !colossiX.backBonus(m, p.x, p.z) && !pm.dodge && player.hp > 0) {
+          let dmg = Math.round(player.maxHp * CHARGE.dmg); for (const f of extIncoming) dmg = f(dmg, m, performance.now());
+          player.hp = Math.max(0, player.hp - dmg); log(`${m.name}'s charge hits you for ${dmg}!`, 'warn'); if (player.hp <= 0) playerDied();
+        }
+      }
+    }
+  }
+});
 // Self-cast Path skills (no target needed). Returns true when handled.
 function pathSelfSkill(id, cd) {
   if (id === 'wall') { buffs.wallUntil = tick + 7; log('Stalwart Wall! (60% less damage)', 'combat'); }
