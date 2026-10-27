@@ -231,7 +231,8 @@ export function equipmentBonuses(player) {
   for (const [slot, item] of Object.entries(eq)) {
     const info = item && ITEMS[item];
     if (!info) continue;
-    for (const k of BONUS_KEYS) b[k] += info[k] || 0;
+    const wm = player.wear && player.wear[item] >= 100 ? 0.7 : 1; // fully worn top-tier gear (economy.js)
+    for (const k of BONUS_KEYS) b[k] += Math.floor((info[k] || 0) * wm);
     b.regen += info.regen || 0;
     for (const [sk, v] of Object.entries(info.gather || {})) b.gather[sk] = (b.gather[sk] || 0) + v;
     for (const [sk, v] of Object.entries(info.xp || {})) b.xp[sk] = (b.xp[sk] || 0) + v;

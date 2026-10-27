@@ -8,6 +8,7 @@ import { PRAYERS, isActive, drainPerTick, prayerBonus } from './prayer.js';
 import { ABILITIES, unlocked, adrenCost, adrenGain } from './abilities.js';
 import { QUESTS, questStatus, questPoints, QUEST_POINTS_TOTAL, QUEST_TOWNS, activeQuestBonuses } from './quests.js';
 import { esc } from './ui.js';
+import { unitPrice, stockLeft, wearOf, isTopTier } from './economy.js';
 import { iconImg } from './icons.js';
 import { KEY_ACTIONS, getBinds, setBind, resetBinds, keyLabel, captureNextKey } from './keybinds.js';
 
@@ -565,12 +566,14 @@ export function createInventoryUI(api) {
         ${qtyBar('Buy/sell: ')}
         <div class="bankgrid">${shopStock().map(s => {
           const owned = ITEMS[s.item] && ITEMS[s.item].tool && player.tools && player.tools[s.item];
-          const price = buyPrice(s.price, player);
-          return itemCell(s.item, 1).replace('class="slot item', `data-price="${price}" class="slot item shopitem ${owned ? 'owned' : ''}`)
-            .replace(/<\/div>$/, `<span class="price">${qtyLabel(price)}</span>${owned ? '<span class="own">✔</span>' : ''}</div>`);
+          const price = unitPrice(player, mode, s, buyPrice(s.price, player), sellPrice(s.item, player));
+          const left = stockLeft(player, mode, s);
+          return itemCell(s.item, 1).replace('class="slot item', `data-price="${price}" class="slot item shopitem ${owned ? 'owned' : ''} ${left <= 0 ? 'soldout' : ''}`)
+            .replace(/<\/div>$/, `<span class="price">${qtyLabel(price)}</span>${left !== Infinity ? `<span class="stk">${left}</span>` : ''}${owned ? '<span class="own">✔</span>' : ''}</div>`);
         }).join('')}</div>
         <div class="shopinfo">${shopInfo ? esc(shopInfo) : 'Hold an item to see its bonuses'}</div>
-        <div class="hint">Tap stock to buy · tap your items to sell${mode === 'tools' ? ' · tools go straight onto your toolbelt (✔ = owned)' : ''}${buyPrice(100, player) < 100 ? ` · quest discount ${100 - buyPrice(100, player)}%` : ''}</div>`;
+        ${api.repairCost() ? `<div class="win-foot"><button data-act="repair">Repair gear (${fmt(api.repairCost())} gp)</button></div>` : ''}
+        <div class="hint">Stock is limited and prices climb as you buy; both recover over time · Tap stock to buy · tap your items to sell${mode === 'tools' ? ' · tools go straight onto your toolbelt (✔ = owned)' : ''}${buyPrice(100, player) < 100 ? ` · quest discount ${100 - buyPrice(100, player)}%` : ''}</div>`;
     }
     if (win._html !== html) { win._html = html; win.innerHTML = html; }
   }
@@ -618,11 +621,11 @@ export function createInventoryUI(api) {
   bindPress(content, '.slot.tool', el => api.toolInfo(el.dataset.tool), el => api.toolInfo(el.dataset.tool));
   bindPress(content, '[data-prayer]', el => api.prayerToggle(el.dataset.prayer), el => api.prayerInfo(el.dataset.prayer));
   bindPress(win, '.slot.bankitem', el => api.withdraw(el.dataset.item, qtyMode), (el, x, y) => api.bankMenu(el.dataset.item, x, y));
-  bindPress(win, '.slot.shopitem', el => api.buy(el.dataset.item, +el.dataset.price, qtyMode), (el, x, y) => {
+  bindPress(win, '.slot.shopitem', el => api.buy(el.dataset.item, +el.dataset.price, qtyMode, mode), (el, x, y) => {
     const st = statLine(el.dataset.item);
     shopInfo = `${el.dataset.item}: ${st || 'no bonuses'} · ${el.dataset.price} gp`;
     renderWindow();
-    api.shopMenu(el.dataset.item, +el.dataset.price, x, y);
+    api.shopMenu(el.dataset.item, +el.dataset.price, x, y, mode);
   });
 
   content.addEventListener('click', e => {
@@ -681,6 +684,7 @@ export function createInventoryUI(api) {
     if (act.dataset.act === 'close') close();
     else if (act.dataset.act === 'phtoggle') { player.settings.placeholders = player.settings.placeholders === false; if (player.settings.placeholders === false) player.settings.bankPh = []; render(); }
     else if (act.dataset.act === 'depinv') api.depositAll();
+    else if (act.dataset.act === 'repair') { api.repair(); renderWindow(); }
     else if (act.dataset.act === 'depworn') api.depositWorn();
   });
 

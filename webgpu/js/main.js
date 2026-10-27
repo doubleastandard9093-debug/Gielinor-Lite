@@ -26,6 +26,7 @@ import { createOverlays } from '../../js/overlays.js';
 import { createMinimap } from '../../js/minimap.js';
 import { createHud } from '../../js/hud.js';
 import { adrenCost, adrenGain } from '../../js/abilities.js';
+import { unitPrice, noteBought, stockLeft, restockTick, wearOnHit, repairAll, repairCost, deathFee } from '../../js/economy.js';
 import { totalLevel } from '../../js/skills.js';
 import { createSkills, addXP, combatLevel, SKILL_ICONS, perk, perksBetween, maxPrayer, setPerkBoost } from '../../js/skills.js';
 import { createPlayerState, addItem, removeItem, recalcMaxHp, roomFor, canAdd } from '../../js/playerState.js';
@@ -225,10 +226,12 @@ const invUI = createInventoryUI({
     ]);
   },
   buy, sell,
-  shopMenu(item, price, x, y) {
+  repair() { const r = repairAll(player); log(r.msg, r.ok ? 'game' : 'warn'); if (r.ok) { afterEquip(); markDirty(); } },
+  repairCost: () => repairCost(player),
+  shopMenu(item, price, x, y, shopId) {
     ui.showMenu(x, y, [
       { action: 'Value', target: item, color: '#ff9040', fn: () => log(`${item}: currently costs ${price} coins.`, 'game') },
-      ...[1, 5, 10].map(q => ({ action: `Buy ${q}`, target: item, color: '#ff9040', fn: () => buy(item, price, q) })),
+      ...[1, 5, 10].map(q => ({ action: `Buy ${q}`, target: item, color: '#ff9040', fn: () => buy(item, price, q, shopId) })),
       { action: 'Examine', target: item, color: '#ff9040', fn: () => log(examineItem(item), 'examine') }
     ]);
   },
@@ -426,8 +429,10 @@ function depositWorn() {
 }
 
 // ---- Shop ----
-function buy(item, price, q) {
+function buy(item, price, q, shopId) {
+  const entry = shopId && SHOPS[shopId] && SHOPS[shopId].stock.find(s => s.item === item);
   if (isTool(item)) {
+    if (entry) price = unitPrice(player, shopId, entry, buyPrice(entry.price, player));
     if (player.tools[item]) { log(`You already have a ${item} on your toolbelt.`, 'game'); return; }
     if (player.gold < price) { log("You don't have enough coins.", 'warn'); return; }
     player.gold -= price;
@@ -437,15 +442,20 @@ function buy(item, price, q) {
     log(`You buy a ${item} for ${price} coins. It goes on your toolbelt.${needs ? ` (You need ${needs[0]} ${needs[1]} to use it.)` : ''}`, 'game');
     markDirty(); return;
   }
-  let bought = 0;
+  let bought = 0, spent = 0;
   for (let i = 0; i < q; i++) {
+    if (entry) {
+      if (stockLeft(player, shopId, entry) <= 0) { log(`The shop is out of ${item}. Stock comes back over a couple of minutes.`, 'warn'); break; }
+      price = unitPrice(player, shopId, entry, buyPrice(entry.price, player), sellPrice(item, player));
+    }
     if (player.gold < price) { if (!bought) log("You don't have enough coins.", 'warn'); break; }
     if (!canAdd(player, item)) { log("You don't have enough inventory space.", 'warn'); break; }
-    player.gold -= price;
+    player.gold -= price; spent += price;
     addItem(player, item, 1);
+    if (entry) noteBought(player, shopId, item);
     bought++;
   }
-  if (bought) log(`You buy ${bought > 1 ? bought + ' x ' : ''}${item} for ${bought * price} coins.`, 'game');
+  if (bought) log(`You buy ${bought > 1 ? bought + ' x ' : ''}${item} for ${spent} coins.`, 'game');
   markDirty();
 }
 function sell(item, q) {
@@ -2043,6 +2053,7 @@ function monsterAttack(mon, now) {
   if (dmg > 0 && mon.poison && Math.random() < mon.poison.chance && applyPoison(player, mon.poison.dmg, true)) log(`You have been poisoned by the ${mon.name}!`, 'warn');
   player.hp = Math.max(0, player.hp - dmg);
   playerEnt.lastHitAt = now;
+  if (dmg > 0) for (const w of wearOnHit(player)) { log(`Your ${w} is badly worn and loses some of its strength. Repair it at any shop.`, 'warn'); afterEquip(); }
   if (dmg > 0) { shakeRig(rig, 0.45 + 0.5 * Math.min(1, dmg / Math.max(5, player.maxHp * 0.2))); pm.hitT = 1; pm.hitK = Math.min(1.4, 0.5 + dmg / Math.max(5, player.maxHp * 0.2)); pm.hitSide = Math.random() < 0.5 ? -1 : 1; }
   else if (player.equipment.shield || raw > 0) pm.blockT = 1;
   overlays.splat(playerEnt, dmg, now);
@@ -2070,7 +2081,9 @@ function playerDied() {
   queuedAbility = null;
   buffs.fortifyUntil = buffs.rageUntil = 0;
   for (const m of monsters) if (m.state === 'fight') m.state = 'return';
-  log('You wake up back in town. You keep all of your items.', 'game');
+  const fee = deathFee(player);
+  player.gold -= fee;
+  log(`You wake up back in town. You keep all of your items${fee ? `, but the healers charge ${fee} coins` : ''}.`, 'game');
 }
 
 // ---------------------------------------------------------------------------
@@ -2081,6 +2094,7 @@ function inRange(ent, range) { return distTo(ent) <= range + (ent.radius || 0.5)
 function gameTick(now) {
   tick++;
   flowDecay(flow, tick);
+  restockTick(player, SHOPS);
   companionAssist(now);
   // Hitpoint regen (faster with Hitpoints perks and Rapid Heal) and run energy
   if (player.hp < player.maxHp && player.hp > 0) {
@@ -2649,6 +2663,7 @@ window.gielinor = {
   renderer, player, skills, flow, doDodge, toggleRide, steedShift, steedState, checkSteeds, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, sagaMarks, minimap, sailing, cardsUI, digHere, readChart, seaTalk, talkTo, refreshQuick, bondsUI, finishErrands, refreshStanding,
+  buy, sell, playerDied, monsterAttack,
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
 
