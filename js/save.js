@@ -1,5 +1,6 @@
 import { normalizeSaga } from './saga.js';
 import { normalizeShopState, normalizeWear } from './economy.js';
+import { normalizeTasks } from './tasks.js';
 import { normalizeVessel, inSea } from './sea.js';
 import { normalizeCompanions } from './companions.js';
 import { normalizeSkills, convertXpV1, xpForLevel } from './skills.js';
@@ -47,7 +48,7 @@ export function getSaveData(skills, player, playerMesh) {
       flowBest: player.flowBest || 0,
       alignment: player.alignment || {},
       companions: player.companions || {}, activeCompanion: player.activeCompanion || null, rep: player.rep || {}, errands: player.errands || [], saga: player.saga || null, vessel: player.vessel || null,
-      shopState: player.shopState || {}, wear: player.wear || {}
+      shopState: player.shopState || {}, wear: player.wear || {}, tasks: player.tasks || null
     },
     position: playerMesh ? { x: playerMesh.mesh.position.x, z: playerMesh.mesh.position.z } : null,
     timestamp: Date.now()
@@ -165,6 +166,7 @@ export function migrateSave(saved) {
   p.vessel = normalizeVessel(p.vessel);
   // v13: shop stock bought down and gear wear.
   p.shopState = normalizeShopState(p.shopState); p.wear = normalizeWear(p.wear);
+  p.tasks = normalizeTasks(p.tasks);
   if (fromVersion < 12) notes.push('New: Sails of Sarim. See the Shipwright on the Port Sarim docks for a ship, then sail the Sound. Cutlasses, flintlocks, Hexcraft and card tables too. Press M for the world map.');
   if (!p.activeCompanion || !p.companions[p.activeCompanion] || !p.companions[p.activeCompanion].recruited) p.activeCompanion = null;
   { const r = p.rep && typeof p.rep === 'object' ? p.rep : {}; p.rep = {}; for (const k of Object.keys(r)) { const v = Math.floor(Number(r[k]) || 0); if (v > 0) p.rep[k] = Math.min(99999, v); } }
@@ -180,7 +182,7 @@ export function applySaveData(data, skills, player, playerMesh) {
     const notes = migrateSave(saved);
     Object.assign(skills, saved.skills);
     const p = saved.player;
-    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints', 'effects', 'poison', 'poisonImmune', 'questCapeLegacy', 'bounties', 'bountiesDone', 'caveLoot', 'steeds', 'flowBest', 'alignment', 'companions', 'activeCompanion', 'rep', 'errands', 'saga', 'vessel', 'shopState', 'wear']) {
+    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints', 'effects', 'poison', 'poisonImmune', 'questCapeLegacy', 'bounties', 'bountiesDone', 'caveLoot', 'steeds', 'flowBest', 'alignment', 'companions', 'activeCompanion', 'rep', 'errands', 'saga', 'vessel', 'shopState', 'wear', 'tasks']) {
       if (p[k] !== undefined) player[k] = p[k];
     }
     if (p.skillTrees) {

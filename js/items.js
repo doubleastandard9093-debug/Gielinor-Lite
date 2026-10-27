@@ -204,6 +204,10 @@ U('Dragon longsword', { type: 'weapon', atk: 69, str: 71, speed: 4, rarity: 'epi
 U('Dark bow', { type: 'weapon', ranged: 95, speed: 6, rarity: 'epic', eff: { multiArrow: 2 }, special: 'Fires two arrows every shot (uses 2 arrows)', req: { Ranged: 60 }, value: 80000 });
 U('Obsidian cape', { type: 'cape', str: 4, def: 9, rdef: 9, rarity: 'rare', eff: { dmgPct: 0.05 }, special: '+5% damage dealt', value: 15000 });
 U('Berserker ring', { type: 'ring', str: 12, rarity: 'epic', eff: { crit: 0.05 }, special: '+5% critical hit chance', value: 40000 });
+// Hunt points rewards (tasks.js)
+U("Hunter's ring", { type: 'ring', atk: 5, ranged: 5, rarity: 'uncommon', special: 'Bought with Hunt points', value: 200 });
+U('Reefward amulet', { type: 'neck', def: 6, rdef: 6, rarity: 'rare', special: '+8% damage against the Drowned Crew', value: 300 });
+U("Saltgrave's signet", { type: 'ring', atk: 6, str: 6, ranged: 6, rarity: 'rare', special: 'Drowned Crew Exalted reward', value: 500 });
 U('Ring of recoil', { type: 'ring', def: 2, rdef: 2, rarity: 'uncommon', eff: { reflect: 0.1 }, special: 'Reflects 10% of damage you take', value: 1500 });
 U("Captain's cutlass", { type: 'weapon', atk: 35, str: 32, speed: 4, rarity: 'rare', eff: { doubleHit: 0.1 }, special: '10% chance to strike twice', req: { Attack: 40 }, value: 8000 });
 U('Highcrag warhammer', { type: 'weapon', atk: 48, str: 55, speed: 5, rarity: 'epic', eff: { stun: 0.1, dmgPct: 0.05 }, special: '10% chance to stun, +5% damage', req: { Attack: 50 }, value: 20000 });
@@ -281,7 +285,7 @@ const FIXED_ICONS = {
 };
 const WOOD_TINT = ['', '#c49a5a40', '#7a9a4a40', '#c0702a40', '#4a6a3a50', '#3a5ad050'];
 const UNIQUE_ICON = { 'Venom dagger': '🗡️', 'Vampyric blade': '🗡️', 'Granite maul': '🔨', 'Dragon dagger': '🗡️', 'Dragon longsword': '⚔️', 'Dark bow': '🏹',
-  'Obsidian cape': '🧣', 'Berserker ring': '💍', 'Ring of recoil': '💍', "Captain's cutlass": '🗡️', 'Highcrag warhammer': '🔨', "Herbalist's amulet": '📿' };
+  'Obsidian cape': '🧣', 'Berserker ring': '💍', 'Ring of recoil': '💍', "Hunter's ring": '💍', 'Reefward amulet': '📿', "Saltgrave's signet": '💍', "Captain's cutlass": '🗡️', 'Highcrag warhammer': '🔨', "Herbalist's amulet": '📿' };
 const SECOND_ICON = { 'Eye of newt': '👁️', 'Unicorn horn dust': '🦄', 'Limpwurt root': '🥕', 'Chocolate dust': '🍫', 'White berries': '🫐', 'Snape grass': '🌱',
   'Goat horn dust': '🐐', 'Red spider eggs': '🔴', 'Wine of zamorak': '🍷', 'Dragon scale dust': '🐉' };
 export function iconFor(item) {

@@ -7,6 +7,7 @@ export const FACTIONS = [
   { id: 'watch', name: 'Brightwater Watch', icon: '🛡️', towns: ['Brightwater', 'Ashford', 'Wilds'], skills: ['Attack', 'Defence', 'Strength', 'Hitpoints'] },
   { id: 'mariners', name: 'Sarim Mariners', icon: '⚓', towns: ['Port Sarim'], skills: ['Fishing', 'Cooking', 'Ranged'] },
   { id: 'circle', name: 'Varrock Arcane Circle', icon: '🔮', towns: ['Varrock'], skills: ['Magic', 'Runecrafting', 'Herblore'] },
+  { id: 'drowned', name: 'Drowned Crew', icon: '☠️', towns: [], skills: ['Agility', 'Thieving'], desc: 'How much the Drowned Crew fear you. Kill them, sink their ships and take Drowned tasks from Huntmaster Corvane.' },
   { id: 'lantern', name: 'Order of the White Lantern', icon: '🏮', towns: ['Falador'], skills: ['Prayer', 'Smithing', 'Mining'] }
 ];
 export const TIERS = [[0, 'Unknown'], [100, 'Friendly'], [300, 'Trusted'], [700, 'Honoured'], [1500, 'Exalted']];

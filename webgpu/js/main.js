@@ -47,6 +47,7 @@ import { COMPANIONS, companionById, normalizeCompanions, companionXpBonus, addBo
 import { FACTIONS, TIERS, TIER_REWARDS, BOUNTY_REP, factionById, factionNear, tierOf, nextTier, addRep, repOf } from '../../js/standing.js';
 import { ERRANDS, errandById, errandChance, startErrand, collectErrands } from '../../js/errands.js';
 import { createBondsUI } from '../../js/bondsUI.js';
+import { TASK, HUNT_SHOP, normalizeTasks, assignTask, taskKill, taskLabel, isDrowned } from '../../js/tasks.js';
 import { SEA, SARIM_DOCK, HULLS, OFFICERS, CREW_COST, CREW_MAX, ISLANDS, islandAt, normalizeVessel, inSound } from '../../js/sea.js';
 import { createSailing } from '../../js/sailing.js';
 import { createCards } from '../../js/cards.js';
@@ -1483,6 +1484,7 @@ sailing = createSailing({
   onSinkEnemy: kind => {
     const v = player.vessel; v.sank++; const g = kind.loot[0] + Math.floor(Math.random() * (kind.loot[1] - kind.loot[0]));
     player.gold += g; giveXP('Ranged', 60 + kind.hp * 0.6); giveXP('Smithing', 15);
+    if (/Drowned/.test(kind.name)) gainRep('drowned', 40);
     log(`The ${kind.name} sinks! You salvage ${g} coins.`, 'loot');
     if (Math.random() < 0.25) { giveItem('Treasure chart'); log('A sodden Treasure chart floats up from the wreck.', 'loot'); }
   },
@@ -1528,6 +1530,51 @@ function shipwrightTalk() {
   return out;
 }
 function countItem(it) { return player.inventory[it] || 0; }
+// ---- Hunt tasks (tasks.js): Huntmaster Corvane, Port Sarim ----
+player.tasks = normalizeTasks(player.tasks);
+function huntKill(name) {
+  const T = player.tasks, r = taskKill(T, name); if (!r) return;
+  const c = T.cur;
+  if (!r.done) { if (c.got % 5 === 0 || c.n - c.got <= 3) log(`Hunt task: ${c.got}/${c.n} ${c.mon}.`, 'game'); markDirty(); return; }
+  log(`Hunt task complete! +${r.pts} Hunt points (${T.points} total, streak ${T.streak}). See Huntmaster Corvane in Port Sarim for another.`, 'loot');
+  if (isDrowned(name)) gainRep('drowned', TASK.drownedRep);
+  T.cur = null; markDirty();
+}
+function huntBonus(mon) {
+  const T = player.tasks; let b = 0;
+  if (T.cur && T.cur.mon === mon.name && T.unlocks.includes('insight')) b += 0.1;
+  if (mon.drowned) { if (T.unlocks.includes('reefbane')) b += 0.15; if (player.equipment.neck === 'Reefward amulet') b += 0.08; }
+  return b;
+}
+function huntTalk() {
+  const T = player.tasks, cb = combatLevel(skills), dTier = tierOf(repOf(player, 'drowned'));
+  const say = t => [['npc', t]];
+  const opts = [];
+  if (!T.cur) opts.push(['I need a task.', [{ run: () => { const c = assignTask(T, cb); markDirty(); return say(`Hunt down ${taskLabel(c)}.${isDrowned(c.mon) ? ' The Drowned Crew walk the reef south of the Sound. Every one you put down, they fear you more.' : ''}`); } }]]);
+  else {
+    opts.push([`Skip this task (${TASK.skipCost} points).`, [{ run: () => { if (T.points < TASK.skipCost) return say(`That's ${TASK.skipCost} points. You have ${T.points}.`); T.points -= TASK.skipCost; T.streak = 0; const c = assignTask(T, cb); markDirty(); return say(`Fine. Hunt ${taskLabel(c)} instead. Your streak starts over.`); } }]]);
+    if (T.blocked.length < TASK.maxBlocks) opts.push([`Never give me ${T.cur.mon} again (${TASK.blockCost} points).`, [{ run: () => { if (T.points < TASK.blockCost) return say(`Blocking costs ${TASK.blockCost} points.`); T.points -= TASK.blockCost; T.blocked.push(T.cur.mon); const c = assignTask(T, cb); markDirty(); return say(`Struck from my ledger. Now hunt ${taskLabel(c)}.`); } }]]);
+    if (!T.extended.includes(T.cur.mon)) opts.push([`Give me longer ${T.cur.mon} tasks (${TASK.extendCost} points).`, [{ run: () => { if (T.points < TASK.extendCost) return say(`Extending costs ${TASK.extendCost} points.`); T.points -= TASK.extendCost; T.extended.push(T.cur.mon); T.cur.n = Math.round(T.cur.n * 1.5); markDirty(); return say(`Longer hunts, bigger rewards: ${T.cur.mon} tasks are half again as long and pay 30% more. This one is now ${T.cur.n}.`); } }]]);
+  }
+  if (T.blocked.length) opts.push(['Unblock everything.', [{ run: () => { T.blocked = []; markDirty(); return say('Ledger wiped clean.'); } }]]);
+  const shopLines = HUNT_SHOP.map(s => {
+    const lock = s.drowned && dTier < s.drowned, own = s.unlock && T.unlocks.includes(s.id);
+    return [`${own ? '✔ ' : lock ? '🔒 ' : ''}${s.name} (${s.cost} pts)${lock ? `: needs ${TIERS[s.drowned][1]} with the Drowned Crew` : ''}`, [{ run: () => {
+      if (own) return say('You already have that.');
+      if (lock) return say(`The Drowned Crew don't fear you enough yet. Reach ${TIERS[s.drowned][1]} with them first.`);
+      if (T.points < s.cost) return say(`${s.name} costs ${s.cost} points. You have ${T.points}.`);
+      if (s.item && !canAdd(player, s.item, s.qty || 1)) return say('Make room in your pack first.');
+      T.points -= s.cost;
+      if (s.unlock) T.unlocks.push(s.id);
+      if (s.item) addItem(player, s.item, s.qty || 1);
+      if (s.xp) { const low = ['Attack', 'Strength', 'Defence', 'Ranged', 'Magic'].sort((a, b) => skills[a].xp - skills[b].xp)[0]; giveXP(low, s.xp); }
+      markDirty(); return say(`${s.name}: ${s.desc}`);
+    } }]];
+  });
+  opts.push(['Show me the points shop.', [{ choose: [...shopLines, ['Never mind.', []]] }]]);
+  opts.push(['Goodbye.', []]);
+  return [['npc', `Corvane, huntmaster. ${T.cur ? `Your task: ${T.cur.got}/${T.cur.n} ${T.cur.mon}.` : 'No task on you.'} Points: ${T.points}, streak ${T.streak}, ${T.done} done. Drowned Crew standing: ${TIERS[dTier][1]}.`], { choose: opts }];
+}
 const grimyHerbs = () => Object.keys(player.inventory).filter(k => /^Grimy /.test(k));
 function harbourTalk(ent) {
   const v = player.vessel, i = islandAt(ent.x, ent.z, 4);
@@ -1538,9 +1585,10 @@ function harbourTalk(ent) {
   return [['npc', `Welcome to ${i ? i.name : 'port'}. ${i ? i.desc : ''} Mind the Drowned Crew south at Wreckers' Reef.`], { choose: opts }];
 }
 function seaTalk(ent) {
-  const face = ent.sea === 'hexer' ? '🪲' : ent.sea === 'shipwright' ? '⚓' : ent.sea === 'harbour' ? '⚓' : '🃏';
+  const face = ent.sea === 'tasks' ? '💀' : ent.sea === 'hexer' ? '🪲' : ent.sea === 'shipwright' ? '⚓' : ent.sea === 'harbour' ? '⚓' : '🃏';
   let script;
   if (ent.sea === 'shipwright') script = shipwrightTalk();
+  else if (ent.sea === 'tasks') script = huntTalk();
   else if (ent.sea === 'harbour') script = harbourTalk(ent);
   else if (ent.sea === 'hexer') script = hexerTalk();
   else if (ent.sea === 'crown' || ent.sea === 'tides') { cardsUI.open(ent.sea, ent.name); return; }
@@ -1939,6 +1987,7 @@ function playerAttack(mon, now) {
     if (mon.undead && sh.vsUndead) for (const sw of swings) sw.dmg = (sw.dmg || 0) + sh.vsUndead;
     const pp = pm.mesh.position; burst('dust', pp.x, pp.y + 1.2, pp.z, 6);
   }
+  { const hb = huntBonus(mon); if (hb) for (const sw of swings) sw.dmg = (sw.dmg || 0) + hb; } // Hunt task / Drowned Crew bonuses
   // Dark bow: fires extra arrows every shot.
   const ge = gearEffects(player);
   if (ranged && ge.multiArrow) for (let i = 1; i < ge.multiArrow; i++) if (useArrow()) swings.push({ ...base });
@@ -2004,7 +2053,12 @@ function killMonster(mon, now) {
   bountyKill(mon.name);
   companionKill(mon.name);
   sagaKill(mon.name);
-  if (mon.drowned) { player.vessel.drowned++; if (mon.boss) log('Captain Saltgrave sinks into the reef... for now.', 'loot'); }
+  if (mon.drowned) {
+    player.vessel.drowned++;
+    if (mon.boss) { log('Captain Saltgrave sinks into the reef... for now.', 'loot'); gainRep('drowned', 100); }
+    else { addRep(player, 'drowned', TASK.killRep); refreshStanding(true); }
+  }
+  huntKill(mon.name);
   if (action && action.mon === mon) stopAction();
   const drops = rollLoot(mon.name, Math.random, perk(skills, 'Combat', 'rareDrop'));
   const x = mon.mesh.position.x, z = mon.mesh.position.z;
@@ -2663,7 +2717,7 @@ window.gielinor = {
   renderer, player, skills, flow, doDodge, toggleRide, steedShift, steedState, checkSteeds, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, sagaMarks, minimap, sailing, cardsUI, digHere, readChart, seaTalk, talkTo, refreshQuick, bondsUI, finishErrands, refreshStanding,
-  buy, sell, playerDied, monsterAttack,
+  buy, sell, playerDied, monsterAttack, killMonster, huntTalk, refreshStanding,
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
 

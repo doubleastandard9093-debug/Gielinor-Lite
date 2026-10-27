@@ -1547,6 +1547,7 @@ export function createWorld(scene) {
   {
     const SARIM = [
       { id: 'shipwright', name: 'Shipwright Halvard', x: -77, z: 70, look: { body: 0x6a4a2a, legs: 0x3a2a1a, apron: 0xb89a6a, beard: 0x8a5a2a }, flag: { sea: 'shipwright' } },
+      { id: 'corvane', name: 'Huntmaster Corvane', x: -70, z: 58, look: { body: 0x4a3a2a, legs: 0x2a2a22, hat: 0x3a2a1a, hatW: 0.5, hatH: 0.1, beard: 0x5a4a3a }, flag: { sea: 'tasks' } },
       { id: 'sorrel', name: 'Mama Sorrel', x: -88, z: 54, look: { body: 0x3a5a2a, legs: 0x2a2a1a, hat: 0x5a3a2a, hatW: 0.6, hatH: 0.12 }, flag: { sea: 'hexer' } }
     ];
     for (const c of SARIM) {
