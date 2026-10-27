@@ -67,6 +67,7 @@ import { DELVES, ROLES, ROOM_CAP, DELVE, normalizeDelves, roleFx } from '../../j
 import { ROOSTS, FLIGHT, MOUNTS, LOOK_SLOTS, normalizeCodex } from '../../js/codex.js';
 import { SHAPES, shapeFor, inShape, MAX_TARGETS, CANCEL_MS, normalizeAim } from '../../js/aim.js';
 import { COLOSSI, PARTS, BACK_BONUS, CHARGE, RESPAWN_MS, CHEST, isBehind, normalizeColossi } from '../../js/colossi.js';
+import { SKYWING, normalizeSkywing } from '../../js/skywing.js';
 import { PATHS as CPATHS, PATH_LEVEL, TALENTS, rowsOpen, normalizePath, pathFx } from '../../js/paths.js';
 import { STILL, SPOT, normalizeStill, addFocus } from '../../js/stillwatch.js';
 import { WRIT_FACTIONS, WRIT_REWARD, normalizeWrits, maybeRoll, writProgress, writLabel } from '../../js/writs.js';
@@ -505,6 +506,7 @@ const inputCtl = setupInput(renderer.domElement, {
     else if (act === 'bonds') bondsUI.toggle();
     else if (act === 'stillwatch') stillX.trigger();
     else if (act === 'aim' && EXT.aim) EXT.aim.toggle();
+    else if (act === 'fly' && EXT.skywing) EXT.skywing.toggle();
     else if (act === 'map') minimap.toggleMap();
     else if (act === 'firePort') sailing.fire('port');
     else if (act === 'fireStar') sailing.fire('star');
@@ -971,6 +973,7 @@ function quickExtras() {
   const x = [];
   if (player.still && (player.still.meter >= STILL.max || stillX.active())) x.push(['still', stillX.active() ? SPOT[player.still.spot].icon + SPOT[player.still.spot].name : 'Still', 'Stillwatch: slow the world (V); tap again to change aim']);
   if (EXT.aim && (aimOn() || (action && action.kind === 'attack'))) x.push(['aim', aimOn() ? '🎯Aim' : 'Aim', 'True Aim: skills hit everything in a shape where you face (tap to toggle)']);
+  if (EXT.skywing && player.skywing && player.skywing.unlocked && !inInstance(pm.mesh.position.x)) { x.push(['fly', skyS.on ? 'Land' : 'Fly', 'Skywing: take off or land (Y)']); if (skyS.on) x.push(['climb', 'Up', 'Climb higher'], ['dive', 'Dive', 'Dive lower (costs run energy)']); }
   return x;
 }
 function refreshQuick() {
@@ -1831,7 +1834,7 @@ function buildRook() {
 }
 const codexX = {
   flight: null,
-  mounts() { const own = (player.steeds || {}).owned || []; return MOUNTS.map(m => ({ ...m, owned: m.kind === 'flyer' ? player.codex.skyrook : own.includes(m.id) })); },
+  mounts() { const own = (player.steeds || {}).owned || []; return MOUNTS.map(m => ({ ...m, owned: m.id === 'skywing' ? !!(player.skywing && player.skywing.unlocked) : m.kind === 'flyer' ? player.codex.skyrook : own.includes(m.id) })); },
   fly(from, to) {
     const A = TOWNS[from], B = TOWNS[to]; if (!A || !B || from === to || codexX.flight || delvesX.run || duel) return false;
     if (!player.codex.skyrook) { log('You need a Skyrook first. Talk to Roostmaster Hale.', 'warn'); return false; }
@@ -1992,6 +1995,35 @@ extTick.push(() => {
     }
   }
 });
+// ---- Skywing: free flight at Agility 70 + Exalted with any faction ----
+player.skywing = normalizeSkywing(player.skywing);
+const skyS = { on: false, alt: 0, mesh: null };
+const skyX = {
+  canUnlock() { return skills.Agility.level >= SKYWING.agility && FACTIONS.some(f => tierOf(repOf(player, f.id)) >= TIERS.length - 1); },
+  unlock() { if (player.skywing.unlocked) return true; if (!skyX.canUnlock()) return false; player.skywing.unlocked = true; log('New mount: Skywing. Press Y (or the Fly button) to take off.', 'skill'); markDirty(); return true; },
+  alt() { return skyS.on ? skyS.alt : 0; },
+  setAlt(a) { skyS.alt = Math.max(SKYWING.min, Math.min(SKYWING.max, a)); pm.rideLift = skyS.alt; },
+  toggle(on = !skyS.on) {
+    if (on) {
+      if (!player.skywing.unlocked && !skyX.unlock()) { log(`Skywing needs Agility ${SKYWING.agility} and Exalted standing with a faction.`, 'warn'); return false; }
+      if (inInstance(pm.mesh.position.x) || codexX.flight || delvesX.run || duel) return false;
+      if (riding()) dismount(); if (action) stopAction();
+      skyS.on = true; player.skywing.flights++; skyX.setAlt(SKYWING.cruise); pm.speedMul = SKYWING.speed;
+      if (!skyS.mesh) { const prev = rook; rook = null; skyS.mesh = buildRook(); skyS.mesh.name = 'skywing'; for (const w of skyS.mesh.userData.wings) w.scale.x = 1.3; rook = prev; if (gfx.quality !== 'low') skyS.mesh.traverse(o => { if (o.name === 'skyrook-high-feather') o.name = 'skywing-high-feather'; }); }
+      skyS.mesh.visible = true; skyS.far = camera.far; camera.far = Math.min(camera.far, gfx.quality === 'low' ? SKYWING.farLow : SKYWING.farHigh); camera.updateProjectionMatrix();
+      log('Your Skywing takes off. Climb and Dive change height; diving costs run energy.', 'game');
+    } else if (skyS.on) {
+      skyS.on = false; pm.rideLift = 0; pm.speedMul = 1; if (skyS.mesh) skyS.mesh.visible = false; if (skyS.far) { camera.far = skyS.far; camera.updateProjectionMatrix(); } log('You land.', 'game');
+    }
+    refreshQuick(); markDirty(); return skyS.on;
+  },
+  climb() { if (skyS.on) skyX.setAlt(skyS.alt + SKYWING.step); },
+  dive() { if (!skyS.on) return false; if (player.runEnergy < SKYWING.diveCost) { log('Too tired to dive.', 'warn'); return false; } player.runEnergy -= SKYWING.diveCost; skyX.setAlt(skyS.alt - SKYWING.step); return true; }
+};
+EXT.skywing = skyX;
+EXT.quick.fly = () => skyX.toggle(); EXT.quick.climb = () => skyX.climb(); EXT.quick.dive = () => skyX.dive();
+extFrame.push((dt, now) => { if (!skyS.on || !skyS.mesh) return; const p = pm.mesh.position; skyS.mesh.position.set(p.x, p.y - 1.2, p.z); skyS.mesh.rotation.y = pm.mesh.rotation.y; for (const [i, w] of skyS.mesh.userData.wings.entries()) w.rotation.z = Math.sin(now / 160) * 0.45 * (i ? -1 : 1); });
+extDeath.push(() => { if (skyS.on) skyX.toggle(false); });
 // Self-cast Path skills (no target needed). Returns true when handled.
 function pathSelfSkill(id, cd) {
   if (id === 'wall') { buffs.wallUntil = tick + 7; log('Stalwart Wall! (60% less damage)', 'combat'); }

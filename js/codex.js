@@ -4,6 +4,7 @@ export const FLIGHT = { speed: 34, height: 26, minMs: 2500 };
 export const MOUNTS = [
   { id: 'stag', name: 'Fernback Stag', kind: 'steed', how: 'Agility 10' },
   { id: 'boar', name: 'Ironbristle Boar', kind: 'steed', how: 'Agility 30' },
+  { id: 'skywing', name: 'Skywing', kind: 'flyer', how: 'Agility 70 and Exalted with a faction' },
   { id: 'skyrook', name: 'Skyrook', kind: 'flyer', how: 'Visit Roostmaster Hale at Brightwater' }
 ];
 export const LOOK_SLOTS = ['head', 'body', 'legs', 'shield', 'cape'];
