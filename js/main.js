@@ -573,6 +573,8 @@ const minimap = createMinimap({
 });
 hud = createHud({ player, skills, monsters, levelColor, combatLevelOf: () => combatLevel(skills),
   getTarget: () => (action && action.kind === 'attack' && action.mon && action.mon.alive ? action.mon : null) });
+// Words of Choice: every tone you pick is remembered (companions and factions react to it).
+ui.onTone(tone => { player.alignment = player.alignment || {}; player.alignment[tone] = (player.alignment[tone] || 0) + 1; markDirty(); });
 hud.onQuick = q => { if (q === 'dodge') doDodge(); else if (q === 'ride') toggleRide(); else if (q === 'shift') steedShift(); };
 hud.setQuick({});
 
@@ -1385,7 +1387,13 @@ function forage(ent) {
 function bountyTalk(ent) {
   const B = ent.bounty; player.bounties = player.bounties || {};
   const cur = player.bounties[B.id];
-  if (!cur) return [['npc', B.ask], { choose: [["I'll do it.", [{ run: () => { player.bounties[B.id] = { mon: B.mon, got: 0, n: B.n }; log(`Bounty started: defeat ${B.n} ${B.mon === 'Wolf' ? 'wolves' : B.mon.toLowerCase() + 's'} for ${ent.name}.`, 'game'); markDirty(); } }, ['npc', 'Good. Come back when it is done.']]], ['Not now.', [['npc', 'The offer stands.']]]] }];
+  const take = { run: () => { player.bounties[B.id] = { mon: B.mon, got: 0, n: B.n }; log(`Bounty started: defeat ${B.n} ${B.mon === 'Wolf' ? 'wolves' : B.mon.toLowerCase() + 's'} for ${ent.name}.`, 'game'); markDirty(); } };
+  if (!cur) return [['npc', B.ask], { wheel: [
+    ['kind', "Of course. Folk shouldn't have to live in fear.", [take, ['npc', 'Bless you. Come back when it is done.']]],
+    ['firm', "I'll clear them out. Have the coin ready.", [take, ['npc', 'It will be here. Come back when it is done.']]],
+    ['cunning', 'Maybe. What else do you know about them?', [['npc', `They come out near here. ${B.n} should thin them enough.`], { choose: [["Fine, I'll do it.", [take]], ['Not now.', [['npc', 'The offer stands.']]]] }]],
+    ['neutral', 'Not now.', [['npc', 'The offer stands.']]]
+  ] }];
   if (cur.got < cur.n) return [['npc', `${cur.got} of ${cur.n} so far. Keep at it.`]];
   return [['npc', 'Well done! Here is your reward. Come back any time; there are always more.'], { run: () => {
     player.gold += B.gp; for (const [sk, xp] of Object.entries(B.xp)) giveXP(sk, xp);

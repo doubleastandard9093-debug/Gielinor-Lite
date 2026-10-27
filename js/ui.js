@@ -167,7 +167,8 @@ export function setupUI(settings) {
   const dlg = document.createElement('div');
   dlg.id = 'dialogue';
   document.body.appendChild(dlg);
-  let dq = null, dName = '', dIcon = '', dEnd = null;
+  let dq = null, dName = '', dIcon = '', dEnd = null, toneHook = null;
+  const TONES = { kind: { n: 'Kind', i: '♥', c: '#4caf50' }, firm: { n: 'Firm', i: '⛨', c: '#c0392b' }, cunning: { n: 'Cunning', i: '✦', c: '#8e44ad' }, neutral: { n: '', i: '…', c: '#8a7a5a' } };
   function dialogueNext() {
     if (!dq) return;
     while (dq.length) {
@@ -183,6 +184,17 @@ export function setupUI(settings) {
         return;
       }
       if (e.run) { e.run(); continue; }
+      if (e.wheel) {
+        // Words of Choice: a dialogue wheel. Each option has a tone (kind, firm, cunning) that companions and factions notice.
+        const opts = e.wheel;
+        dlg.innerHTML = `<div class="d-body d-wheel"><div class="d-name">What do you say?</div><div class="wheel-ring n${opts.length}">${opts.map((c, i) => {
+          const t = TONES[c[0]] || TONES.neutral;
+          return `<button class="d-opt w-opt" data-i="${i}" style="border-color:${t.c}"><i style="background:${t.c}">${t.i}</i>${t.n ? `<small>${t.n}</small>` : ''}${esc(c[1])}</button>`; }).join('')}<div class="wheel-hub">⚜</div></div></div>`;
+        dlg.dataset.kind = 'wheel';
+        dlg._wheel = opts;
+        dlg.style.display = 'flex';
+        return;
+      }
       if (e.choose) {
         dlg.innerHTML = `<div class="d-body"><div class="d-name">Select an Option</div>${e.choose.map((c, i) => `<button class="d-opt" data-i="${i}">${esc(c[0])}</button>`).join('')}</div>`;
         dlg.dataset.kind = 'choose';
@@ -205,7 +217,14 @@ export function setupUI(settings) {
   }
   dlg.addEventListener('click', e => {
     e.stopPropagation();
-    if (dlg.dataset.kind === 'choose') {
+    if (dlg.dataset.kind === 'wheel') {
+      const b = e.target.closest('.w-opt');
+      if (!b) return;
+      const [tone, label, branch] = dlg._wheel[+b.dataset.i];
+      if (toneHook && tone !== 'neutral') toneHook(tone, dName);
+      dq.unshift(['player', label], ...(branch || []));
+      dialogueNext();
+    } else if (dlg.dataset.kind === 'choose') {
       const b = e.target.closest('.d-opt');
       if (!b) return;
       const branch = dlg._choose[+b.dataset.i][1];
@@ -214,5 +233,5 @@ export function setupUI(settings) {
     } else dialogueNext();
   });
 
-  return { log, showMenu, hideMenu, tapMarker, setStatus, xpDrop, levelUp, banner, dialogue, closeDialogue, get inDialogue() { return !!dq; } };
+  return { onTone(fn) { toneHook = fn; }, log, showMenu, hideMenu, tapMarker, setStatus, xpDrop, levelUp, banner, dialogue, closeDialogue, get inDialogue() { return !!dq; } };
 }
