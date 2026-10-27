@@ -27,6 +27,7 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>Shiftsteeds.</b> Reach Agility 10 for the Fernback Stag and Agility 30 for the Ironbristle Boar. Press G (or Ride) to ride: faster than running and faster again on roads. You dismount to fight. On the boar, press F (or Shift) for Bulwark form: 6 seconds of 30% less damage and a charge that rams the first monster ahead.</p>
 <p><b>Flow Strikes.</b> Land combat skills back to back to build a Flow chain: +8% damage per link, and the third link adds a Flow Finisher swing and some adrenaline. Press Space (or the Roll button) to dodge-roll for 15 run energy: hits that land mid-roll miss you.</p>
 <p><b>No more black box.</b> On High, a single glitched pixel (from a hard edge on a roof, wall or hillside at certain angles) could be smeared by the glow effect into a big flickering black rectangle, mostly when looking toward buildings. Those pixels are now caught and cleaned before any effects run, and the shaders that produced them are fixed.</p>
 <p><b>Sunsets with colour.</b> Dawn and dusk now paint the sky in orange at the horizon rising through pink into violet, brightest toward the sun, and the clouds pick up warm glowing edges and rosy undersides.</p>

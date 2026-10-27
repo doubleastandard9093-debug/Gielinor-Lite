@@ -16,7 +16,7 @@ import { updateDrizzle } from './weather.js';
 import { createSky, tickGfx, resolveQuality, pixelRatioFor, SWAY, enableTexDetail, SUN_DIR, createWaterReflection } from './gfx.js';
 import { createScene, createCamera, createRenderer, createLights, followLight, setShadows, tuneLights, IS_TOUCH } from './scene.js';
 import { adoptSceneObjects, registerDynamic, updateChunks, setLoadRadius, chunkStats } from './chunk.js';
-import { terrainHeight, insideLake, WORLD_HALF, TOWNS, CAVE, inCave } from './world.js';
+import { PATHS, terrainHeight, insideLake, WORLD_HALF, TOWNS, CAVE, inCave } from './world.js';
 import { createWorld, createPileMesh, SPAWN, setDecorQuality, updateDecorChunks, updateLocalGrass } from './world.js';
 import { updateLod, setLodRange, poseHumanoid } from './anatomy.js';
 import { createCritters } from './critters.js';
@@ -43,6 +43,7 @@ import { ABILITIES, abilityById, unlocked as abilityUnlocked, cooldownTicks } fr
 import { QUESTS, questForNpc, questsForNpc, questTalk, onXp, onVisit, questStatus, isDone, onKill, onBury, onPray, NPC_INFO, questPoints, questFx } from './quests.js';
 import { QUEST_NPCS } from './questnpcs.js';
 import { createInventoryUI } from './inventoryUI.js';
+import { STEEDS, steedById, normalizeSteeds, grantSteeds, buildSteed, buildBulwarkArmor, poseSteed, ROAD_BONUS, BULWARK } from './steeds.js';
 import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW } from './flow.js';
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from './save.js';
 
@@ -159,6 +160,7 @@ function giveXP(skill, amount) {
     for (const p of perks) log(`New ${s} perk unlocked: ${p.name} (${p.desc}).`, 'skill');
     for (const a of ABILITIES) if (a.skill === s && a.level > old && a.level <= l) log(`New combat skill unlocked: ${a.name}. It's on your quick bar.`, 'skill');
     for (const pr of PRAYERS) if (s === 'Prayer' && pr.level > old && pr.level <= l) log(`You can now use the prayer ${pr.name}.`, 'skill');
+    if (s === 'Agility') checkSteeds();
     if (s === 'Hitpoints') { const oldMax = player.maxHp; refreshMaxHp(); player.hp += player.maxHp - oldMax; }
     if (s === 'Prayer') player.prayerPoints = Math.min(maxPrayer(skills), (player.prayerPoints || 0) + (l - old) * 10);
   });
@@ -494,6 +496,8 @@ const inputCtl = setupInput(renderer.domElement, {
     if (/^ab\d$/.test(act)) { const list = ABILITIES.filter(a => abilityUnlocked(skills, a)); const a = list[+act.slice(2) - 1]; if (a) useAbility(a.id); }
     else if (act === 'run') toggleRun();
     else if (act === 'dodge') doDodge();
+    else if (act === 'ride') toggleRide();
+    else if (act === 'shift') steedShift();
     else if (act.startsWith('tab')) invUI.showTab({ tabInv: 'inv', tabEquip: 'equip', tabSkills: 'skills', tabQuests: 'quests', tabPrayer: 'prayer', tabSettings: 'settings' }[act]);
   }
 });
@@ -569,7 +573,7 @@ const minimap = createMinimap({
 });
 hud = createHud({ player, skills, monsters, levelColor, combatLevelOf: () => combatLevel(skills),
   getTarget: () => (action && action.kind === 'attack' && action.mon && action.mon.alive ? action.mon : null) });
-hud.onQuick = q => { if (q === 'dodge') doDodge(); };
+hud.onQuick = q => { if (q === 'dodge') doDodge(); else if (q === 'ride') toggleRide(); else if (q === 'shift') steedShift(); };
 hud.setQuick({});
 
 // ---------------------------------------------------------------------------
@@ -868,6 +872,88 @@ function doDodge() {
   const l = Math.hypot(x, z) || 1;
   const err = tryDodge(flow, pm, player, { x: x / l, z: z / l }, performance.now());
   if (err) log(err, 'warn'); else markDirty();
+}
+// ---- Shiftsteeds ----
+const steedState = { mesh: null, id: null, armorHi: null, bulwarkUntil: 0, shiftReadyAt: 0, t: 0 };
+function checkSteeds() {
+  player.steeds = normalizeSteeds(player.steeds);
+  for (const s of grantSteeds(player.steeds, skills.Agility.level)) log(`New steed: ${s.name}. Press G (or Ride) to ride it. ${s.desc}`, 'skill');
+  refreshQuick();
+}
+function segDist(px, pz, x1, z1, x2, z2) {
+  const vx = x2 - x1, vz = z2 - z1, l2 = vx * vx + vz * vz || 1, t = Math.max(0, Math.min(1, ((px - x1) * vx + (pz - z1) * vz) / l2));
+  return Math.hypot(px - x1 - vx * t, pz - z1 - vz * t);
+}
+function riding() { return !!steedState.mesh; }
+function refreshQuick() {
+  const st = player.steeds || { owned: [] };
+  if (hud) hud.setQuick({ ride: st.owned.length > 0, riding: riding(), shift: riding() && steedById(steedState.id).shift });
+}
+function mount(id) {
+  const def = steedById(id); if (!def) return;
+  steedState.mesh = buildSteed(def); steedState.id = id; scene.add(steedState.mesh);
+  pm.speedMul = def.speed; pm.rideLift = steedState.mesh.userData.seatY + 0.95;
+  player.steeds.active = id;
+}
+function dismount(msg) {
+  if (!steedState.mesh) return;
+  scene.remove(steedState.mesh); steedState.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  if (steedState.armorHi) { steedState.armorHi.geometry.dispose(); steedState.armorHi.material.dispose(); steedState.armorHi = null; }
+  steedState.mesh = null; steedState.id = null; steedState.bulwarkUntil = 0; pm.speedMul = 1; pm.rideLift = 0;
+  const p = pm.parts; p.leftLeg.rotation.set(0, 0, 0); p.rightLeg.rotation.set(0, 0, 0);
+  if (player.steeds) player.steeds.active = null;
+  if (msg) log(msg, 'game');
+  refreshQuick(); markDirty();
+}
+function toggleRide() {
+  const st = player.steeds = normalizeSteeds(player.steeds);
+  if (riding()) { dismount('You dismount.'); return; }
+  if (!st.owned.length) { log(`You need Agility level ${STEEDS[0].agility} to ride a steed.`, 'warn'); return; }
+  if (crossing || stunned() || (action && action.kind === 'attack')) { log('You cannot summon a steed right now.', 'warn'); return; }
+  if (pm.mesh.position.y < -5) return;
+  // Cycle: ride the last steed, or the next one you own after it.
+  const last = st.lastRide && st.owned.includes(st.lastRide) ? st.lastRide : st.owned[st.owned.length - 1];
+  mount(last); st.lastRide = last;
+  log(`You call your ${steedById(last).name} and climb into the saddle.`, 'game');
+  refreshQuick(); markDirty();
+}
+function steedShift() {
+  if (!riding() || !steedById(steedState.id).shift) { log('Only the Ironbristle Boar can shift. Ride it first.', 'warn'); return; }
+  const now = performance.now();
+  if (now < steedState.shiftReadyAt) { log(`Bulwark form is recharging (${Math.ceil((steedState.shiftReadyAt - now) / 1000)}s).`, 'warn'); return; }
+  steedState.bulwarkUntil = now + BULWARK.ms; steedState.shiftReadyAt = now + BULWARK.cdMs;
+  const fx = Math.sin(pm.facing), fz = Math.cos(pm.facing);
+  pm.dodge = { x: fx, z: fz, left: BULWARK.chargeMs, speed: BULWARK.chargeDist / (BULWARK.chargeMs / 1000) };
+  // The charge rams the first monster ahead of you.
+  const p = pm.mesh.position; let hit = null, hd = 7;
+  for (const m of monsters) {
+    if (!m.alive) continue; const dx = m.mesh.position.x - p.x, dz = m.mesh.position.z - p.z, d = Math.hypot(dx, dz);
+    if (d < hd && (dx * fx + dz * fz) / (d || 1) > 0.6) { hit = m; hd = d; }
+  }
+  if (hit) {
+    const dmg = Math.min(hit.hp, Math.ceil(2 + skills.Strength.level * 0.25 + Math.random() * 3));
+    hit.hp -= dmg; hit.stunUntil = tick + 3; hit.hitT = 1; overlays.splat(hit, dmg, now + 300);
+    giveXP('Strength', dmg * 2); giveXP('Agility', 6);
+    log(`Bulwark Charge rams the ${hit.name}!`, 'combat');
+    if (hit.hp <= 0) killMonster(hit, now);
+  } else log('Your boar shifts into Bulwark form!', 'combat');
+}
+// After movement each frame: pose the steed and rider, set speed, and drop off the steed when fighting or crossing.
+function updateSteed(dt, moved) {
+  if (!steedState.mesh) return;
+  if (crossing || (action && action.kind === 'attack')) { dismount('You dismount to fight.'); return; }
+  steedState.t += dt;
+  const pos = pm.mesh.position, def = steedById(steedState.id);
+  let onRoad = false; for (const pth of PATHS) if (segDist(pos.x, pos.z, ...pth) < 2.2) { onRoad = true; break; }
+  pm.speedMul = def.speed * (onRoad ? ROAD_BONUS : 1);
+  poseSteed(steedState.mesh, pos, pm.facing, moved, dt, steedState.t);
+  pos.y = terrainHeight(pos.x, pos.z) + pm.rideLift;
+  const p = pm.parts; p.leftLeg.rotation.x = p.rightLeg.rotation.x = -1.25; p.leftLeg.rotation.z = -0.35; p.rightLeg.rotation.z = 0.35;
+  p.leftLeg.userData.knee.rotation.x = p.rightLeg.userData.knee.rotation.x = 1.4; p.body.rotation.x = 0.08;
+  // Bulwark armour: a High-only model, built the first time it is shown on a non-Low frame. Low never builds it.
+  const armoured = performance.now() < steedState.bulwarkUntil;
+  if (armoured && gfx.quality !== 'low' && !steedState.armorHi) { steedState.armorHi = buildBulwarkArmor(); steedState.mesh.add(steedState.armorHi); }
+  if (steedState.armorHi) steedState.armorHi.visible = armoured && gfx.quality !== 'low';
 }
 function stopAction() {
   action = null;
@@ -1568,6 +1654,7 @@ function monsterAttack(mon, now) {
   const raw = rollMonsterHit(mon, player, skills);
   if (mon.ranged) enemyArrow = { from: mon.mesh.position.clone().setY(1.3), t: 0 };
   let dmg = reduceIncoming(raw, player, skills, { fortify: tick < buffs.fortifyUntil, rage: tick < buffs.rageUntil });
+  if (dmg > 0 && performance.now() < steedState.bulwarkUntil) dmg = Math.max(1, Math.floor(dmg * (1 - BULWARK.reduce)));
   if (dmg > 0 && dodging(flow, now)) { dmg = 0; overlays.splat(playerEnt, 0, now); log('Dodged!', 'combat'); return; }
   if (dmg > 0 && Math.random() < perk(skills, 'Defence', 'block')) { dmg = 0; log('Parry: you block the attack!', 'combat'); }
   // Retribution: reflect some damage back.
@@ -1897,6 +1984,7 @@ function afterLoad() {
   player.questPoints = questPoints(player);
   player.prayerPoints = Math.min(player.prayerPoints || 0, maxPrayer(skills));
   updateQuestMarks();
+  dismount(); checkSteeds();
   for (const note of applySaveData.lastNotes || []) log(note, 'warn');
   applySaveData.lastNotes = [];
   markDirty();
@@ -2106,6 +2194,7 @@ function animate(now) {
   const running = player.settings.run && player.runEnergy > 0;
   routeThroughDoors();
   const moved = crossing ? 0 : updatePlayer(pm, keys, dt, running, rig.yaw);
+  updateSteed(dt, moved);
   updateSound(pm, dt, player.settings, DAY.night < 0.5);
   updateCrossing(dt);
   if (running && moved > 0) {
@@ -2178,7 +2267,7 @@ document.addEventListener('pointerdown', e => {
 }, true);
 window.gielinor = {
   gfx, terrainHeight, applyLook() { applyEquipmentLook(pm, player.equipment); }, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
-  renderer, player, skills, flow, doDodge, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
+  renderer, player, skills, flow, doDodge, toggleRide, steedShift, steedState, checkSteeds, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }

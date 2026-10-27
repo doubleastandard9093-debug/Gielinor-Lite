@@ -3,8 +3,9 @@ import { DEFAULT_SETTINGS, INV_SIZE } from './playerState.js';
 import { ITEMS, isTool, STARTER_TOOLS } from './items.js';
 import { PRAYERS } from './prayer.js';
 import { questPoints } from './quests.js';
+import { normalizeSteeds } from './steeds.js';
 
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 export const POS_LIMIT = 146; // world half-size (150) minus a margin
 const KEY = 'gielinor3d';
 
@@ -37,7 +38,9 @@ export function getSaveData(skills, player, playerMesh) {
       bank: player.bank || {},
       bounties: player.bounties || {},
       bountiesDone: player.bountiesDone || 0,
-      caveLoot: !!player.caveLoot
+      caveLoot: !!player.caveLoot,
+      steeds: normalizeSteeds(player.steeds),
+      flowBest: player.flowBest || 0
     },
     position: playerMesh ? { x: playerMesh.mesh.position.x, z: playerMesh.mesh.position.z } : null,
     timestamp: Date.now()
@@ -135,6 +138,10 @@ export function migrateSave(saved) {
     if (OLD22.every(id => p.quests[id] && p.quests[id].stage === 'done') && !p.questCapeLegacy) { p.questCapeLegacy = true; notes.push('You keep your Quest point cape, even with the new quests.'); }
     notes.push('New: 100 new quests across every town and the wilds. Look for blue dots on the minimap. See Settings → What\'s new.');
   }
+  // v9 (Flow & Steeds): steeds and best Flow chain. Old saves start with none; Agility grants steeds on load.
+  p.steeds = normalizeSteeds(p.steeds);
+  p.flowBest = Math.max(0, Math.floor(Number(p.flowBest) || 0));
+  if (fromVersion < 9) notes.push('New: Flow Strikes (chain combat skills, dodge-roll with Space) and Shiftsteeds (rides unlocked by Agility 10 and 30, G to ride). See Settings → What\'s new.');
   saved.version = SAVE_VERSION;
   return notes;
 }
@@ -146,7 +153,7 @@ export function applySaveData(data, skills, player, playerMesh) {
     const notes = migrateSave(saved);
     Object.assign(skills, saved.skills);
     const p = saved.player;
-    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints', 'effects', 'poison', 'poisonImmune', 'questCapeLegacy', 'bounties', 'bountiesDone', 'caveLoot']) {
+    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints', 'effects', 'poison', 'poisonImmune', 'questCapeLegacy', 'bounties', 'bountiesDone', 'caveLoot', 'steeds', 'flowBest']) {
       if (p[k] !== undefined) player[k] = p[k];
     }
     if (p.skillTrees) {
