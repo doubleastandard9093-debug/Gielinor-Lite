@@ -35,7 +35,7 @@ import {
   TICK_MS, gatherTick, gatherInfo, TREES, ROCKS, FISH_SPOTS, rollPlayerHit, rollMonsterHit, combatXp, rollLoot, RARE_DROPS,
   attackSpeedTicks, attackRange, equip, unequip, eat, sellPrice, bestTool, addTool, ownsToolType, toolName,
   burnChance, saveChance, makeXp, buryXp, reduceIncoming, nextGatherWait, xpMultiplier, makeTicks, doubleMakeChance, buyPrice, capeBoosts, regenBonus, SHOPS, gearEffects, weaponProcs, isRareDrop,
-  SPELLS, spellById, canCast, castSpell, bestSpell, SPELL_TICKS, AGILITY_OBSTACLES, AGILITY_COURSES, runObstacle, THIEVE_TARGETS, thieve, RUNE_ALTARS, craftRunes
+  SPELLS, spellById, canCast, castSpell, bestSpell, magicMaxHit, weakTo, WEAK_MULT, SPELL_TICKS, AGILITY_OBSTACLES, AGILITY_COURSES, runObstacle, THIEVE_TARGETS, thieve, RUNE_ALTARS, craftRunes
 } from '../../js/gameplay.js';
 import { POTIONS, isPotion, drinkPotion, effectsTick, applyPoison, poisonTick } from '../../js/potions.js';
 import { PRAYERS, prayerById, togglePrayer, drainTick, prayerFx, rechargePrayer, ppRegenPerTick } from '../../js/prayer.js';
@@ -680,11 +680,49 @@ function applyHex(spell, mon, res) {
   else if (spell.hex === 'leech' && res.dmg > 0) { player.hp = Math.min(player.maxHp, player.hp + Math.floor(res.dmg / 2)); }
   player.hexCasts = (player.hexCasts || 0) + 1;
 }
+// Magic kit: element bolts, Surge and Storm ride on top of a spell cast.
+function magicKit(special, spell, mon, res, now) {
+  const ab = abilityById(special); if (!ab) return 0;
+  cooldowns[special] = tick + cooldownTicks(skills, ab);
+  for (const [r, q] of Object.entries(ab.runes || {})) if ((player.inventory[r] || 0) < q) { log(`Not enough runes for ${ab.name}.`, 'warn'); return 0; }
+  for (const [r, q] of Object.entries(ab.runes || {})) removeItem(player, r, q);
+  log(`${ab.name}!`, 'combat');
+  const mh = magicMaxHit(spell, player, skills);
+  let extra = 0;
+  if (ab.element) {
+    extra = Math.floor(mh * (0.4 + Math.random() * 0.5) * (ab.element === 'fire' ? 1.1 : ab.element === 'earth' ? 1.0 : 0.9));
+    if (weakTo(mon.name, ab.element)) { extra = Math.floor(extra * WEAK_MULT); log(`The ${mon.name} is weak to ${ab.element}!`, 'combat'); }
+    if (ab.element === 'earth') mon.witherUntil = Math.max(mon.witherUntil || 0, tick + 8);
+    if (ab.element === 'fire' && (!mon.venom || mon.venom.dmg < 6)) mon.venom = { dmg: Math.max(4, Math.round(mh * 0.08)), next: 3, left: 4 };
+  } else if (special === 'surge') { buffs.surgeLeft = 3; log('Power surges through your spells (+50% for 3 casts).', 'combat'); }
+  else if (special === 'storm') {
+    extra = Math.floor(mh * (0.8 + Math.random() * 0.7));
+    const mp = mon.mesh.position;
+    for (const m of monsters) if (m !== mon && m.alive && m.hp > 0 && m.mesh.position.distanceTo(mp) < 5) {
+      const d = Math.min(m.hp, Math.floor(mh * (0.5 + Math.random() * 0.5))); m.hp -= d; overlays.splat(m, d, now + 350);
+      if (m.state !== 'fight') { m.state = 'fight'; m.nextAttackTick = tick + 1; }
+      giveXP('Magic', d * 0.6); if (m.hp <= 0) killMonster(m, now);
+    }
+    if (gfx.quality !== 'low') burst('hit', mp.x, mp.y + 2, mp.z, 18);
+  }
+  // Flow: Magic skills chain like the others.
+  const fl = flowOnSkillHit(flow, tick);
+  if (fl.bonus) extra = Math.floor(extra * (1 + fl.bonus));
+  if (fl.finisher) { extra += Math.floor(mh * FLOW.finisher); log('Flow Finisher!', 'combat'); if (hud) hud.gain(10); }
+  if (flow.best > (player.flowBest || 0)) player.flowBest = flow.best;
+  if (hud && hud.setFlow) hud.setFlow(fl.finisher ? FLOW.maxLinks : fl.links);
+  return extra;
+}
 function doMagicTick(a, now) {
   const mon = a.mon;
   const spell = spellById(a.spell);
   const res = castSpell(spell, skills, player, mon);
   if (res.error) { log(res.error, 'warn'); stopAction(); return; }
+  if (queuedAbility && (abilityById(queuedAbility) || {}).style === 'magic') { const sp = queuedAbility; queuedAbility = null; res.dmg += magicKit(sp, spell, mon, res, now); invUI.renderBar(); }
+  if (buffs.surgeLeft > 0 && res.dmg > 0) { res.dmg = Math.floor(res.dmg * 1.5); buffs.surgeLeft--; }
+  { const hb = huntBonus(mon); if (hb && res.dmg > 0) res.dmg = Math.floor(res.dmg * (1 + hb)); }
+  res.dmg = Math.min(res.dmg, mon.hp);
+  res.xp.Magic = (res.xp.Magic || 0) + res.dmg * 0.2;
   if (spell.hex && res.dmg >= 0) applyHex(spell, mon, res);
   spellMesh.material.color.setHex(SPELL_COLOR[spell.icon] || (spell.hex ? 0x7ad04a : 0xffffff));
   spellFlight = { from: pm.mesh.position.clone().setY(1.3), mon, t: 0 };
@@ -1930,6 +1968,11 @@ function useAbility(id) {
   const ranged = isRangedWeapon(player.equipment.weapon);
   if (a.style === 'melee' && ranged) { log(`${a.name} needs a melee weapon.`, 'warn'); return; }
   if (a.style === 'ranged' && !ranged) { log(`${a.name} needs a bow.`, 'warn'); return; }
+  if (a.style === 'magic') {
+    if (!action || action.kind !== 'attack' || !action.spell) { log(`${a.name} is a Magic skill. Attack with a spell (set Autocast) first.`, 'warn'); return; }
+    const miss = Object.entries(a.runes || {}).filter(([r, q]) => (player.inventory[r] || 0) < q);
+    if (miss.length) { log(`${a.name} needs ${miss.map(([r, q]) => `${q} ${r}`).join(', ')}.`, 'warn'); return; }
+  }
   const cost = adrenCost(a);
   const adr = hud ? hud.adrenaline : 0;
   if (cost && adr + 1e-6 < cost) { log(`${a.name} needs ${cost}% adrenaline (you have ${Math.floor(adr)}%). Use basic skills and land hits to build it.`, 'warn'); return; }
@@ -1956,8 +1999,8 @@ function useAbility(id) {
 
 function playerAttack(mon, now) {
   const ranged = isRangedWeapon(player.equipment.weapon);
-  const special = queuedAbility;
-  queuedAbility = null;
+  const special = queuedAbility && (abilityById(queuedAbility) || {}).style !== 'magic' ? queuedAbility : null;
+  if (special) queuedAbility = null;
   if (special) cooldowns[special] = tick + cooldownTicks(skills, abilityById(special));
   if (ranged) {
     pistolShot = player.equipment.ammo;
@@ -2717,7 +2760,7 @@ window.gielinor = {
   renderer, player, skills, flow, doDodge, toggleRide, steedShift, steedState, checkSteeds, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, sagaMarks, minimap, sailing, cardsUI, digHere, readChart, seaTalk, talkTo, refreshQuick, bondsUI, finishErrands, refreshStanding,
-  buy, sell, playerDied, monsterAttack, killMonster, huntTalk, refreshStanding,
+  buy, sell, playerDied, monsterAttack, killMonster, huntTalk, refreshStanding, doMagicTick, set queuedAbility(v) { queuedAbility = v; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
 

@@ -581,7 +581,8 @@ export function createInventoryUI(api) {
   // ---------------- Quick bar ----------------
   function renderBar() {
     const now = api.tick();
-    const list = ABILITIES.filter(a => unlocked(skills, a));
+    const caster = !!player.settings.autocast; // casters see the Magic kit instead of melee/ranged skills
+    const list = ABILITIES.filter(a => unlocked(skills, a) && (a.style === 'any' || (a.style === 'magic') === caster));
     const html = list.map((a, i) => {
       const cd = Math.max(0, (api.cooldowns()[a.id] || 0) - now);
       const total = api.cooldownOf(a);

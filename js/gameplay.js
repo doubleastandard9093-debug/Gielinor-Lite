@@ -763,6 +763,16 @@ export function magicAccuracy(player, skills, mon) {
 }
 // Cast one spell at a monster: uses runes, rolls the hit. Returns { dmg, xp: { Magic, Hitpoints }, saved }
 // or { error } when it can't be cast.
+// Elemental weaknesses: spells of that element deal +30% (Magic kit).
+export const WEAKNESS = {
+  Wolf: 'fire', Zombie: 'fire', Skeleton: 'earth', 'Giant Spider': 'fire', Bandit: 'wind', 'Moss Giant': 'fire', Ogre: 'water', 'Ice Giant': 'fire',
+  'Green Dragon': 'water', 'Lesser Demon': 'water', Grumsh: 'earth', Scorchwing: 'water', 'Dark Archer': 'wind', Goblin: 'wind', Cow: 'earth', Guard: 'earth',
+  'Hill Giant': 'water', 'Black Knight': 'earth', 'Drowned Deckhand': 'fire', 'Drowned Gunner': 'earth', 'Captain Saltgrave': 'fire'
+};
+export const WEAK_MULT = 1.3;
+export const ELEMENT_ICON = { wind: '💨', water: '💧', earth: '🪨', fire: '🔥' };
+export function spellElement(spell) { const m = spell && /^(wind|water|earth|fire)_/.exec(spell.id); return m ? m[1] : null; }
+export function weakTo(monName, element) { return !!element && WEAKNESS[monName] === element; }
 export function castSpell(spell, skills, player, mon, rng = Math.random) {
   const c = canCast(spell, skills, player);
   if (!c.ok) return { error: c.reason };
@@ -772,6 +782,7 @@ export function castSpell(spell, skills, player, mon, rng = Math.random) {
   if (rng() < magicAccuracy(player, skills, mon)) {
     dmg = 1 + Math.floor(rng() * magicMaxHit(spell, player, skills));
     dmg = Math.floor(dmg * (1 + questFx(player, 'dmgVs.' + mon.name) + questFx(player, 'dmgVs.*') + (gearEffects(player).dmgPct || 0)));
+    if (weakTo(mon.name, spellElement(spell))) dmg = Math.floor(dmg * WEAK_MULT);
   }
   dmg = Math.min(dmg, mon.hp);
   // Like RuneScape, a cast always gives its base XP; damage adds more.
