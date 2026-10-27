@@ -50,6 +50,7 @@ import { createBondsUI } from '../../js/bondsUI.js';
 import { createBossMech } from '../../js/bossmech.js';
 import { DEED_COST, ROOMS, FURNITURE, BOSS_TROPHIES, normalizeHouse, hasRoom, hasFurn, houseXpBonus, houseBossDamage, houseErrandBonus, takeHarvest, takeBondDay, addTrophy } from '../../js/hearth.js';
 import { HEARTH, ARENA, inInstance, instanceAt } from '../../js/instances.js';
+import { WILDS, RIVAL, CAP, botCap, normalizeWilds, captureStep, heldCount } from '../../js/wilds.js';
 import { ARENA_RULES, ARENA_SHOP, normalizeArena, ladder, rankOf, rateDuel, weekRoll, weekNo, pickOpponent, duellistStats } from '../../js/arena.js';
 import { TASK, HUNT_SHOP, normalizeTasks, assignTask, taskKill, taskLabel, isDrowned } from '../../js/tasks.js';
 import { SEA, SARIM_DOCK, HULLS, OFFICERS, CREW_COST, CREW_MAX, ISLANDS, islandAt, normalizeVessel, inSound } from '../../js/sea.js';
@@ -1584,6 +1585,55 @@ function countItem(it) { return player.inventory[it] || 0; }
 player.tasks = normalizeTasks(player.tasks);
 player.house = normalizeHouse(player.house);
 player.arena = normalizeArena(player.arena);
+player.wilds = normalizeWilds(player.wilds);
+// ---- Contested Wilds (Phase 5): banners in the scorched wilderness, contested by Ashen Company bots ----
+const wilds = { flags: null, raiders: [], prog: [], lastRaid: 0, lastPay: 0 };
+const BANNER_COL = { you: 0x2a5ad0, rival: 0xb02a1a };
+function buildWilds() {
+  if (wilds.flags) return;
+  wilds.flags = WILDS.flags.map(([dx, dz], i) => {
+    let x = WILDS.x + dx, z = WILDS.z + dz;
+    for (let k = 0; k < 40 && (blockedAt(x, z) || insideLake(x, z, 1.5)); k++) { x += Math.cos(k) * 0.8; z += Math.sin(k) * 0.8; }
+    const g = new THREE.Group(); g.position.set(x, terrainHeight(x, z), z); g.name = 'wilds-banner';
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3.2, 6), plainMat(0x4a3a2a)); pole.position.y = 1.6; g.add(pole);
+    const cloth = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.7, 0.04), plainMat(BANNER_COL[player.wilds.held[i]])); cloth.position.set(0.58, 2.75, 0); g.add(cloth);
+    scene.add(g); return { x, z, g, cloth };
+  });
+}
+function paintBanner(i) { wilds.flags[i].cloth.material.color.setHex(BANNER_COL[player.wilds.held[i]]); }
+function reviveRaider(m, f) {
+  const a = Math.random() * Math.PI * 2, x = f.x + Math.cos(a) * 2.5, z = f.z + Math.sin(a) * 2.5;
+  Object.assign(m, { alive: true, dying: false, hp: m.maxHp, state: 'idle', respawnAt: 0, spawnX: x, spawnZ: z });
+  m.mesh.visible = true; m.mesh.rotation.set(0, 0, 0); m.mesh.position.set(x, terrainHeight(x, z), z);
+}
+function wildsTick() {
+  const p = pm.mesh.position;
+  if (Math.hypot(p.x - WILDS.x, p.z - WILDS.z) > WILDS.near) return;
+  buildWilds();
+  const W = player.wilds, cap = botCap(gfx.quality, IS_TOUCH);
+  // raids: rivals spawn at their banners (pool capped), and may retake an unguarded banner
+  if (tick - wilds.lastRaid >= CAP.raidEvery || !wilds.raiders.length) {
+    wilds.lastRaid = tick;
+    W.held.forEach((h, i) => { const f = wilds.flags[i]; if (h === 'you' && Math.hypot(p.x - f.x, p.z - f.z) > 15 && Math.random() < CAP.retake) { W.held[i] = 'rival'; paintBanner(i); log(`The ${RIVAL.name} retake a banner in the wilds!`, 'warn'); markDirty(); } });
+    const rivalFlags = wilds.flags.filter((_, i) => W.held[i] === 'rival');
+    if (rivalFlags.length) for (let k = 0; k < cap; k++) {
+      let m = wilds.raiders[k]; const f = rivalFlags[k % rivalFlags.length];
+      if (!m) { m = spawnMonster(RIVAL.mon, f.x, f.z, 2.5); m.respawn = 1e12; wilds.raiders.push(m); reviveRaider(m, f); }
+      else if (!m.alive && !m.dying) reviveRaider(m, f);
+    }
+  }
+  for (const m of wilds.raiders) if (m.alive && m.state !== 'fight' && Math.hypot(m.mesh.position.x - p.x, m.mesh.position.z - p.z) < CAP.aggroR) { m.state = 'fight'; m.nextAttackTick = tick + 2; }
+  wilds.flags.forEach((f, i) => {
+    const near = Math.hypot(p.x - f.x, p.z - f.z) < CAP.captureR;
+    const rivals = wilds.raiders.some(m => m.alive && Math.hypot(m.mesh.position.x - f.x, m.mesh.position.z - f.z) < CAP.clearR);
+    if (near && rivals && W.held[i] !== 'you' && tick % 5 === 0) log(`Clear the ${RIVAL.name} from the banner to claim it.`, 'warn');
+    if (captureStep(W, wilds.prog, i, near, rivals) === 'captured') { paintBanner(i); log(`You raise the Watch's colours over a banner! (${heldCount(W)}/3 held)`, 'loot', '#7fd4ff'); gainRep('watch', 15); markDirty(); }
+  });
+  if (tick - wilds.lastPay >= CAP.payEvery) {
+    wilds.lastPay = tick; const n = heldCount(W);
+    if (n) { player.arena.tokens += n * CAP.payTokens; addRep(player, 'watch', n * CAP.payRep); log(`Your ${n} wilds banner${n > 1 ? 's' : ''} pay ${n * CAP.payTokens} arena tokens and ${n * CAP.payRep} Watch standing.`, 'game'); markDirty(); }
+  }
+}
 // ---- The Proving Grounds (Phase 5): duel a bot that copies your loadout in an instanced ring ----
 let arenaG = null, arenaGate = null, duellist = null, duel = null;
 function buildArena() {
@@ -2268,6 +2318,7 @@ function killMonster(mon, now) {
     else { addRep(player, 'drowned', TASK.killRep); refreshStanding(true); }
   }
   huntKill(mon.name);
+  if (mon.wilds) addRep(player, 'watch', CAP.killRep);
   if (mon.boss) { const tr = addTrophy(player.house, mon.name); if (tr) log(`Trophy: ${tr}. Mount it in your Hearthstead trophy hall.`, 'loot', '#ffd700'); }
   if (action && action.mon === mon) stopAction();
   const drops = rollLoot(mon.name, Math.random, perk(skills, 'Combat', 'rareDrop'));
@@ -2381,6 +2432,7 @@ function gameTick(now) {
   flowDecay(flow, tick);
   restockTick(player, SHOPS);
   companionAssist(now);
+  wildsTick();
   // Hitpoint regen (faster with Hitpoints perks and Rapid Heal) and run energy
   if (player.hp < player.maxHp && player.hp > 0) {
     let rate = 1 + perk(skills, 'Hitpoints', 'regen') + prayerFx(player, 'regen') + regenBonus(player);
@@ -2951,7 +3003,7 @@ window.gielinor = {
   renderer, player, skills, flow, doDodge, toggleRide, steedShift, steedState, checkSteeds, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, sagaMarks, minimap, sailing, cardsUI, digHere, readChart, seaTalk, talkTo, refreshQuick, bondsUI, finishErrands, refreshStanding,
-  bossMech, buy, sell, playerDied, monsterAttack, killMonster, huntTalk, finishErrands, enterHearth, hearthTalk, refreshHearth, arenaTalk, startDuel, get duel() { return duel; }, get duellist() { return duellist; }, spawnMonster, refreshStanding, doMagicTick, set queuedAbility(v) { queuedAbility = v; },
+  bossMech, buy, sell, playerDied, monsterAttack, killMonster, huntTalk, finishErrands, enterHearth, hearthTalk, refreshHearth, arenaTalk, startDuel, wildsTick, wilds, get duel() { return duel; }, get duellist() { return duellist; }, spawnMonster, refreshStanding, doMagicTick, set queuedAbility(v) { queuedAbility = v; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
 
