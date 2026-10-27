@@ -28,6 +28,7 @@ import { createOverlays } from './overlays.js';
 import { createMinimap } from './minimap.js';
 import { createHud } from './hud.js';
 import { adrenCost, adrenGain } from './abilities.js';
+import { totalLevel } from './skills.js';
 import { createSkills, addXP, combatLevel, SKILL_ICONS, perk, perksBetween, maxPrayer, setPerkBoost } from './skills.js';
 import { createPlayerState, addItem, removeItem, recalcMaxHp, roomFor, canAdd } from './playerState.js';
 import { RECIPES, ITEMS, canCraft, hasInputs, recipeOutputQty, examineItem, isRangedWeapon, slotFor, isTool, toolType, TOOL_TYPES, WOODS, rarityOf, rarityColor } from './items.js';
@@ -47,6 +48,7 @@ import { COMPANIONS, companionById, normalizeCompanions, companionXpBonus, addBo
 import { FACTIONS, TIERS, TIER_REWARDS, BOUNTY_REP, factionById, factionNear, tierOf, nextTier, addRep, repOf } from './standing.js';
 import { ERRANDS, errandById, errandChance, startErrand, collectErrands } from './errands.js';
 import { createBondsUI } from './bondsUI.js';
+import { CALLINGS, CHAPTERS, ENDINGS, normalizeSaga, currentChapter, sagaXpBonus, objNeed, endingTone } from './saga.js';
 import { STEEDS, steedById, normalizeSteeds, grantSteeds, buildSteed, buildBulwarkArmor, poseSteed, ROAD_BONUS, BULWARK } from './steeds.js';
 import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW } from './flow.js';
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from './save.js';
@@ -157,7 +159,7 @@ function refreshMaxHp() {
 function giveXP(skill, amount) {
   if (amount <= 0) return;
   amount *= xpMultiplier(player, skill); // quest + gear XP bonuses
-  amount *= 1 + companionXpBonus(player, skill) + standingXp(skill); // Sworn Companion bond and faction Standing perks
+  amount *= 1 + companionXpBonus(player, skill) + standingXp(skill) + sagaXpBonus(player, skill); // Sworn Companion bond and faction Standing perks
   addXP(skills, skill, amount, (s, l, old) => {
     const perks = perksBetween(s, old, l);
     ui.levelUp(s, SKILL_ICONS[s], l, perks);
@@ -895,7 +897,7 @@ function segDist(px, pz, x1, z1, x2, z2) {
 function riding() { return !!steedState.mesh; }
 function refreshQuick() {
   const st = player.steeds || { owned: [] };
-  if (hud) hud.setQuick({ ride: st.owned.length > 0, riding: riding(), shift: riding() && steedById(steedState.id).shift, bonds: COMPANIONS.some(c => player.companions && player.companions[c.id] && player.companions[c.id].recruited) });
+  if (hud) hud.setQuick({ ride: st.owned.length > 0, riding: riding(), shift: riding() && steedById(steedState.id).shift, bonds: COMPANIONS.some(c => player.companions && player.companions[c.id] && player.companions[c.id].recruited) || !!(player.saga && player.saga.calling) });
 }
 function mount(id) {
   const def = steedById(id); if (!def) return;
@@ -999,6 +1001,7 @@ function entExamine(ent) {
   if (ent.type === 'chest') return player.caveLoot ? 'The hoard is empty now. You already took everything.' : ent.examine;
   if (ent.type === 'forage') return ent.alive ? `A bush heavy with ${ent.item.toLowerCase()}. (Herblore ${ent.level})` : 'This bush has been picked clean. It will grow back soon.';
   if (ent.companion) return companionById(ent.companion).examine;
+  if (ent.saga) return 'An old chronicler with ink-stained fingers. He writes down the stories worth keeping.';
   if (ent.standing) return 'She keeps the faction ledgers for every town.';
   if (ent.type === 'npc') return (NPC_INFO[ent.npc] || {}).examine || `It's ${ent.name}.`;
   if (ent.type === 'tree' && !ent.alive) return 'This tree has been cut down.';
@@ -1468,6 +1471,64 @@ function companionAssist(now) {
   e.mesh.rotation.y = Math.atan2(mp.x - e.mesh.position.x, mp.z - e.mesh.position.z);
   if (mon.hp <= 0) killMonster(mon, now);
 }
+// ---- The Wanderer's Saga: Chronicler Corwin tells your story; choices are remembered ----
+player.saga = normalizeSaga(player.saga);
+function sagaGate(ch) { const t = totalLevel(skills), q = questPoints(player); return t >= ch.req.total && q >= ch.req.qp ? null : `You'll need total level ${ch.req.total} and ${ch.req.qp} quest points (you have ${t} and ${q}).`; }
+function sagaApply(fx) {
+  const sg = player.saga;
+  if (fx.flag) sg.flags[fx.flag] = true;
+  if (fx.gold) player.gold += fx.gold;
+  if (fx.rep) gainRep(fx.rep[0], fx.rep[1]);
+  if (fx.xp) giveXP(fx.xp[0], fx.xp[1]);
+}
+function sagaCompanionTest(tone) {
+  const id = player.activeCompanion, d = id && companionById(id); if (!d) return null;
+  const s = compState(id);
+  if (tone === d.likes) { addBond(player, id, 2); return `${d.short} nods firmly. That's what they'd have done. (Bond ${s.bond}/${BOND_MAX})`; }
+  addBond(player, id, -2);
+  if (s.bond <= 0) { s.recruited = false; s.started = false; s.task = 0; player.saga.flags['left_' + id] = true; setCompanion(null); refreshQuick(); return `${d.short} shakes their head. "I can't follow someone who'd do that." ${d.short} leaves your side.`; }
+  return `${d.short} frowns. They didn't like that. (Bond ${s.bond}/${BOND_MAX})`;
+}
+function sagaFinish(ch, tone, fx) {
+  const sg = player.saga;
+  sg.choices.push({ ch: ch.n, tone }); sg.ch++; sg.active = false; sg.prog = 0;
+  sagaApply(fx);
+  const m = ch.companionTest ? sagaCompanionTest(tone) : null;
+  if (m) log(m, 'game');
+  log(`Saga: chapter ${ch.n}, "${ch.title}", complete.`, 'skill', '#ffd700');
+  markDirty();
+}
+function sagaTalk() {
+  const sg = player.saga, ch = currentChapter(sg);
+  if (!ch) return [['npc', sg.title ? `Your story is written, Wanderer ${sg.title}. I read it often.` : 'Your story is written.']];
+  if (!sg.active) {
+    const g = sagaGate(ch);
+    if (g) return [['npc', `Chapter ${ch.n}, "${ch.title}", waits for you. ${g}`]];
+    const start = { run: () => { sg.active = true; sg.prog = 0; log(`Saga, chapter ${ch.n}: ${ch.obj.text}.`, 'game'); markDirty(); } };
+    if (ch.n === 1 && !sg.calling) return [['npc', 'I am Corwin, and I write down the stories worth keeping. Yours begins today.'], ...ch.intro.map(t => ['npc', t]), ['npc', 'First: who are you, on the road?'],
+      { choose: Object.entries(CALLINGS).map(([k, c]) => [`${c.icon} ${c.name}: ${c.desc}`, [{ run: () => { sg.calling = k; log(`You are a ${c.name}. ${c.desc}. Track your story in Bonds (B) → Saga.`, 'skill'); refreshQuick(); markDirty(); } }, start, ['npc', `A ${c.name}, then. ${ch.obj.text}.`]]]) }];
+    return [...ch.intro.map(t => ['npc', t]), start, ['npc', `${ch.obj.text}.`]];
+  }
+  const need = objNeed(ch, sg);
+  if (ch.obj.kind === 'item') {
+    if ((player.inventory[ch.obj.item] || 0) < need) return [['npc', `${ch.obj.text}${need < ch.obj.n ? ` (Varro found most of it; you need only ${need})` : ''}. You have ${player.inventory[ch.obj.item] || 0}.`]];
+  } else if (sg.prog < need) return [['npc', `${ch.obj.text}: ${sg.prog}/${need}.`]];
+  const take = { run: () => { if (ch.obj.kind === 'item') removeItem(player, ch.obj.item, need); } };
+  if (ch.finale) {
+    const t = endingTone(sg), e = ENDINGS[t];
+    const extra = [sg.flags.mercy && 'The goblin you once let go slips through the bars and picks Aldric\'s lock.', sg.flags.varro && 'Varro is there too, holding the door. "I said I owed you."', sg.flags.ashfordFriend && 'Ashford sends blankets and bread for the road home.'].filter(Boolean);
+    return [take, ['npc', ch.done], ...extra.map(x => ['npc', x]), ['npc', e.say], { run: () => {
+      sg.title = e.title; sg.choices.push({ ch: ch.n, tone: t }); sg.ch++; sg.active = false; sg.prog = 0;
+      player.gold += 2000; const c = CALLINGS[sg.calling]; if (c) giveXP(c.skills[0], 5000);
+      log(`The Wanderer's Saga is complete. You are now known as ${e.title}. (+2000 coins, +5000 ${c ? c.skills[0] : ''} XP)`, 'skill', '#ffd700'); markDirty();
+    } }];
+  }
+  return [take, ['npc', ch.done], { wheel: ch.wheel.map(([tone, label, fx]) => [tone, label, [['npc', fx.say], { run: () => sagaFinish(ch, tone, fx) }]]) }];
+}
+function sagaKill(name) {
+  const sg = player.saga, ch = currentChapter(sg);
+  if (ch && sg.active && ch.obj.kind === 'kill' && ch.obj.mon === name && sg.prog < objNeed(ch, sg)) { sg.prog++; log(`Saga: ${sg.prog}/${objNeed(ch, sg)} ${name}s.`, 'game'); markDirty(); }
+}
 // ---- Errand Ledger and the Bonds panel ----
 player.errands = Array.isArray(player.errands) ? player.errands : [];
 function awayUntil(id) { const r = player.errands.find(e => e.comp === id); return r ? r.end : 0; }
@@ -1489,7 +1550,8 @@ const bondsUI = createBondsUI({
     companions: COMPANIONS.map(d => { const s = compState(d.id); return { ...d, ...s, active: player.activeCompanion === d.id, away: awayUntil(d.id), perks: BOND_PERKS, chance: errandChance(s.bond), task: s.started ? compTaskText(d, s) : `Talk to ${d.short}. ${d.examine}` }; }),
     factions: FACTIONS.map(f => { const r = repOf(player, f.id), t = tierOf(r), n = nextTier(r), lo = TIERS[t][0]; return { ...f, rep: r, tier: t, tierName: TIERS[t][1], next: n, pct: n ? Math.round((r - lo) / (n - lo) * 100) : 100 }; }),
     running: player.errands.map(r => ({ ...r, name: (errandById(r.id) || {}).name || r.id, comp: (companionById(r.comp) || {}).name || r.comp })),
-    errands: ERRANDS
+    errands: ERRANDS,
+    saga: (() => { const sg = player.saga, ch = currentChapter(sg); return { calling: sg.calling && CALLINGS[sg.calling], title: sg.title, total: CHAPTERS.length, done: sg.ch, ch: ch && { n: ch.n, title: ch.title, active: sg.active, gate: sagaGate(ch), obj: ch.obj.text, prog: ch.obj.kind === 'kill' ? sg.prog : (player.inventory[ch.obj.item] || 0), need: objNeed(ch, sg) }, choices: sg.choices.map(c => ({ ...c, title: (CHAPTERS[c.ch - 1] || {}).title })) }; })()
   }),
   onAct: (a, o) => {
     if (a === 'follow') { if (awayUntil(o.comp)) return; setCompanion(player.activeCompanion === o.comp ? null : o.comp); }
@@ -1498,6 +1560,7 @@ const bondsUI = createBondsUI({
   }
 });
 function talkTo(ent) {
+  if (ent.saga) { ui.dialogue(ent.name, '📖', sagaTalk(), () => markDirty()); return; }
   if (ent.standing) { ui.dialogue(ent.name, '📜', quartermasterTalk(), () => markDirty()); return; }
   if (ent.companion) { const d = companionById(ent.companion); compTalking = d.id; ui.dialogue(d.name, d.face, companionTalk(ent), () => { compTalking = null; markDirty(); }); return; }
   const name = ent.name;
@@ -1786,6 +1849,7 @@ function killMonster(mon, now) {
   for (const m of onKill(player, mon.name)) log(m, 'game');
   bountyKill(mon.name);
   companionKill(mon.name);
+  sagaKill(mon.name);
   if (action && action.mon === mon) stopAction();
   const drops = rollLoot(mon.name);
   const x = mon.mesh.position.x, z = mon.mesh.position.z;
@@ -2436,7 +2500,7 @@ window.gielinor = {
   gfx, terrainHeight, applyLook() { applyEquipmentLook(pm, player.equipment); }, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
   renderer, player, skills, flow, doDodge, toggleRide, steedShift, steedState, checkSteeds, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
-  get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, bondsUI, finishErrands, refreshStanding,
+  get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, bondsUI, finishErrands, refreshStanding,
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
 
