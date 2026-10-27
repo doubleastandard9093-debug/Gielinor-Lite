@@ -88,7 +88,31 @@ export function createHud({ player, skills, monsters, getTarget, levelColor, com
       el.style.setProperty('--p', e && m ? ((e.left / m) * 100).toFixed(1) + '%' : '100%');
     });
   }
+  // Flow chain chip (Flow Strikes): pops up on a chain and fades out.
+  const flowEl = document.createElement('div');
+  flowEl.id = 'flowchip';
+  flowEl.style.cssText = 'position:fixed;left:50%;top:22%;transform:translateX(-50%);font:700 22px/1 Georgia,serif;color:#ffd77a;text-shadow:0 2px 4px #000;pointer-events:none;opacity:0;transition:opacity .4s;z-index:30';
+  document.body.appendChild(flowEl);
+  let flowHide = 0;
+  function setFlow(n) {
+    if (n < 2) return;
+    flowEl.textContent = n >= 3 ? 'FLOW FINISHER' : `Flow x${n}`;
+    flowEl.style.opacity = '1'; clearTimeout(flowHide); flowHide = setTimeout(() => { flowEl.style.opacity = '0'; }, 1300);
+  }
+  // Quick buttons for touch and mouse: Roll, Ride and Shift (Ride and Shift appear once you own a steed).
+  const qb = document.createElement('div');
+  qb.id = 'flowbtns';
+  qb.style.cssText = 'position:fixed;right:calc(12px + env(safe-area-inset-right));bottom:calc(150px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;z-index:25';
+  const mk = (id, label, tip) => `<button data-q="${id}" title="${tip}" style="width:52px;height:52px;border-radius:50%;border:2px solid #c8a040;background:radial-gradient(#5a4632,#2a2018);color:#ffe9b0;font:700 12px sans-serif;opacity:.88">${label}</button>`;
+  function setQuick(opts) {
+    const html = mk('dodge', 'Roll', 'Dodge-roll (Space)') + (opts.ride ? mk('ride', opts.riding ? 'Off' : 'Ride', 'Ride or dismount (G)') : '') + (opts.shift ? mk('shift', 'Shift', 'Bulwark shift (F)') : '');
+    if (qb._h !== html) { qb._h = html; qb.innerHTML = html; }
+  }
+  document.body.appendChild(qb);
+  let onQuick = null;
+  qb.addEventListener('pointerdown', e => { const b = e.target.closest('[data-q]'); if (b && onQuick) { e.preventDefault(); e.stopPropagation(); onQuick(b.dataset.q); } });
   return {
+    setFlow, setQuick, set onQuick(f) { onQuick = f; },
     update, get adrenaline() { return adrenaline; },
     spend(n) { if (adrenaline + 1e-6 < n) return false; adrenaline = Math.max(0, adrenaline - n); lastFight = performance.now(); return true; },
     gain(n) { adrenaline = Math.min(100, adrenaline + n); lastFight = performance.now(); }

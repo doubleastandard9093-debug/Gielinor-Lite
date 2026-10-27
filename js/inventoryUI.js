@@ -27,6 +27,7 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>Flow Strikes.</b> Land combat skills back to back to build a Flow chain: +8% damage per link, and the third link adds a Flow Finisher swing and some adrenaline. Press Space (or the Roll button) to dodge-roll for 15 run energy: hits that land mid-roll miss you.</p>
 <p><b>No more black box.</b> On High, a single glitched pixel (from a hard edge on a roof, wall or hillside at certain angles) could be smeared by the glow effect into a big flickering black rectangle, mostly when looking toward buildings. Those pixels are now caught and cleaned before any effects run, and the shaders that produced them are fixed.</p>
 <p><b>Sunsets with colour.</b> Dawn and dusk now paint the sky in orange at the horizon rising through pink into violet, brightest toward the sun, and the clouds pick up warm glowing edges and rosy undersides.</p>
 <p><b>Knights and guards in real armour.</b> On High, knights and Black Knights show banded, riveted plate and guards wear ringed chainmail, just like your own gear.</p>

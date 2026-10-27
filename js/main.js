@@ -43,6 +43,7 @@ import { ABILITIES, abilityById, unlocked as abilityUnlocked, cooldownTicks } fr
 import { QUESTS, questForNpc, questsForNpc, questTalk, onXp, onVisit, questStatus, isDone, onKill, onBury, onPray, NPC_INFO, questPoints, questFx } from './quests.js';
 import { QUEST_NPCS } from './questnpcs.js';
 import { createInventoryUI } from './inventoryUI.js';
+import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW } from './flow.js';
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from './save.js';
 
 // ---------------------------------------------------------------------------
@@ -111,6 +112,7 @@ window.chunkStats = chunkStats;
 const updateCritters = createCritters(scene, terrainHeight, (x, z) => insideLake(x, z, 1) || blockedAt(x, z) || Math.abs(x) > WORLD_HALF - 4 || Math.abs(z) > WORLD_HALF - 4 || Object.values(TOWNS).some(t => Math.hypot(t.x - x, t.z - z) < 22));
 const skills = createSkills();
 const player = createPlayerState();
+const flow = createFlow();
 player.mesh = pm.mesh;
 const rig = createCameraRig();
 
@@ -491,6 +493,7 @@ const inputCtl = setupInput(renderer.domElement, {
   onAction: act => {
     if (/^ab\d$/.test(act)) { const list = ABILITIES.filter(a => abilityUnlocked(skills, a)); const a = list[+act.slice(2) - 1]; if (a) useAbility(a.id); }
     else if (act === 'run') toggleRun();
+    else if (act === 'dodge') doDodge();
     else if (act.startsWith('tab')) invUI.showTab({ tabInv: 'inv', tabEquip: 'equip', tabSkills: 'skills', tabQuests: 'quests', tabPrayer: 'prayer', tabSettings: 'settings' }[act]);
   }
 });
@@ -566,6 +569,8 @@ const minimap = createMinimap({
 });
 hud = createHud({ player, skills, monsters, levelColor, combatLevelOf: () => combatLevel(skills),
   getTarget: () => (action && action.kind === 'attack' && action.mon && action.mon.alive ? action.mon : null) });
+hud.onQuick = q => { if (q === 'dodge') doDodge(); };
+hud.setQuick({});
 
 // ---------------------------------------------------------------------------
 // Picking what was tapped
@@ -853,6 +858,17 @@ function doRunecraft(a) {
   markDirty();
 }
 
+// Dodge-roll: rolls the way you are walking, or backwards from your facing when standing still.
+function doDodge() {
+  if (crossing || stunned() || pm.dodge) return;
+  let x = 0, z = 0;
+  if (keys.w) z -= 1; if (keys.s) z += 1; if (keys.a) x -= 1; if (keys.d) x += 1;
+  if (x || z) { const c = Math.cos(rig.yaw), s = Math.sin(rig.yaw); const rx = x * c + z * s, rz = -x * s + z * c; x = rx; z = rz; }
+  else { x = -Math.sin(pm.facing); z = -Math.cos(pm.facing); }
+  const l = Math.hypot(x, z) || 1;
+  const err = tryDodge(flow, pm, player, { x: x / l, z: z / l }, performance.now());
+  if (err) log(err, 'warn'); else markDirty();
+}
 function stopAction() {
   action = null;
   pm.goal = null;
@@ -1465,6 +1481,15 @@ function playerAttack(mon, now) {
   // Swift Strikes perk: sometimes your next melee swing comes a tick early.
   if (!ranged && Math.random() < perk(skills, 'Attack', 'quick')) nextPlayerAttack = Math.max(tick + 1, nextPlayerAttack - 1);
   if (special) log(`${abilityById(special).name}!`, 'combat');
+  // Flow Strikes: skills landed back to back build a chain; the 3rd link adds a finisher swing.
+  if (special) {
+    const fl = flowOnSkillHit(flow, tick);
+    if (fl.bonus) for (const sw of swings) sw.dmg = (sw.dmg || 0) + fl.bonus;
+    if (fl.links > 1 && !fl.finisher) log(`Flow x${fl.links} (+${Math.round(fl.bonus * 100)}% damage)`, 'combat');
+    if (fl.finisher) { swings.push({ ...base, dmg: base.dmg + FLOW.finisher + fl.bonus, acc: base.acc + 0.2 }); log('Flow Finisher!', 'combat'); if (hud) hud.gain(10); }
+    if (flow.best > (player.flowBest || 0)) player.flowBest = flow.best;
+    if (hud && hud.setFlow) hud.setFlow(fl.finisher ? FLOW.maxLinks : fl.links);
+  }
   let dmg = 0;
   for (let i = 0; i < swings.length && i < 6; i++) {
     const mods = { ...swings[i] };
@@ -1543,6 +1568,7 @@ function monsterAttack(mon, now) {
   const raw = rollMonsterHit(mon, player, skills);
   if (mon.ranged) enemyArrow = { from: mon.mesh.position.clone().setY(1.3), t: 0 };
   let dmg = reduceIncoming(raw, player, skills, { fortify: tick < buffs.fortifyUntil, rage: tick < buffs.rageUntil });
+  if (dmg > 0 && dodging(flow, now)) { dmg = 0; overlays.splat(playerEnt, 0, now); log('Dodged!', 'combat'); return; }
   if (dmg > 0 && Math.random() < perk(skills, 'Defence', 'block')) { dmg = 0; log('Parry: you block the attack!', 'combat'); }
   // Retribution: reflect some damage back.
   const refl = dmg > 0 ? Math.floor(dmg * Math.min(0.6, perk(skills, 'Defence', 'reflect') + (gearEffects(player).reflect || 0))) : 0;
@@ -1593,6 +1619,7 @@ function inRange(ent, range) { return distTo(ent) <= range + (ent.radius || 0.5)
 
 function gameTick(now) {
   tick++;
+  flowDecay(flow, tick);
   // Hitpoint regen (faster with Hitpoints perks and Rapid Heal) and run energy
   if (player.hp < player.maxHp && player.hp > 0) {
     let rate = 1 + perk(skills, 'Hitpoints', 'regen') + prayerFx(player, 'regen') + regenBonus(player);
@@ -2151,7 +2178,7 @@ document.addEventListener('pointerdown', e => {
 }, true);
 window.gielinor = {
   gfx, terrainHeight, applyLook() { applyEquipmentLook(pm, player.equipment); }, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
-  renderer, player, skills, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
+  renderer, player, skills, flow, doDodge, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
