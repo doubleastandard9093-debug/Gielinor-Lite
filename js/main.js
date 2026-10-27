@@ -496,7 +496,7 @@ const inputCtl = setupInput(renderer.domElement, {
   onTap, onContext, onHover,
   onRotate: (dy, dp) => rotateRig(rig, dy, dp),
   onZoom: f => zoomRig(rig, f),
-  onEscape: () => { ui.hideMenu(); invUI.close(); bondsUI.close(); },
+  onEscape: () => { ui.hideMenu(); invUI.close(); bondsUI.close(); minimap.closeMap(); },
   onDpad: () => { if (action && action.kind !== 'craft') stopAction(); },
   onKey: k => { if ('wasd'.includes(k) && action && action.kind !== 'craft') stopAction(); },
   onAction: act => {
@@ -506,6 +506,7 @@ const inputCtl = setupInput(renderer.domElement, {
     else if (act === 'ride') toggleRide();
     else if (act === 'shift') steedShift();
     else if (act === 'bonds') bondsUI.toggle();
+    else if (act === 'map') minimap.toggleMap();
     else if (act.startsWith('tab')) invUI.showTab({ tabInv: 'inv', tabEquip: 'equip', tabSkills: 'skills', tabQuests: 'quests', tabPrayer: 'prayer', tabSettings: 'settings' }[act]);
   }
 });
@@ -1525,6 +1526,25 @@ function sagaTalk() {
   }
   return [take, ['npc', ch.done], { wheel: ch.wheel.map(([tone, label, fx]) => [tone, label, [['npc', fx.say], { run: () => sagaFinish(ch, tone, fx) }]]) }];
 }
+// Saga goal markers for the minimap and world map: where to go for the current chapter.
+const SAGA_ITEM_SOURCE = { Cowhide: 'Cow' };
+function sagaMarks() {
+  const sg = player.saga, ch = currentChapter(sg), c = nodes.find(n => n.saga); if (!ch || !c) return [];
+  const corwin = { x: c.x, z: c.z, label: `Saga: talk to Chronicler Corwin (chapter ${ch.n})` };
+  if (!sg.active) return sagaGate(ch) ? [] : [corwin];
+  const need = objNeed(ch, sg), p = pm.mesh.position;
+  const have = ch.obj.kind === 'item' ? (player.inventory[ch.obj.item] || 0) : sg.prog;
+  if (have >= need) return [{ ...corwin, label: 'Saga: return to Chronicler Corwin' }];
+  const mon = ch.obj.kind === 'kill' ? ch.obj.mon : SAGA_ITEM_SOURCE[ch.obj.item];
+  if (mon) {
+    let best = null, bd = Infinity;
+    for (const m of monsters) if (m.name === mon && m.alive !== false) { const d = Math.hypot(m.mesh.position.x - p.x, m.mesh.position.z - p.z); if (d < bd) { bd = d; best = m; } }
+    if (best) return [{ x: best.mesh.position.x, z: best.mesh.position.z, label: `Saga: ${ch.obj.text} (${have}/${need})` }];
+  }
+  const src = nodes.find(n => n.type === 'rock' && ch.obj.item && /essence/i.test(ch.obj.item) && /essence/i.test(n.name || ''));
+  if (src) return [{ x: src.x, z: src.z, label: `Saga: ${ch.obj.text} (${have}/${need})` }];
+  return [{ ...corwin, label: `Saga: ${ch.obj.text} (${have}/${need})` }];
+}
 function sagaKill(name) {
   const sg = player.saga, ch = currentChapter(sg);
   if (ch && sg.active && ch.obj.kind === 'kill' && ch.obj.mon === name && sg.prog < objNeed(ch, sg)) { sg.prog++; log(`Saga: ${sg.prog}/${objNeed(ch, sg)} ${name}s.`, 'game'); markDirty(); }
@@ -2465,6 +2485,7 @@ function animate(now) {
   overlays.updatePlates(camera, now);
   if (frame % 3 === 1) hud.update(now);
   if (frame % 3 === 0) {
+    if (frame % 20 === 4) minimap.setMarks(sagaMarks());
     minimap.draw(pm.mesh.position.x, pm.mesh.position.z, rig.yaw, nodes, monsters, piles);
     minimap.setOrbs(player.hp, player.maxHp, player.runEnergy, player.settings.run, player.prayerPoints, maxPrayer(skills), player.activePrayers.length > 0);
     updateStatus();
@@ -2500,7 +2521,7 @@ window.gielinor = {
   gfx, terrainHeight, applyLook() { applyEquipmentLook(pm, player.equipment); }, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
   renderer, player, skills, flow, doDodge, toggleRide, steedShift, steedState, checkSteeds, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
-  get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, bondsUI, finishErrands, refreshStanding,
+  get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, sagaMarks, minimap, bondsUI, finishErrands, refreshStanding,
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
 

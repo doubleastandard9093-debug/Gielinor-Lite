@@ -434,3 +434,10 @@ kbd { font: bold 9.5px var(--f-num); color: var(--c-gold-hi); padding: 2px 5px; 
 #bonds .b-s{font-size:11.5px;color:#d8c8a0;margin-top:4px;line-height:1.35}#bonds .b-s .on{color:#9fe09f}
 #bonds .b-bar{height:6px;background:#0006;border-radius:3px;margin-top:5px;overflow:hidden}#bonds .b-bar i{display:block;height:100%;background:linear-gradient(90deg,#c8a040,#ffd770)}
 #bonds .b-row{margin-top:6px;display:flex;gap:6px}#bonds select{background:#1a140e;color:#ffe9b0;border:1px solid #c8a040;border-radius:6px;padding:4px;max-width:100%}
+/* World map button and overlay (goal markers) */
+#mmMapBtn{position:absolute;right:-8px;bottom:0;z-index:2;width:22px;height:22px;padding:0;border-radius:50%;font:12px/1 sans-serif}
+@media (max-width:600px){#mmMapBtn{width:18px;height:18px;font-size:10px}}
+#worldMap{position:fixed;inset:0;z-index:70;background:#000c;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:env(safe-area-inset-top) 12px env(safe-area-inset-bottom)}
+#worldMap .wm-head{display:flex;gap:12px;align-items:baseline;color:#ffe9b0;font:14px sans-serif}#worldMap .wm-hint{font-size:11px;opacity:.7}
+#worldMap canvas{border:2px solid #c8a040;border-radius:8px}
+#worldMap .wm-list{color:#ffe9b0;font:12px sans-serif;max-width:720px;text-align:center}#worldMap .wm-list i{display:inline-block;width:8px;height:8px;background:#ffd24a;transform:rotate(45deg);margin-right:6px;border:1px solid #000}

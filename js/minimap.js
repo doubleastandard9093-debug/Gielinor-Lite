@@ -13,6 +13,7 @@ export function createMinimap({ onWalk, onCompass, onRunToggle, onPrayerOrb }) {
     <div id="minimap"><canvas></canvas><div id="compass" title="Face north">N</div>
       <div id="mmZoom"><button data-z="1" title="Zoom in">+</button><button data-z="-1" title="Zoom out">−</button></div>
       <button id="mmLegendBtn" title="Map key">?</button>
+      <button id="mmMapBtn" title="World map (M)">🗺</button>
       <div id="mmLegend"></div></div>`;
   document.body.appendChild(wrap);
   const canvas = wrap.querySelector('canvas');
@@ -32,7 +33,7 @@ export function createMinimap({ onWalk, onCompass, onRunToggle, onPrayerOrb }) {
   const legend = wrap.querySelector('#mmLegend');
   legend.innerHTML = '<b>Map key</b>' + [['#ffffff', 'You'], ['#ffff00', 'Monster'], ['#3ad0ff', 'Quest giver'], ['#ffb000', 'Shop / townsfolk'], ['#ffd700', 'Bank'], ['#ff7a1a', 'Furnace, anvil, range'],
     ['#c080ff', 'Altar'], ['#ff60ff', 'Rune altar'], ['#7fd0ff', 'Fishing spot'], ['#8a8a8a', 'Rock'], ['#1f5a1a', 'Tree'], ['#7aff4a', 'Herb patch'], ['#e04060', 'Berry bush'], ['#40e0a0', 'Agility'], ['#c89a5a', 'Signpost'], ['#ff3030', 'Loot']]
-    .map(([c, l]) => `<div><i style="background:${c}"></i>${l}</div>`).join('');
+    .map(([c, l]) => `<div><i style="background:${c}"></i>${l}</div>`).join('') + '<div><i style="background:#ffd24a;transform:rotate(45deg)"></i>Saga goal</div>';
   wrap.querySelector('#mmLegendBtn').addEventListener('click', e => { e.stopPropagation(); legend.classList.toggle('show'); });
   legend.addEventListener('click', e => { e.stopPropagation(); legend.classList.remove('show'); });   // minimap pixels per world unit (at canvas resolution)
   // Pre-render the static ground once.
@@ -133,6 +134,18 @@ export function createMinimap({ onWalk, onCompass, onRunToggle, onPrayerOrb }) {
     }
     for (const p of piles) dot(p.x, p.z, DOT.pile, r);
     for (const mo of monsters) if (mo.alive) dot(mo.mesh.position.x, mo.mesh.position.z, DOT.monster, r);
+    // Goal markers (saga etc.): a gold diamond, pinned to the rim with an arrow when off the map.
+    for (const mk of marks) {
+      const dx = mk.x - px, dz = mk.z - pz;
+      let sx = (dx * c - dz * s) * k, sy = (dx * s + dz * c) * k; const d = Math.hypot(sx, sy), lim = half - r * 3;
+      const off = d > lim; if (off) { sx *= lim / d; sy *= lim / d; }
+      ctx.save(); ctx.translate(sx + half, sy + half);
+      if (off) ctx.rotate(Math.atan2(sy, sx) + Math.PI / 4);
+      else ctx.rotate(Math.PI / 4);
+      const q = r * (off ? 1.7 : 2.1);
+      ctx.fillStyle = mk.color || '#ffd24a'; ctx.strokeStyle = '#000'; ctx.lineWidth = Math.max(1, r * 0.5);
+      ctx.beginPath(); if (off) { ctx.moveTo(q, -q); ctx.lineTo(q, q); ctx.lineTo(-q, q); } else ctx.rect(-q, -q, q * 2, q * 2); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+    }
     // player arrow (points up = camera forward)
     ctx.save(); ctx.translate(half, half);
     ctx.beginPath(); ctx.moveTo(0, -r * 2.4); ctx.lineTo(r * 1.6, r * 1.6); ctx.lineTo(0, r * 0.8); ctx.lineTo(-r * 1.6, r * 1.6); ctx.closePath();
@@ -159,5 +172,32 @@ export function createMinimap({ onWalk, onCompass, onRunToggle, onPrayerOrb }) {
     runOrb.classList.toggle('on', running);
   }
 
-  return { draw, setOrbs };
+  // ---- World map: the whole realm, north up, with goal markers. Tap to close. ----
+  let marks = [];
+  const mapEl = document.createElement('div'); mapEl.id = 'worldMap'; mapEl.style.display = 'none';
+  mapEl.innerHTML = '<div class="wm-head"><b>World map</b><span class="wm-hint">Tap to close</span></div><canvas></canvas><div class="wm-list"></div>';
+  document.body.appendChild(mapEl);
+  const mc = mapEl.querySelector('canvas'), mctx = mc.getContext('2d');
+  function drawMap() {
+    const box = Math.min(innerWidth - 24, innerHeight - 140, 720), dpr = Math.min(devicePixelRatio || 1, 2);
+    mc.style.width = mc.style.height = box + 'px'; mc.width = mc.height = Math.round(box * dpr);
+    const Z = mc.width; mctx.drawImage(base, 0, 0, Z, Z);
+    const P = v => (W(v) / S) * Z;
+    const star = (x, z, col, rr) => { mctx.save(); mctx.translate(P(x), P(z)); mctx.rotate(Math.PI / 4); mctx.fillStyle = col; mctx.strokeStyle = '#000'; mctx.lineWidth = 2 * dpr; mctx.fillRect(-rr, -rr, rr * 2, rr * 2); mctx.strokeRect(-rr, -rr, rr * 2, rr * 2); mctx.restore(); };
+    mctx.font = `${Math.round(11 * dpr)}px sans-serif`; mctx.fillStyle = '#fff'; mctx.textAlign = 'center';
+    for (const [n, t] of Object.entries(TOWNS)) { mctx.strokeStyle = '#000'; mctx.lineWidth = 3 * dpr; mctx.strokeText(n, P(t.x), P(t.z) - 10 * dpr); mctx.fillText(n, P(t.x), P(t.z) - 10 * dpr); }
+    for (const mk of marks) {
+      const inside = Math.abs(mk.x) < WORLD_HALF && Math.abs(mk.z) < WORLD_HALF;
+      if (inside) star(mk.x, mk.z, mk.color || '#ffd24a', 6 * dpr);
+      else { const x = Math.max(-WORLD_HALF + 8, Math.min(WORLD_HALF - 8, mk.x)), z = Math.max(-WORLD_HALF + 8, Math.min(WORLD_HALF - 8, mk.z)); star(x, z, mk.color || '#ffd24a', 5 * dpr); }
+    }
+    mctx.fillStyle = '#fff'; mctx.beginPath(); mctx.arc(P(lastPx), P(lastPz), 5 * dpr, 0, 7); mctx.fill(); mctx.lineWidth = 2 * dpr; mctx.strokeStyle = '#000'; mctx.stroke();
+    mapEl.querySelector('.wm-list').innerHTML = marks.map(m => `<div><i></i>${String(m.label || '').replace(/[<&]/g, '')}</div>`).join('');
+  }
+  function openMap() { mapEl.style.display = 'flex'; drawMap(); }
+  function closeMap() { mapEl.style.display = 'none'; }
+  mapEl.addEventListener('click', closeMap);
+  wrap.querySelector('#mmMapBtn').addEventListener('click', e => { e.stopPropagation(); openMap(); });
+  addEventListener('resize', () => { if (mapEl.style.display !== 'none') drawMap(); });
+  return { draw, setOrbs, setMarks(m) { marks = m || []; if (mapEl.style.display !== 'none') drawMap(); }, openMap, closeMap, toggleMap: () => (mapEl.style.display === 'none' ? openMap() : closeMap()), get marks() { return marks; } };
 }
