@@ -106,13 +106,36 @@ export function createHud({ player, skills, monsters, getTarget, levelColor, com
   const mk = (id, label, tip) => `<button data-q="${id}" title="${tip}" style="width:52px;height:52px;border-radius:50%;border:2px solid #c8a040;background:radial-gradient(#5a4632,#2a2018);color:#ffe9b0;font:700 12px sans-serif;opacity:.88">${label}</button>`;
   function setQuick(opts) {
     const html = mk('dodge', 'Roll', 'Dodge-roll (Space)') + (opts.ride ? mk('ride', opts.riding ? 'Off' : 'Ride', 'Ride or dismount (G)') : '') + (opts.shift ? mk('shift', 'Shift', 'Bulwark shift (F)') : '');
-    if (qb._h !== html) { qb._h = html; qb.innerHTML = html; }
+    if (qb._h !== html) { qb._h = html; qb.innerHTML = html; layoutQuick(); }
   }
   document.body.appendChild(qb);
+  // Place the quick buttons in free space so they never cover the d-pad, action bar, side panel, minimap or chat.
+  // Scans right edge then left edge, bottom-up (thumb reach), as a column then as a row. Hidden during dialogue.
+  const OBST = ['#chat', '#sidePanel', '#minimapWrap', '#abilityBar', '#dpad', '#targetPanel', '#effects', '#xpTracker'];
+  function layoutQuick() {
+    const n = qb.children.length; if (!n) return;
+    const dlgEl = document.getElementById('dialogue');
+    if (dlgEl && dlgEl.style.display === 'flex') { qb.style.visibility = 'hidden'; return; }
+    const W = innerWidth, H = innerHeight, B = 52, G = 8, M = 6;
+    const rects = [];
+    for (const sel of OBST) { const el = document.querySelector(sel); if (!el) continue; const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden') continue; const r = el.getBoundingClientRect(); if (r.width * r.height > 1) rects.push(r); }
+    const hit = (x, y, w, h) => x < 4 || y < 4 || x + w > W - 4 || y + h > H - 4 || rects.some(r => x < r.right + M && x + w > r.left - M && y < r.bottom + M && y + h > r.top - M);
+    for (const dir of ['column', 'row']) {
+      const w = dir === 'column' ? B : n * B + (n - 1) * G, h = dir === 'column' ? n * B + (n - 1) * G : B;
+      const xs = [W - w - 10, 10]; for (let x = W - w - 16; x > 16; x -= 12) xs.push(x); // edges first, then sweep inwards from the right
+      for (const x of xs) for (let y = H - h - 10; y >= 60; y -= 6) {
+        if (!hit(x, y, w, h)) { qb.style.flexDirection = dir; qb.style.left = x + 'px'; qb.style.top = y + 'px'; qb.style.right = qb.style.bottom = 'auto'; qb.style.visibility = 'visible'; qb.dataset.fit = '1'; return; }
+      }
+    }
+    qb.dataset.fit = '0'; qb.style.visibility = 'visible'; // no free spot: keep last position
+  }
+  addEventListener('resize', () => setTimeout(layoutQuick, 50));
+  setInterval(layoutQuick, 400);
+
   let onQuick = null;
   qb.addEventListener('pointerdown', e => { const b = e.target.closest('[data-q]'); if (b && onQuick) { e.preventDefault(); e.stopPropagation(); onQuick(b.dataset.q); } });
   return {
-    setFlow, setQuick, set onQuick(f) { onQuick = f; },
+    setFlow, setQuick, layoutQuick, set onQuick(f) { onQuick = f; },
     update, get adrenaline() { return adrenaline; },
     spend(n) { if (adrenaline + 1e-6 < n) return false; adrenaline = Math.max(0, adrenaline - n); lastFight = performance.now(); return true; },
     gain(n) { adrenaline = Math.min(100, adrenaline + n); lastFight = performance.now(); }
