@@ -21,7 +21,7 @@ cut('const composer = new EffectComposer(renderer', 'if (smaa) composer.addPass(
   `const post = createPost(renderer, scene, camera);
 const { gtao, GRADE } = post;
 const smaa = null;   // WebGPU: AA comes from the renderer / post pipeline`);
-rep('const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);', `const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);
+rep('const { nodes, monsters, pickables, ground, buildings, spawnMonster } = createWorld(scene);', `const { nodes, monsters, pickables, ground, buildings, spawnMonster } = createWorld(scene);
 attachPendingReflectors(scene); upgradeShared(); upgradeScene(scene);
 initGpuExtras({ scene, camera, renderer, dirLight, lightsRef });`);
 rep(`  composer.setPixelRatio(renderer.getPixelRatio());

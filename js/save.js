@@ -9,8 +9,10 @@ import { ITEMS, isTool, STARTER_TOOLS } from './items.js';
 import { PRAYERS } from './prayer.js';
 import { questPoints } from './quests.js';
 import { normalizeSteeds } from './steeds.js';
+import { normalizeHouse } from './hearth.js';
+import { inInstance } from './instances.js';
 
-export const SAVE_VERSION = 13;
+export const SAVE_VERSION = 14;
 export const POS_LIMIT = 146; // world half-size (150) minus a margin
 const KEY = 'gielinor3d';
 
@@ -47,10 +49,10 @@ export function getSaveData(skills, player, playerMesh) {
       steeds: normalizeSteeds(player.steeds),
       flowBest: player.flowBest || 0,
       alignment: player.alignment || {},
-      companions: player.companions || {}, activeCompanion: player.activeCompanion || null, rep: player.rep || {}, errands: player.errands || [], saga: player.saga || null, vessel: player.vessel || null,
+      companions: player.companions || {}, activeCompanion: player.activeCompanion || null, rep: player.rep || {}, errands: player.errands || [], saga: player.saga || null, vessel: player.vessel || null, house: player.house || null,
       shopState: player.shopState || {}, wear: player.wear || {}, tasks: player.tasks || null
     },
-    position: playerMesh ? { x: playerMesh.mesh.position.x, z: playerMesh.mesh.position.z } : null,
+    position: playerMesh ? (inInstance(playerMesh.mesh.position.x) ? (player.instanceReturn || { x: 0, z: 0 }) : { x: playerMesh.mesh.position.x, z: playerMesh.mesh.position.z }) : null,
     timestamp: Date.now()
   });
 }
@@ -167,6 +169,9 @@ export function migrateSave(saved) {
   // v13: shop stock bought down and gear wear.
   p.shopState = normalizeShopState(p.shopState); p.wear = normalizeWear(p.wear);
   p.tasks = normalizeTasks(p.tasks);
+  // v14 (Hearth & Arena): Hearthstead deed, rooms, furniture and trophies.
+  p.house = normalizeHouse(p.house);
+  if (fromVersion < 14) notes.push('New: Hearth & Arena. Deedwarden Oswin behind Brightwater sells a Hearthstead deed. See Settings → What\'s new.');
   if (fromVersion < 12) notes.push('New: Sails of Sarim. See the Shipwright on the Port Sarim docks for a ship, then sail the Sound. Cutlasses, flintlocks, Hexcraft and card tables too. Press M for the world map.');
   if (!p.activeCompanion || !p.companions[p.activeCompanion] || !p.companions[p.activeCompanion].recruited) p.activeCompanion = null;
   { const r = p.rep && typeof p.rep === 'object' ? p.rep : {}; p.rep = {}; for (const k of Object.keys(r)) { const v = Math.floor(Number(r[k]) || 0); if (v > 0) p.rep[k] = Math.min(99999, v); } }
@@ -182,7 +187,7 @@ export function applySaveData(data, skills, player, playerMesh) {
     const notes = migrateSave(saved);
     Object.assign(skills, saved.skills);
     const p = saved.player;
-    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints', 'effects', 'poison', 'poisonImmune', 'questCapeLegacy', 'bounties', 'bountiesDone', 'caveLoot', 'steeds', 'flowBest', 'alignment', 'companions', 'activeCompanion', 'rep', 'errands', 'saga', 'vessel', 'shopState', 'wear', 'tasks']) {
+    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints', 'effects', 'poison', 'poisonImmune', 'questCapeLegacy', 'bounties', 'bountiesDone', 'caveLoot', 'steeds', 'flowBest', 'alignment', 'companions', 'activeCompanion', 'rep', 'errands', 'saga', 'vessel', 'house', 'shopState', 'wear', 'tasks']) {
       if (p[k] !== undefined) player[k] = p[k];
     }
     if (p.skillTrees) {

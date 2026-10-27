@@ -48,6 +48,8 @@ import { FACTIONS, TIERS, TIER_REWARDS, BOUNTY_REP, factionById, factionNear, ti
 import { ERRANDS, errandById, errandChance, startErrand, collectErrands, crewOf, crewTrain, errandItems, CREW_MAX as CREW_SKILL_MAX } from '../../js/errands.js';
 import { createBondsUI } from '../../js/bondsUI.js';
 import { createBossMech } from '../../js/bossmech.js';
+import { DEED_COST, ROOMS, FURNITURE, BOSS_TROPHIES, normalizeHouse, hasRoom, hasFurn, houseXpBonus, houseBossDamage, houseErrandBonus, takeHarvest, takeBondDay, addTrophy } from '../../js/hearth.js';
+import { HEARTH, ARENA, inInstance, instanceAt } from '../../js/instances.js';
 import { TASK, HUNT_SHOP, normalizeTasks, assignTask, taskKill, taskLabel, isDrowned } from '../../js/tasks.js';
 import { SEA, SARIM_DOCK, HULLS, OFFICERS, CREW_COST, CREW_MAX, ISLANDS, islandAt, normalizeVessel, inSound } from '../../js/sea.js';
 import { createSailing } from '../../js/sailing.js';
@@ -74,7 +76,7 @@ const waterRefl = createWaterReflection(renderer, scene, camera);
 initVfx(scene);
 const { dirLight } = lightsRef;
 const sky = createSky(scene);
-const { nodes, monsters, pickables, ground, buildings } = createWorld(scene);
+const { nodes, monsters, pickables, ground, buildings, spawnMonster } = createWorld(scene);
 attachPendingReflectors(scene); upgradeShared(); upgradeScene(scene);
 initGpuExtras({ scene, camera, renderer, dirLight, lightsRef });
 setLeafSources(nodes.filter(n => n.type === 'tree'));
@@ -130,7 +132,7 @@ function refreshMaxHp() {
 function giveXP(skill, amount) {
   if (amount <= 0) return;
   amount *= xpMultiplier(player, skill); // quest + gear XP bonuses
-  amount *= 1 + companionXpBonus(player, skill) + standingXp(skill) + sagaXpBonus(player, skill); // Sworn Companion bond and faction Standing perks
+  amount *= 1 + companionXpBonus(player, skill) + standingXp(skill) + sagaXpBonus(player, skill) + houseXpBonus(player.house, skill); // Sworn Companion bond and faction Standing perks
   addXP(skills, skill, amount, (s, l, old) => {
     const perks = perksBetween(s, old, l);
     ui.levelUp(s, SKILL_ICONS[s], l, perks);
@@ -1115,7 +1117,8 @@ function optionsFor(ent) {
     case 'agility': return [{ action: ent.verb, target: ent.name, color: cy, fn: () => startAction({ kind: 'agility', node: ent, obstacle: ent.obstacle }) }, ex];
     case 'runealtar': return [{ action: 'Craft-rune', target: ent.name, color: cy, fn: () => startAction({ kind: 'runecraft', node: ent, altar: ent.altar }) }, ex];
     case 'building': return [ex];
-    case 'cave': return [{ action: ent.dest === CAVE.inside ? 'Enter' : 'Climb-up', target: ent.name, color: cy, fn: () => startAction({ kind: 'cave', node: ent }) }, ex];
+    case 'hearth': return [{ action: 'Use', target: ent.name, color: cy, fn: () => startAction({ kind: 'talk', node: ent }) }, ex];
+    case 'cave': return [{ action: ent.verb || (ent.dest === CAVE.inside ? 'Enter' : 'Climb-up'), target: ent.name, color: cy, fn: () => startAction({ kind: 'cave', node: ent }) }, ex];
     case 'chest': return [{ action: 'Search', target: ent.name, color: cy, fn: () => startAction({ kind: 'chest', node: ent }) }, ex];
   }
   return [ex];
@@ -1578,6 +1581,90 @@ function shipwrightTalk() {
 function countItem(it) { return player.inventory[it] || 0; }
 // ---- Hunt tasks (tasks.js): Huntmaster Corvane, Port Sarim ----
 player.tasks = normalizeTasks(player.tasks);
+player.house = normalizeHouse(player.house);
+// ---- Hearthstead (Phase 5): an instanced home plot. Low gets plain boxes; High adds two warm lights (capped). ----
+let hearthG = null, hearthDyn = null, instFloor = null;
+const hearthNodes = {};
+const plainMat = c => new THREE.MeshLambertMaterial({ color: c });
+function instanceFloor() {
+  if (instFloor) return;
+  instFloor = new THREE.Mesh(new THREE.PlaneGeometry(260, 460), plainMat(0x26221e)); instFloor.rotation.x = -Math.PI / 2;
+  instFloor.position.set(-1000, -0.06, -100); instFloor.name = 'instance-floor'; scene.add(instFloor);
+}
+function instNode(group, x, z, mesh, data) {
+  mesh.position.set(x - group.position.x, mesh.position.y, z - group.position.z); group.add(mesh); pickables.push(mesh);
+  const ent = Object.assign({ mesh, alive: true, x, z, radius: 1.3 }, data); mesh.userData.entity = ent; nodes.push(ent); return ent;
+}
+function buildHearth() {
+  if (hearthG) return; instanceFloor();
+  const G = new THREE.Group(); G.position.set(HEARTH.x, 0, HEARTH.z); G.name = 'hearthstead'; scene.add(G); hearthG = G;
+  const fl = new THREE.Mesh(new THREE.BoxGeometry(HEARTH.hw * 2, 0.2, HEARTH.hd * 2), plainMat(0x6a5440)); fl.position.y = -0.1; G.add(fl);
+  const wm = plainMat(0x8a7a64);
+  for (const [w, d, x, z] of [[HEARTH.hw * 2, 0.4, 0, -HEARTH.hd], [HEARTH.hw * 2, 0.4, 0, HEARTH.hd], [0.4, HEARTH.hd * 2, -HEARTH.hw, 0], [0.4, HEARTH.hd * 2, HEARTH.hw, 0]]) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 3, d), wm); m.position.set(x, 1.5, z); G.add(m); }
+  const stone = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.6, 1.1, 8), plainMat(0x8a8aa0)); stone.position.y = 0.55;
+  hearthNodes.stone = instNode(G, HEARTH.stone.x, HEARTH.stone.z, stone, { type: 'hearth', hearth: 'stone', name: 'Hearthstone', examine: 'The heart of your Hearthstead. Use it to build rooms and furniture.' });
+  const door = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.4, 0.3), plainMat(0x4a3220)); door.position.y = 1.2;
+  hearthNodes.door = instNode(G, HEARTH.door.x, HEARTH.door.z, door, { type: 'cave', verb: 'Leave', name: 'Door (exit)', examine: 'Back out to Brightwater.', dest: { x: -14, z: 22 }, leave: 'You step out of your Hearthstead.' });
+  hearthDyn = new THREE.Group(); G.add(hearthDyn);
+  refreshHearth();
+}
+function refreshHearth() {
+  if (!hearthDyn) return;
+  for (const c of [...hearthDyn.children]) { hearthDyn.remove(c); c.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+  const H = player.house;
+  for (const r of ROOMS) {
+    const built = H.rooms.includes(r.id), [rx, rz] = r.pos;
+    const patch = new THREE.Mesh(new THREE.BoxGeometry(9, 0.05, 6.5), plainMat(built ? r.color : 0x4a4038)); patch.position.set(rx, 0.03, rz); hearthDyn.add(patch);
+    if (!built) continue;
+    FURNITURE.filter(f => f.room === r.id && H.furniture.includes(f.id)).forEach((f, i) => {
+      const [w, h, d] = f.size, m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), plainMat(f.skill === 'Smithing' ? 0x6a6a72 : 0x8a6a42));
+      m.position.set(rx + (i ? 2.4 : -2.4), h / 2, rz + (rz < 0 ? -1.8 : 1.8)); m.name = 'hearth-furn'; hearthDyn.add(m);
+    });
+    if (r.id === 'trophy') H.trophies.forEach((t, i) => { const m = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.7, 6), plainMat(0xe0d0a0)); m.position.set(rx - 2 + i * 2, 1.35, rz + 2.6); m.name = 'hearth-trophy'; hearthDyn.add(m); const b = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1, 0.6), plainMat(0x5a4a3a)); b.position.set(rx - 2 + i * 2, 0.5, rz + 2.6); hearthDyn.add(b); });
+  }
+  if (gfx.quality !== 'low') for (const [x, z] of [[-5, 0], [5, 0]]) { const L = new THREE.PointLight(0xffb070, 6, 16, 1.2); L.position.set(x, 2.6, z); L.name = 'hearth-light-high'; hearthDyn.add(L); }
+}
+function travelTo(x, z) {
+  pm.target = null; pm.goal = null; pm.mesh.position.set(x, terrainHeight(x, z), z);
+  if (rig.fx !== undefined) { rig.fx = x; rig.fz = z; }
+}
+function enterHearth() {
+  buildHearth(); refreshHearth();
+  if (!inInstance(pm.mesh.position.x)) player.instanceReturn = { x: pm.mesh.position.x, z: pm.mesh.position.z };
+  hearthNodes.door.dest = player.instanceReturn || { x: -14, z: 22 };
+  travelTo(HEARTH.door.x, HEARTH.door.z - 1.5);
+  log('You step into your Hearthstead.', 'game'); markDirty();
+}
+function countAll(it) { return (player.inventory[it] || 0) + ((player.bank || {})[it] || 0); }
+function takeAll(it, n) { const a = Math.min(n, player.inventory[it] || 0); if (a) removeItem(player, it, a); n -= a; if (n > 0) { player.bank[it] -= n; if (player.bank[it] <= 0) delete player.bank[it]; } }
+const costText = (gold, items) => [gold ? gold.toLocaleString() + ' coins' : '', ...items.map(([i, n]) => `${n} ${i}`)].filter(Boolean).join(', ');
+function payCost(gold, items) {
+  if (player.gold < gold) return `You need ${gold.toLocaleString()} coins.`;
+  const miss = items.find(([i, n]) => countAll(i) < n); if (miss) return `You need ${miss[1]} ${miss[0]} (pack or bank).`;
+  player.gold -= gold; for (const [i, n] of items) takeAll(i, n); return null;
+}
+function hearthTalk(ent) {
+  const H = player.house, say = t => [['npc', t]];
+  if (ent.hearth === 'agent') {
+    if (!H.deed) return [['npc', `Oswin, deedwarden. There's a plot behind Brightwater going spare: walls, a floor, room for a workshop, a garden, a trophy hall and quarters for your companions. The deed is ${DEED_COST.toLocaleString()} coins.`],
+      { choose: [[`Buy the deed (${DEED_COST.toLocaleString()} coins).`, [{ run: () => { if (player.gold < DEED_COST) return say(`${DEED_COST.toLocaleString()} coins, friend.`); player.gold -= DEED_COST; H.deed = true; markDirty(); log('You now own a Hearthstead.', 'loot', '#ffd700'); return say('Signed and sealed. Talk to me any time and I\'ll walk you home.'); } }]], ['Not today.', []]] }];
+    return [['npc', 'Your Hearthstead is waiting.'], { choose: [['Take me home.', [{ run: () => { setTimeout(enterHearth, 50); return []; } }]], ['Goodbye.', []]] }];
+  }
+  const opts = [];
+  const unbuilt = ROOMS.filter(r => !H.rooms.includes(r.id));
+  if (unbuilt.length) opts.push(['Build a room.', [{ choose: [...unbuilt.map(r => [`${r.name}: ${costText(r.gold, r.items)}`, [{ run: () => { const e = payCost(r.gold, r.items); if (e) return say(e); H.rooms.push(r.id); refreshHearth(); markDirty(); log(`You build the ${r.name}. ${r.desc}.`, 'game', '#7fd4ff'); return say(`${r.name} built: ${r.desc}.`); } }]]), ['Never mind.', []]] }]]);
+  const furn = FURNITURE.filter(f => H.rooms.includes(f.room) && !H.furniture.includes(f.id));
+  if (furn.length) opts.push(['Make furniture.', [{ choose: [...furn.map(f => [`${f.name} (${f.skill} ${f.level}): ${costText(0, f.items)}`, [{ run: () => {
+    if (skills[f.skill].level < f.level) return say(`You need ${f.skill} level ${f.level}.`);
+    const e = payCost(0, f.items); if (e) return say(e);
+    H.furniture.push(f.id); giveXP(f.skill, f.xp); refreshHearth(); markDirty(); return say(`You make and place the ${f.name}. ${f.desc}.`);
+  } }]]), ['Never mind.', []]] }]]);
+  if (hasRoom(H, 'garden')) opts.push(['Harvest the herb garden.', [{ run: () => { const n = takeHarvest(H, Date.now()); if (!n) return say('Nothing is ready yet. The garden gives herbs every 12 hours.'); player.bank['Grimy guam leaf'] = (player.bank['Grimy guam leaf'] || 0) + n; giveXP('Herblore', n * 10); markDirty(); return say(`You pick ${n} Grimy guam leaves. They go to your bank.`); } }]]);
+  if (hasRoom(H, 'quarters')) opts.push(['Visit the companion quarters.', [{ run: () => { const n = takeBondDay(H, Date.now()); const rec = COMPANIONS.filter(c => player.companions[c.id].recruited); if (!n || !rec.length) return say(rec.length ? 'Your companions are resting. Come back tomorrow.' : 'The bunks are empty. Recruit a companion first.'); for (const c of rec) addBond(player, c.id, n); markDirty(); return say(`${rec.map(c => c.short).join(', ')} share a meal by the stove. (+${n} Bond each)`); } }]]);
+  opts.push(['Goodbye.', []]);
+  const rooms = H.rooms.length ? H.rooms.map(id => ROOMS.find(r => r.id === id).name).join(', ') : 'no rooms yet';
+  return [['npc', `Your Hearthstead: ${rooms}. Furniture ${H.furniture.length}/${FURNITURE.length}. Trophies: ${H.trophies.length ? H.trophies.map(b => BOSS_TROPHIES[b]).join(', ') : 'none yet (slay a boss)'}.`], { choose: opts }];
+}
 function huntKill(name) {
   const T = player.tasks, r = taskKill(T, name); if (!r) return;
   const c = T.cur;
@@ -1589,6 +1676,7 @@ function huntKill(name) {
 function huntBonus(mon) {
   const T = player.tasks; let b = 0;
   if (T.cur && T.cur.mon === mon.name && T.unlocks.includes('insight')) b += 0.1;
+  if (mon.boss) b += houseBossDamage(player.house); // Hearthstead trophy hall
   if (mon.drowned) { if (T.unlocks.includes('reefbane')) b += 0.15; if (player.equipment.neck === 'Reefward amulet') b += 0.08; }
   return b;
 }
@@ -1776,7 +1864,7 @@ function finishErrands() {
 }
 const bondsUI = createBondsUI({
   getData: () => ({
-    companions: COMPANIONS.map(d => { const s = compState(d.id); return { ...d, ...s, active: player.activeCompanion === d.id, away: awayUntil(d.id), crewText: Object.keys(s.crew || {}).map(k => `${k} ${crewOf(player, d.id, k)}`).join(', '), perks: BOND_PERKS, chance: errandChance(s.bond), task: s.started ? compTaskText(d, s) : `Talk to ${d.short}. ${d.examine}` }; }),
+    companions: COMPANIONS.map(d => { const s = compState(d.id); return { ...d, ...s, active: player.activeCompanion === d.id, away: awayUntil(d.id), crewText: Object.keys(s.crew || {}).map(k => `${k} ${crewOf(player, d.id, k)}`).join(', '), perks: BOND_PERKS, chance: errandChance(s.bond, houseErrandBonus(player.house)), task: s.started ? compTaskText(d, s) : `Talk to ${d.short}. ${d.examine}` }; }),
     factions: FACTIONS.map(f => { const r = repOf(player, f.id), t = tierOf(r), n = nextTier(r), lo = TIERS[t][0]; return { ...f, rep: r, tier: t, tierName: TIERS[t][1], next: n, pct: n ? Math.round((r - lo) / (n - lo) * 100) : 100 }; }),
     running: player.errands.map(r => ({ ...r, name: (errandById(r.id) || {}).name || r.id, comp: (companionById(r.comp) || {}).name || r.comp })),
     errands: ERRANDS,
@@ -1789,6 +1877,7 @@ const bondsUI = createBondsUI({
   }
 });
 function talkTo(ent) {
+  if (ent.hearth) { ui.dialogue(ent.name, ent.hearth === 'agent' ? '📜' : '🏠', hearthTalk(ent), () => markDirty()); return; }
   if (ent.sea) { seaTalk(ent); return; }
   if (ent.saga) { ui.dialogue(ent.name, '📖', sagaTalk(), () => markDirty()); return; }
   if (ent.standing) { ui.dialogue(ent.name, '📜', quartermasterTalk(), () => markDirty()); return; }
@@ -1877,6 +1966,7 @@ function caveTravel(ent) {
   const d = ent.dest; pm.target = null; pm.goal = null;
   pm.mesh.position.x = d.x; pm.mesh.position.z = d.z; pm.mesh.position.y = terrainHeight(d.x, d.z);
   if (rig.fx !== undefined) { rig.fx = d.x; rig.fz = d.z; }
+  if (ent.leave) { log(ent.leave, 'game'); markDirty(); return; }
   log(d === CAVE.inside ? 'You climb down into the cave. Crystals glitter in the dark, and something skitters in the webs.' : 'You climb back up into the daylight.', 'game');
   markDirty();
 }
@@ -2119,6 +2209,7 @@ function killMonster(mon, now) {
     else { addRep(player, 'drowned', TASK.killRep); refreshStanding(true); }
   }
   huntKill(mon.name);
+  if (mon.boss) { const tr = addTrophy(player.house, mon.name); if (tr) log(`Trophy: ${tr}. Mount it in your Hearthstead trophy hall.`, 'loot', '#ffd700'); }
   if (action && action.mon === mon) stopAction();
   const drops = rollLoot(mon.name, Math.random, perk(skills, 'Combat', 'rareDrop'));
   const x = mon.mesh.position.x, z = mon.mesh.position.z;
@@ -2800,7 +2891,7 @@ window.gielinor = {
   renderer, player, skills, flow, doDodge, toggleRide, steedShift, steedState, checkSteeds, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, sagaMarks, minimap, sailing, cardsUI, digHere, readChart, seaTalk, talkTo, refreshQuick, bondsUI, finishErrands, refreshStanding,
-  bossMech, buy, sell, playerDied, monsterAttack, killMonster, huntTalk, finishErrands, refreshStanding, doMagicTick, set queuedAbility(v) { queuedAbility = v; },
+  bossMech, buy, sell, playerDied, monsterAttack, killMonster, huntTalk, finishErrands, enterHearth, hearthTalk, refreshHearth, spawnMonster, refreshStanding, doMagicTick, set queuedAbility(v) { queuedAbility = v; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
 

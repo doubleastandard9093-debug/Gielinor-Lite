@@ -1,3 +1,4 @@
+import { houseErrandBonus } from './hearth.js';
 // Errand Ledger: send recruited companions (not the one following you) on real-time errands.
 // Results go to the bank, plus XP and faction standing. Success is rolled when the errand starts.
 export const ERRANDS = [
@@ -29,12 +30,12 @@ export function crewTrain(player, comp, skill, xp) {
   return { before, after: crewLevel(s.crew[skill]) };
 }
 export function errandById(id) { return ERRANDS.find(e => e.id === id); }
-export function errandChance(bond) { return Math.min(1, 0.7 + 0.03 * bond); }
+export function errandChance(bond, bonus = 0) { return Math.min(1, 0.7 + 0.03 * bond + bonus); }
 export function startErrand(player, eid, comp, now, rnd = Math.random) {
   const e = errandById(eid), s = player.companions[comp];
   if (!e || !s || !s.recruited || player.activeCompanion === comp) return null;
   if (player.errands.some(r => r.comp === comp)) return null;
-  const run = { id: eid, comp, start: now, end: now + e.mins * 60000, ok: rnd() < errandChance(s.bond) };
+  const run = { id: eid, comp, start: now, end: now + e.mins * 60000, ok: rnd() < errandChance(s.bond, houseErrandBonus(player.house)) };
   player.errands.push(run); return run;
 }
 // Finished errands (removed from the list), for the caller to reward.

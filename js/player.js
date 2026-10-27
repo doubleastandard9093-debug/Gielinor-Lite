@@ -1,3 +1,4 @@
+import { inInstance, clampInstance } from './instances.js';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { shapes, contactShadow, gearDetail } from './anatomy.js';
@@ -292,7 +293,8 @@ export function moveWithCollision(pos, dx, dz, dist, opts = {}) {
   for (let i = 0; i < n; i++) {
     prev.x = pos.x; prev.z = pos.z;
     pos.x += dx * s; pos.z += dz * s;
-    if (opts.world !== false && inSound(pos.x, pos.z)) clampToIsland(pos);
+    if (opts.world !== false && inInstance(pos.x)) clampInstance(pos);
+    else if (opts.world !== false && inSound(pos.x, pos.z)) clampToIsland(pos);
     else if (opts.world !== false) {
       pos.x = Math.max(-WORLD_HALF + 1, Math.min(WORLD_HALF - 1, pos.x));
       pos.z = Math.max(-WORLD_HALF + 1, Math.min(WORLD_HALF - 1, pos.z));
