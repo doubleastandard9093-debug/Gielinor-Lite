@@ -14,6 +14,20 @@ export const ERRANDS = [
   { id: 'e_bars', name: 'Work the Falador forges', mins: 240, skill: 'Smithing', xp: 1400, items: [['Iron bar', 12], ['Steel bar', 4]], fac: 'lantern', rep: 70 },
   { id: 'e_patrol', name: 'Ride the long border patrol', mins: 480, skill: 'Defence', xp: 2600, items: [['Bones', 30]], fac: 'watch', rep: 120 }
 ];
+// Crew skills: each companion keeps their own level per errand skill (1-30), earned on errands.
+// Yield scales +4% per level above 1 (x2.16 at 30); level = 1 + floor(sqrt(xp / 40)).
+export const CREW_MAX = 30;
+export function crewLevel(xp) { return Math.min(CREW_MAX, 1 + Math.floor(Math.sqrt(Math.max(0, Number(xp) || 0) / 40))); }
+export function crewYield(lvl) { return 1 + 0.04 * (Math.max(1, lvl) - 1); }
+export function crewOf(player, comp, skill) { const s = player.companions && player.companions[comp]; return crewLevel(s && s.crew ? s.crew[skill] : 0); }
+// Items an errand returns for this companion's crew level.
+export function errandItems(e, lvl) { const m = crewYield(lvl); return e.items.map(([it, n]) => [it, Math.max(1, Math.round(n * m))]); }
+// Crew XP earned on return (a failed errand still teaches a quarter). Returns { before, after }.
+export function crewTrain(player, comp, skill, xp) {
+  const s = player.companions[comp]; s.crew = s.crew || {};
+  const before = crewLevel(s.crew[skill]); s.crew[skill] = (s.crew[skill] || 0) + Math.round(xp);
+  return { before, after: crewLevel(s.crew[skill]) };
+}
 export function errandById(id) { return ERRANDS.find(e => e.id === id); }
 export function errandChance(bond) { return Math.min(1, 0.7 + 0.03 * bond); }
 export function startErrand(player, eid, comp, now, rnd = Math.random) {

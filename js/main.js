@@ -47,7 +47,7 @@ import { QUEST_NPCS } from './questnpcs.js';
 import { createInventoryUI } from './inventoryUI.js';
 import { COMPANIONS, companionById, normalizeCompanions, companionXpBonus, addBond, toneReaction, assistMax, assistEvery, GIFT_COOLDOWN_MS, BOND_MAX, BOND_PERKS } from './companions.js';
 import { FACTIONS, TIERS, TIER_REWARDS, BOUNTY_REP, factionById, factionNear, tierOf, nextTier, addRep, repOf } from './standing.js';
-import { ERRANDS, errandById, errandChance, startErrand, collectErrands } from './errands.js';
+import { ERRANDS, errandById, errandChance, startErrand, collectErrands, crewOf, crewTrain, errandItems, CREW_MAX as CREW_SKILL_MAX } from './errands.js';
 import { createBondsUI } from './bondsUI.js';
 import { createBossMech } from './bossmech.js';
 import { TASK, HUNT_SHOP, normalizeTasks, assignTask, taskKill, taskLabel, isDrowned } from './tasks.js';
@@ -1800,18 +1800,21 @@ function finishErrands() {
   const done = collectErrands(player, Date.now());
   for (const r of done) {
     const e = errandById(r.id), c = companionById(r.comp); if (!e || !c) continue;
+    const lvl = crewOf(player, r.comp, e.skill), tr = crewTrain(player, r.comp, e.skill, r.ok ? e.xp : e.xp / 4);
+    if (tr.after > tr.before) log(`${c.short}'s ${e.skill} crew skill is now ${tr.after}/${CREW_SKILL_MAX}.`, 'game', '#7fd4ff');
     if (!r.ok) { log(`${c.short} came back from "${e.name}" empty-handed, but learned something. (+${Math.round(e.xp / 4)} ${e.skill} XP)`, 'game'); giveXP(e.skill, e.xp / 4); continue; }
     player.bank = player.bank || {};
-    for (const [it, n] of e.items) player.bank[it] = (player.bank[it] || 0) + n;
+    const got = errandItems(e, lvl);
+    for (const [it, n] of got) player.bank[it] = (player.bank[it] || 0) + n;
     giveXP(e.skill, e.xp); gainRep(e.fac, e.rep);
-    log(`${c.short} finished "${e.name}": ${e.items.map(i => i[1] + ' ' + i[0]).join(', ')} sent to your bank.`, 'loot', '#ffd700');
+    log(`${c.short} finished "${e.name}": ${got.map(i => i[1] + ' ' + i[0]).join(', ')} sent to your bank (crew ${e.skill} ${lvl}).`, 'loot', '#ffd700');
   }
   if (done.length) markDirty();
   return done.length;
 }
 const bondsUI = createBondsUI({
   getData: () => ({
-    companions: COMPANIONS.map(d => { const s = compState(d.id); return { ...d, ...s, active: player.activeCompanion === d.id, away: awayUntil(d.id), perks: BOND_PERKS, chance: errandChance(s.bond), task: s.started ? compTaskText(d, s) : `Talk to ${d.short}. ${d.examine}` }; }),
+    companions: COMPANIONS.map(d => { const s = compState(d.id); return { ...d, ...s, active: player.activeCompanion === d.id, away: awayUntil(d.id), crewText: Object.keys(s.crew || {}).map(k => `${k} ${crewOf(player, d.id, k)}`).join(', '), perks: BOND_PERKS, chance: errandChance(s.bond), task: s.started ? compTaskText(d, s) : `Talk to ${d.short}. ${d.examine}` }; }),
     factions: FACTIONS.map(f => { const r = repOf(player, f.id), t = tierOf(r), n = nextTier(r), lo = TIERS[t][0]; return { ...f, rep: r, tier: t, tierName: TIERS[t][1], next: n, pct: n ? Math.round((r - lo) / (n - lo) * 100) : 100 }; }),
     running: player.errands.map(r => ({ ...r, name: (errandById(r.id) || {}).name || r.id, comp: (companionById(r.comp) || {}).name || r.comp })),
     errands: ERRANDS,
@@ -2836,7 +2839,7 @@ window.gielinor = {
   renderer, player, skills, flow, doDodge, toggleRide, steedShift, steedState, checkSteeds, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, sagaMarks, minimap, sailing, cardsUI, digHere, readChart, seaTalk, talkTo, refreshQuick, bondsUI, finishErrands, refreshStanding,
-  bossMech, buy, sell, playerDied, monsterAttack, killMonster, huntTalk, refreshStanding, doMagicTick, set queuedAbility(v) { queuedAbility = v; },
+  bossMech, buy, sell, playerDied, monsterAttack, killMonster, huntTalk, finishErrands, refreshStanding, doMagicTick, set queuedAbility(v) { queuedAbility = v; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
 

@@ -34,10 +34,11 @@ export function normalizeCompanions(c) {
   const out = {};
   for (const d of COMPANIONS) {
     const s = c && typeof c === 'object' && c[d.id] && typeof c[d.id] === 'object' ? c[d.id] : {};
-    out[d.id] = { recruited: !!s.recruited, bond: Math.max(0, Math.min(BOND_MAX, Math.floor(Number(s.bond) || 0))), giftAt: Number(s.giftAt) || 0, task: Math.max(0, Math.floor(Number(s.task) || 0)), started: !!s.started };
+    out[d.id] = { recruited: !!s.recruited, bond: Math.max(0, Math.min(BOND_MAX, Math.floor(Number(s.bond) || 0))), giftAt: Number(s.giftAt) || 0, task: Math.max(0, Math.floor(Number(s.task) || 0)), started: !!s.started, crew: normCrew(s.crew) };
   }
   return out;
 }
+function normCrew(c) { const o = {}; if (c && typeof c === 'object') for (const [k, v] of Object.entries(c)) { const n = Math.floor(Number(v)); if (typeof k === 'string' && k.length < 20 && n > 0) o[k] = Math.min(n, 1e6); } return o; }
 export function companionXpBonus(player, skill) {
   const id = player.activeCompanion; if (!id) return 0;
   const d = companionById(id), s = player.companions && player.companions[id];

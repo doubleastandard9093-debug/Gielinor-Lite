@@ -13,7 +13,7 @@ export function createBondsUI({ getData, onAct }) {
       <div class="b-bar"><i style="width:${c.bond * 10}%"></i></div>
       <div class="b-s">${esc(c.role)} · likes ${esc(c.likes)} words and ${esc(c.giftWord)} · helps ${esc(c.skills.join(', '))}</div>
       ${c.recruited ? `<div class="b-s">${c.perks.map(p => `<span class="${c.bond >= p.at ? 'on' : ''}">${p.at}: ${esc(p.desc)}</span>`).join('<br>')}</div>
-      <div class="b-row">${c.away ? `<span class="b-s">On an errand, back in ${left(c.away - now)}</span>` : `<button data-a="follow" data-c="${c.id}">${c.active ? 'Send home' : 'Follow me'}</button>`}</div>` : `<div class="b-s">${esc(c.task)}</div>`}</div>`).join('');
+      <div class="b-row">${c.away ? `<span class="b-s">On an errand, back in ${left(c.away - now)}</span>` : `<button data-a="follow" data-c="${c.id}">${c.active ? 'Send home' : 'Follow me'}</button>`}</div><div class="b-s">Crew: ${esc(c.crewText || 'no errands yet')}</div>` : `<div class="b-s">${esc(c.task)}</div>`}</div>`).join('');
     else if (tab === 'rep') body = d.factions.map(f => `<div class="b-card"><div class="b-h"><span>${f.icon} ${esc(f.name)}</span><span>${esc(f.tierName)}</span></div>
       <div class="b-bar"><i style="width:${f.pct}%"></i></div><div class="b-s">${f.rep}${f.next ? ` / ${f.next}` : ' (max)'} · +${f.tier}% XP in ${esc(f.skills.join(', '))}</div></div>`).join('') + '<div class="b-s">Quests in a town (+40), bounties (+25) and errands raise standing. Claim tier rewards from Quartermaster Odile in Falador.</div>';
     else if (tab === 'saga') {
