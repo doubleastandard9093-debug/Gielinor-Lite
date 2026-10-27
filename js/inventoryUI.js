@@ -27,6 +27,7 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>The Wanderer's Saga.</b> A six-chapter story of your own. Talk to Chronicler Corwin in Brightwater, choose a calling (Warden, Arcanist or Ranger, each with +5% XP in its skills), and follow your old mentor Aldric's trail from Brightwater to Falador. Your choices come back later: a spared bandit, a merchant discount, a companion who may walk away, and an ending and title that match who you became. Chapters open with total level and quest points. Track it in Bonds (B) → Saga.</p>
 <p><b>Sworn Companions.</b> Four allies wait to be recruited: Tamsin the Squire in Brightwater, Ysolde the Ranger in Ashford, Brannoc Ironbeard in Falador and Mirelle the Hedge-mage in Port Sarim. Each sets you a task. Your active companion follows you, joins your fights and boosts XP in their skills as your Bond grows (gifts they like, and words they like on the dialogue wheel).</p>
 <p><b>Words of Choice.</b> Some conversations now offer a dialogue wheel: kind, firm or cunning. Companions notice what you say.</p>
 <p><b>Standing.</b> Quests, bounties and errands raise your standing with the Brightwater Watch, the Sarim Mariners, the Varrock Arcane Circle and the Order of the White Lantern. Each tier adds XP in their skills; claim tier rewards from Quartermaster Odile in Falador. Quests you already finished count.</p>

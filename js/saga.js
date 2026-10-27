@@ -1,4 +1,4 @@
-// The Wanderer's Saga: a personal story (chapters 1-3; more to come) told by Chronicler Corwin in Brightwater.
+// The Wanderer's Saga: a six-chapter personal story told by Chronicler Corwin in Brightwater.
 // You pick a calling, your choices are remembered, and they come back later (discounts, a spared bandit,
 // a companion who may walk away, and the ending you get). Logic and data only; no new models or textures.
 export const CALLINGS = {
@@ -28,7 +28,28 @@ export const CHAPTERS = [
     done: 'Varro kneels in the dirt and hands back Aldric\'s satchel. Inside: a map of the Port Sarim docks.',
     wheel: [['kind', 'Go, and do better.', { flag: 'varro', say: '"I owe you my life," Varro says. "I won\'t forget it."' }],
       ['firm', 'You\'ll answer to the Watch.', { rep: ['watch', 80], say: 'Captain Brann locks him up with a nod of respect for you.' }],
-      ['cunning', 'Work for me now.', { flag: 'varro', gold: 200, say: 'Varro grins and tosses you his share of the loot. "Boss."' }]] }
+      ['cunning', 'Work for me now.', { flag: 'varro', gold: 200, say: 'Varro grins and tosses you his share of the loot. "Boss."' }]] },
+  { n: 4, title: 'Salt and Smoke', req: { total: 110, qp: 8 },
+    intro: ['The map leads to a wreck off Port Sarim, where the drowned dead walk the hold.'],
+    obj: { kind: 'kill', mon: 'Skeleton', n: 8, text: 'Clear 8 Skeletons from the wreck-haunted shore' },
+    done: 'Among the bones is Aldric\'s journal. The Mariners want it for their records, but it names their harbour master as a smuggler.',
+    companionTest: true,
+    wheel: [['kind', 'Give them the journal. Let them judge their own.', { rep: ['mariners', 60], say: 'The harbour master is quietly replaced.' }],
+      ['firm', 'Arrest the harbour master. Now.', { rep: ['mariners', 30], gold: 300, say: 'The docks go quiet as he is led away.' }],
+      ['cunning', 'Sell the page to the harbour master.', { gold: 600, flag: 'smuggler', say: 'He pays well, and owes you one.' }]] },
+  { n: 5, title: 'The Lantern Archive', req: { total: 140, qp: 12 },
+    intro: ['Aldric\'s journal speaks of an archive under Varrock, sealed with rune-light.'],
+    obj: { kind: 'item', item: 'Rune essence', n: 20, text: 'Bring 20 Rune essence to wake the archive seals' },
+    varroHelp: 5,
+    done: 'The seals open. Aldric\'s last page: he went into the Black Knights\' keep near Falador and never came out.',
+    wheel: [['kind', 'Share the archive with the Circle.', { rep: ['circle', 80], say: 'The Arcane Circle names you a friend of the archive.' }],
+      ['firm', 'Seal it again. Some things should stay buried.', { rep: ['lantern', 60], say: 'The White Lantern approves.' }],
+      ['cunning', 'Copy the best spells for yourself.', { xp: ['Magic', 1500], say: 'Your mind fills with old patterns.' }]] },
+  { n: 6, title: 'Aldric\'s Ember', req: { total: 180, qp: 16 },
+    intro: ['Falador. The keep of the Black Knights. Whatever happened to Aldric is inside.'],
+    obj: { kind: 'kill', mon: 'Black Knight', n: 5, text: 'Fight through 5 Black Knights to reach Aldric' },
+    done: 'Aldric is alive, chained and thin. He smiles. "You came. Now: who did you become?"',
+    finale: true }
 ];
 export const ENDINGS = {
   kind: { title: 'the Hearthbound', say: 'You became someone people run toward, not away from. Aldric weeps with pride.' },
