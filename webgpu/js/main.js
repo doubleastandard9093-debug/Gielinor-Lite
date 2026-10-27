@@ -35,7 +35,7 @@ import {
   TICK_MS, gatherTick, gatherInfo, TREES, ROCKS, FISH_SPOTS, rollPlayerHit, rollMonsterHit, combatXp, rollLoot, RARE_DROPS,
   attackSpeedTicks, attackRange, equip, unequip, eat, sellPrice, bestTool, addTool, ownsToolType, toolName,
   burnChance, saveChance, makeXp, buryXp, reduceIncoming, nextGatherWait, xpMultiplier, makeTicks, doubleMakeChance, buyPrice, capeBoosts, regenBonus, SHOPS, gearEffects, weaponProcs, isRareDrop,
-  SPELLS, spellById, canCast, castSpell, bestSpell, magicMaxHit, weakTo, WEAK_MULT, SPELL_TICKS, AGILITY_OBSTACLES, AGILITY_COURSES, runObstacle, THIEVE_TARGETS, thieve, RUNE_ALTARS, craftRunes
+  SPELLS, spellById, canCast, castSpell, bestSpell, magicMaxHit, weakTo, WEAK_MULT, SPELL_TICKS, playerMaxHit, AGILITY_OBSTACLES, AGILITY_COURSES, runObstacle, THIEVE_TARGETS, thieve, RUNE_ALTARS, craftRunes
 } from '../../js/gameplay.js';
 import { POTIONS, isPotion, drinkPotion, effectsTick, applyPoison, poisonTick } from '../../js/potions.js';
 import { PRAYERS, prayerById, togglePrayer, drainTick, prayerFx, rechargePrayer, ppRegenPerTick } from '../../js/prayer.js';
@@ -50,6 +50,7 @@ import { createBondsUI } from '../../js/bondsUI.js';
 import { createBossMech } from '../../js/bossmech.js';
 import { DEED_COST, ROOMS, FURNITURE, BOSS_TROPHIES, normalizeHouse, hasRoom, hasFurn, houseXpBonus, houseBossDamage, houseErrandBonus, takeHarvest, takeBondDay, addTrophy } from '../../js/hearth.js';
 import { HEARTH, ARENA, inInstance, instanceAt } from '../../js/instances.js';
+import { ARENA_RULES, ARENA_SHOP, normalizeArena, ladder, rankOf, rateDuel, weekRoll, weekNo, pickOpponent, duellistStats } from '../../js/arena.js';
 import { TASK, HUNT_SHOP, normalizeTasks, assignTask, taskKill, taskLabel, isDrowned } from '../../js/tasks.js';
 import { SEA, SARIM_DOCK, HULLS, OFFICERS, CREW_COST, CREW_MAX, ISLANDS, islandAt, normalizeVessel, inSound } from '../../js/sea.js';
 import { createSailing } from '../../js/sailing.js';
@@ -1582,6 +1583,61 @@ function countItem(it) { return player.inventory[it] || 0; }
 // ---- Hunt tasks (tasks.js): Huntmaster Corvane, Port Sarim ----
 player.tasks = normalizeTasks(player.tasks);
 player.house = normalizeHouse(player.house);
+player.arena = normalizeArena(player.arena);
+// ---- The Proving Grounds (Phase 5): duel a bot that copies your loadout in an instanced ring ----
+let arenaG = null, arenaGate = null, duellist = null, duel = null;
+function buildArena() {
+  if (arenaG) return; instanceFloor();
+  const G = new THREE.Group(); G.position.set(ARENA.x, 0, ARENA.z); G.name = 'proving-grounds'; scene.add(G); arenaG = G;
+  const sand = new THREE.Mesh(new THREE.CylinderGeometry(ARENA.r, ARENA.r, 0.2, 40), plainMat(0xb8a078)); sand.position.y = -0.1; G.add(sand);
+  const wall = new THREE.Mesh(new THREE.CylinderGeometry(ARENA.r + 0.4, ARENA.r + 0.4, 1.6, 40, 1, true), new THREE.MeshLambertMaterial({ color: 0x6a5a4a, side: THREE.DoubleSide })); wall.position.y = 0.8; G.add(wall);
+  const gate = new THREE.Mesh(new THREE.BoxGeometry(2, 2.4, 0.3), plainMat(0x4a3220)); gate.position.y = 1.2;
+  arenaGate = instNode(G, ARENA.gate.x, ARENA.gate.z, gate, { type: 'cave', verb: 'Leave', name: 'Gate (leave)', examine: 'Leaving mid-duel counts as a loss.', dest: { x: 128, z: -31 }, leave: 'You leave the Proving Grounds.', forfeit: true });
+  if (gfx.quality !== 'low') for (const a of [0.8, 2.4, 3.9, 5.5]) { const L = new THREE.PointLight(0xffa050, 5, 18, 1.2); L.position.set(Math.cos(a) * (ARENA.r - 1), 3, Math.sin(a) * (ARENA.r - 1)); L.name = 'arena-light-high'; G.add(L); }
+}
+function myDuelStats() {
+  const rangedW = isRangedWeapon(player.equipment.weapon);
+  return { maxHp: player.maxHp, maxHit: Math.round(playerMaxHit(player, skills) * 0.4), att: Math.round((rangedW ? skills.Ranged.level : skills.Attack.level) * 0.8), def: Math.round(skills.Defence.level * 0.8), cb: combatLevel(skills), ranged: rangedW };
+}
+function startDuel(opp) {
+  buildArena();
+  if (!inInstance(pm.mesh.position.x)) player.instanceReturn = { x: pm.mesh.position.x, z: pm.mesh.position.z };
+  arenaGate.dest = player.instanceReturn || { x: 128, z: -31 };
+  const st = duellistStats(myDuelStats(), opp.rating), bx = { minX: ARENA.x - ARENA.r + 1, maxX: ARENA.x + ARENA.r - 1, minZ: ARENA.z - ARENA.r + 1, maxZ: ARENA.z + ARENA.r - 1 };
+  if (!duellist) duellist = spawnMonster('Duellist', ARENA.x, ARENA.z - 6, 1, bx);
+  const m = duellist; Object.assign(m, st, { name: opp.name, title: `${opp.name} (rating ${opp.rating})`, maxHp: st.hp, alive: true, dying: false, state: 'idle', respawnAt: 0, spawnX: ARENA.x, spawnZ: ARENA.z - 6, stunUntil: 0, venom: null });
+  m.mesh.visible = true; m.mesh.rotation.set(0, 0, 0); m.mesh.position.set(ARENA.x, 0, ARENA.z - 6);
+  duel = { opp, at: tick };
+  travelTo(ARENA.x, ARENA.z + 6); player.hp = player.maxHp;
+  log(`The Proving Grounds: ${opp.name} (rating ${opp.rating}) copies your loadout. Fight!`, 'warn');
+  setTimeout(() => { if (duel && m.alive) { m.state = 'fight'; m.nextAttackTick = tick + 2; } }, 1200);
+  markDirty();
+}
+function arenaResult(win, forfeit = false) {
+  if (!duel) return; const A = player.arena, opp = duel.opp; duel = null;
+  const d = rateDuel(A, opp.rating, win);
+  if (win) gainRep('watch', 10);
+  log(win ? `You beat ${opp.name}! Rating ${A.rating} (+${d}), +${ARENA_RULES.winTokens} arena tokens.` : `${forfeit ? 'You forfeit' : `${opp.name} wins`}. Rating ${A.rating} (${d}), +${ARENA_RULES.lossTokens} arena tokens.`, win ? 'loot' : 'warn', win ? '#ffd700' : undefined);
+  if (duellist) { duellist.alive = false; duellist.state = 'dead'; duellist.respawnAt = 0; if (!win) duellist.mesh.visible = false; }
+  stopAction(); queuedAbility = null;
+  if (!forfeit) setTimeout(() => { const r = player.instanceReturn || { x: 128, z: -31 }; travelTo(r.x, r.z); if (duellist) duellist.mesh.visible = false; }, win ? 1800 : 300);
+  markDirty();
+}
+function arenaTalk() {
+  const A = player.arena, w = weekNo(Date.now()), roll = weekRoll(A, Date.now()), say = t => [['npc', t]];
+  if (roll) log(`New ladder week. Last week you placed #${roll.rank}: +${roll.pay} arena tokens.`, 'loot', '#ffd700');
+  const rank = rankOf(A, w), top = ladder(w).slice(0, 3).map((e, i) => `${i + 1}. ${e.name} ${e.rating}`).join(', ');
+  const shop = ARENA_SHOP.map(s => [`${s.name} (${s.cost} tokens)${s.rank ? `: ladder top ${s.rank}` : ''}`, [{ run: () => {
+    if (A.tokens < s.cost) return say(`That's ${s.cost} tokens. You have ${A.tokens}.`);
+    if (s.rank && rank > s.rank) return say(`Only the top ${s.rank} on this week's ladder may buy that. You're #${rank}.`);
+    if (s.item && !canAdd(player, s.item, 1)) return say('Make room in your pack first.');
+    A.tokens -= s.cost; if (s.item) addItem(player, s.item, 1); if (s.rep) gainRep(s.rep[0], s.rep[1]);
+    if (s.xp) { const low = ['Attack', 'Strength', 'Defence', 'Ranged', 'Magic'].sort((a, b) => skills[a].xp - skills[b].xp)[0]; giveXP(low, s.xp); }
+    markDirty(); return say(`${s.name}: ${s.desc}`);
+  } }]]);
+  return [['npc', `Sefa, arenamaster. Rating ${A.rating} (best ${A.best}), #${rank} on this week's ladder. ${A.wins} wins, ${A.losses} losses, ${A.tokens} tokens. Leaders: ${top}.`],
+    { choose: [['Find me a duel.', [{ run: () => { const o = pickOpponent(A, w); setTimeout(() => startDuel(o), 50); return []; } }]], ['Show me the token shop.', [{ choose: [...shop, ['Never mind.', []]] }]], ['Goodbye.', []]] }];
+}
 // ---- Hearthstead (Phase 5): an instanced home plot. Low gets plain boxes; High adds two warm lights (capped). ----
 let hearthG = null, hearthDyn = null, instFloor = null;
 const hearthNodes = {};
@@ -1877,6 +1933,7 @@ const bondsUI = createBondsUI({
   }
 });
 function talkTo(ent) {
+  if (ent.arena) { ui.dialogue(ent.name, '⚔️', arenaTalk(), () => markDirty()); return; }
   if (ent.hearth) { ui.dialogue(ent.name, ent.hearth === 'agent' ? '📜' : '🏠', hearthTalk(ent), () => markDirty()); return; }
   if (ent.sea) { seaTalk(ent); return; }
   if (ent.saga) { ui.dialogue(ent.name, '📖', sagaTalk(), () => markDirty()); return; }
@@ -1966,6 +2023,7 @@ function caveTravel(ent) {
   const d = ent.dest; pm.target = null; pm.goal = null;
   pm.mesh.position.x = d.x; pm.mesh.position.z = d.z; pm.mesh.position.y = terrainHeight(d.x, d.z);
   if (rig.fx !== undefined) { rig.fx = d.x; rig.fz = d.z; }
+  if (ent.forfeit && duel) arenaResult(false, true);
   if (ent.leave) { log(ent.leave, 'game'); markDirty(); return; }
   log(d === CAVE.inside ? 'You climb down into the cave. Crystals glitter in the dark, and something skitters in the webs.' : 'You climb back up into the daylight.', 'game');
   markDirty();
@@ -2192,6 +2250,7 @@ function killMonster(mon, now) {
   mon.deathT = 0;
   mon.state = 'dead';
   mon.respawnAt = 0;
+  if (mon.arena) { if (action && action.mon === mon) stopAction(); arenaResult(true); return; }
   log(`You have defeated the ${mon.name}.`, 'combat');
   const kh = perk(skills, 'Hitpoints', 'killHeal');
   if (kh && player.hp > 0 && player.hp < player.maxHp) {
@@ -2293,6 +2352,7 @@ function monsterAttack(mon, now) {
 }
 
 function playerDied() {
+  if (duel) { arenaResult(false); player.hp = player.maxHp; return; }
   log('Oh dear, you are dead!', 'warn');
   ui.banner('<div class="lu-icon">💀</div><div><b>Oh dear, you are dead!</b><br>You wake up in town with full health.</div>');
   stopAction();
@@ -2891,7 +2951,7 @@ window.gielinor = {
   renderer, player, skills, flow, doDodge, toggleRide, steedShift, steedState, checkSteeds, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, sagaMarks, minimap, sailing, cardsUI, digHere, readChart, seaTalk, talkTo, refreshQuick, bondsUI, finishErrands, refreshStanding,
-  bossMech, buy, sell, playerDied, monsterAttack, killMonster, huntTalk, finishErrands, enterHearth, hearthTalk, refreshHearth, spawnMonster, refreshStanding, doMagicTick, set queuedAbility(v) { queuedAbility = v; },
+  bossMech, buy, sell, playerDied, monsterAttack, killMonster, huntTalk, finishErrands, enterHearth, hearthTalk, refreshHearth, arenaTalk, startDuel, get duel() { return duel; }, get duellist() { return duellist; }, spawnMonster, refreshStanding, doMagicTick, set queuedAbility(v) { queuedAbility = v; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
 

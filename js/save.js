@@ -10,6 +10,7 @@ import { PRAYERS } from './prayer.js';
 import { questPoints } from './quests.js';
 import { normalizeSteeds } from './steeds.js';
 import { normalizeHouse } from './hearth.js';
+import { normalizeArena } from './arena.js';
 import { inInstance } from './instances.js';
 
 export const SAVE_VERSION = 14;
@@ -49,7 +50,7 @@ export function getSaveData(skills, player, playerMesh) {
       steeds: normalizeSteeds(player.steeds),
       flowBest: player.flowBest || 0,
       alignment: player.alignment || {},
-      companions: player.companions || {}, activeCompanion: player.activeCompanion || null, rep: player.rep || {}, errands: player.errands || [], saga: player.saga || null, vessel: player.vessel || null, house: player.house || null,
+      companions: player.companions || {}, activeCompanion: player.activeCompanion || null, rep: player.rep || {}, errands: player.errands || [], saga: player.saga || null, vessel: player.vessel || null, house: player.house || null, arena: player.arena || null,
       shopState: player.shopState || {}, wear: player.wear || {}, tasks: player.tasks || null
     },
     position: playerMesh ? (inInstance(playerMesh.mesh.position.x) ? (player.instanceReturn || { x: 0, z: 0 }) : { x: playerMesh.mesh.position.x, z: playerMesh.mesh.position.z }) : null,
@@ -170,7 +171,7 @@ export function migrateSave(saved) {
   p.shopState = normalizeShopState(p.shopState); p.wear = normalizeWear(p.wear);
   p.tasks = normalizeTasks(p.tasks);
   // v14 (Hearth & Arena): Hearthstead deed, rooms, furniture and trophies.
-  p.house = normalizeHouse(p.house);
+  p.house = normalizeHouse(p.house); p.arena = normalizeArena(p.arena);
   if (fromVersion < 14) notes.push('New: Hearth & Arena. Deedwarden Oswin behind Brightwater sells a Hearthstead deed. See Settings → What\'s new.');
   if (fromVersion < 12) notes.push('New: Sails of Sarim. See the Shipwright on the Port Sarim docks for a ship, then sail the Sound. Cutlasses, flintlocks, Hexcraft and card tables too. Press M for the world map.');
   if (!p.activeCompanion || !p.companions[p.activeCompanion] || !p.companions[p.activeCompanion].recruited) p.activeCompanion = null;
@@ -187,7 +188,7 @@ export function applySaveData(data, skills, player, playerMesh) {
     const notes = migrateSave(saved);
     Object.assign(skills, saved.skills);
     const p = saved.player;
-    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints', 'effects', 'poison', 'poisonImmune', 'questCapeLegacy', 'bounties', 'bountiesDone', 'caveLoot', 'steeds', 'flowBest', 'alignment', 'companions', 'activeCompanion', 'rep', 'errands', 'saga', 'vessel', 'house', 'shopState', 'wear', 'tasks']) {
+    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints', 'effects', 'poison', 'poisonImmune', 'questCapeLegacy', 'bounties', 'bountiesDone', 'caveLoot', 'steeds', 'flowBest', 'alignment', 'companions', 'activeCompanion', 'rep', 'errands', 'saga', 'vessel', 'house', 'arena', 'shopState', 'wear', 'tasks']) {
       if (p[k] !== undefined) player[k] = p[k];
     }
     if (p.skillTrees) {

@@ -184,6 +184,8 @@ export const MONSTER_TYPES = {
   Guard:         { name: 'Guard',        level: 21, hp: 220, maxHit: 28, att: 18, def: 18, speed: 4, color: 0x3a3a6a, scale: 1.1 },
   'Hill Giant':  { name: 'Hill Giant',   level: 28, hp: 350, maxHit: 36, att: 22, def: 24, speed: 5, color: 0x8a7a5a, scale: 1.8 },
   'Black Knight':{ name: 'Black Knight', level: 33, hp: 420, maxHit: 42, att: 30, def: 34, speed: 4, color: 0x1a1a22, scale: 1.15 },
+  // Hearth & Arena: a Proving Grounds duellist (stats are replaced per duel to copy your loadout)
+  Duellist:      { name: 'Duellist', level: 30, hp: 300, maxHit: 30, att: 25, def: 25, speed: 4, color: 0x6a2a2a, scale: 1.0, skin: 0xc89a74, arena: true, respawn: 1e12 },
   // Sails of Sarim: the Drowned Crew of Wreckers' Reef (undead; silver shot bites them harder)
   'Drowned Deckhand': { name: 'Drowned Deckhand', level: 24, hp: 240, maxHit: 26, att: 20, def: 16, speed: 4, color: 0x3a5a5a, scale: 1.0, skin: 0x7aa898, undead: true, drowned: true },
   'Drowned Gunner':   { name: 'Drowned Gunner', level: 34, hp: 320, maxHit: 34, att: 28, def: 20, speed: 5, color: 0x4a3a2a, scale: 1.05, skin: 0x6a9a8a, ranged: true, range: 6, undead: true, drowned: true },

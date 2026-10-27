@@ -16,7 +16,7 @@ export function normalizeTasks(t) {
 }
 // Monsters the master may assign at your combat level (no bosses, nothing far above you).
 export function taskPool(cb, tasks) {
-  return Object.values(MONSTER_TYPES).filter(m => !m.boss && m.name !== 'Cow' && m.name !== 'Guard' && m.level <= cb + 15 && m.level >= Math.min(cb - 40, 20) && !tasks.blocked.includes(m.name)).map(m => m.name);
+  return Object.values(MONSTER_TYPES).filter(m => !m.boss && !m.arena && !m.wilds && m.name !== 'Cow' && m.name !== 'Guard' && m.level <= cb + 15 && m.level >= Math.min(cb - 40, 20) && !tasks.blocked.includes(m.name)).map(m => m.name);
 }
 export function assignTask(tasks, cb, rng = Math.random) {
   const pool = taskPool(cb, tasks).filter(m => !tasks.cur || m !== tasks.cur.mon);

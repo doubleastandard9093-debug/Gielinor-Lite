@@ -206,6 +206,8 @@ U('Obsidian cape', { type: 'cape', str: 4, def: 9, rdef: 9, rarity: 'rare', eff:
 U('Berserker ring', { type: 'ring', str: 12, rarity: 'epic', eff: { crit: 0.05 }, special: '+5% critical hit chance', value: 40000 });
 // Hunt points rewards (tasks.js)
 U("Hunter's ring", { type: 'ring', atk: 5, ranged: 5, rarity: 'uncommon', special: 'Bought with Hunt points', value: 200 });
+U("Duellist's cape", { type: 'cape', atk: 4, def: 4, rarity: 'uncommon', special: 'Bought with arena tokens', value: 400 });
+U("Victor's band", { type: 'ring', str: 6, rarity: 'rare', special: 'Proving Grounds ladder top 3', value: 800 });
 U('Reefward amulet', { type: 'neck', def: 6, rdef: 6, rarity: 'rare', special: '+8% damage against the Drowned Crew', value: 300 });
 U("Saltgrave's signet", { type: 'ring', atk: 6, str: 6, ranged: 6, rarity: 'rare', special: 'Drowned Crew Exalted reward', value: 500 });
 U('Ring of recoil', { type: 'ring', def: 2, rdef: 2, rarity: 'uncommon', eff: { reflect: 0.1 }, special: 'Reflects 10% of damage you take', value: 1500 });
@@ -285,7 +287,7 @@ const FIXED_ICONS = {
 };
 const WOOD_TINT = ['', '#c49a5a40', '#7a9a4a40', '#c0702a40', '#4a6a3a50', '#3a5ad050'];
 const UNIQUE_ICON = { 'Venom dagger': '🗡️', 'Vampyric blade': '🗡️', 'Granite maul': '🔨', 'Dragon dagger': '🗡️', 'Dragon longsword': '⚔️', 'Dark bow': '🏹',
-  'Obsidian cape': '🧣', 'Berserker ring': '💍', 'Ring of recoil': '💍', "Hunter's ring": '💍', 'Reefward amulet': '📿', "Saltgrave's signet": '💍', "Captain's cutlass": '🗡️', 'Highcrag warhammer': '🔨', "Herbalist's amulet": '📿' };
+  'Obsidian cape': '🧣', 'Berserker ring': '💍', 'Ring of recoil': '💍', "Hunter's ring": '💍', "Duellist's cape": '🧣', "Victor's band": '💍', 'Reefward amulet': '📿', "Saltgrave's signet": '💍', "Captain's cutlass": '🗡️', 'Highcrag warhammer': '🔨', "Herbalist's amulet": '📿' };
 const SECOND_ICON = { 'Eye of newt': '👁️', 'Unicorn horn dust': '🦄', 'Limpwurt root': '🥕', 'Chocolate dust': '🍫', 'White berries': '🫐', 'Snape grass': '🌱',
   'Goat horn dust': '🐐', 'Red spider eggs': '🔴', 'Wine of zamorak': '🍷', 'Dragon scale dust': '🐉' };
 export function iconFor(item) {
