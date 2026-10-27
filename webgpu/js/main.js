@@ -39,7 +39,7 @@ import {
 } from '../../js/gameplay.js';
 import { POTIONS, isPotion, drinkPotion, effectsTick, applyPoison, poisonTick } from '../../js/potions.js';
 import { PRAYERS, prayerById, togglePrayer, drainTick, prayerFx, rechargePrayer, ppRegenPerTick } from '../../js/prayer.js';
-import { ABILITIES, abilityById, unlocked as abilityUnlocked, cooldownTicks } from '../../js/abilities.js';
+import { ABILITIES, abilityById, unlocked as abilityUnlocked, cooldownTicks, setPathSource } from '../../js/abilities.js';
 import { QUESTS, questForNpc, questsForNpc, questTalk, onXp, onVisit, questStatus, isDone, onKill, onBury, onPray, NPC_INFO, questPoints, questFx } from '../../js/quests.js';
 import { QUEST_NPCS } from '../../js/questnpcs.js';
 import { createInventoryUI } from '../../js/inventoryUI.js';
@@ -63,6 +63,7 @@ import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW, FINISHE
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from '../../js/save.js';
 import { CHECKS, normalizeTongue, checkLabel, resolveCheck, openQuestCheck, QUEST_PRIZE } from '../../js/tongue.js';
 import { QUEST_DATA } from '../../js/quests2.js';
+import { PATHS as CPATHS, PATH_LEVEL, TALENTS, rowsOpen, normalizePath, pathFx } from '../../js/paths.js';
 import { STILL, SPOT, normalizeStill, addFocus } from '../../js/stillwatch.js';
 import { WRIT_FACTIONS, WRIT_REWARD, normalizeWrits, maybeRoll, writProgress, writLabel } from '../../js/writs.js';
 import { QUIRKS, QUIRK_MAX, REMEDY, FIRE_RE, quirkById, normalizeQuirks, dueQuirk, has as hasQuirk, quirkXp, quirkIncoming } from '../../js/quirks.js';
@@ -1693,6 +1694,45 @@ extSwing.push((mon, swings) => {
   else mon.witherUntil = Math.max(mon.witherUntil || 0, tick + sp.weakTicks);
 });
 EXT.quick = EXT.quick || {}; EXT.quick.still = () => stillX.trigger();
+// ---- Combat Paths: Bulwark / Mender / Striker at combat 30, talent rows every 10 levels ----
+player.path = normalizePath(player.path);
+setPathSource(() => player.path.id);
+const pathsX = {
+  choose(id) { const P = player.path; if (!CPATHS[id] || combatLevel(skills) < PATH_LEVEL) return false; if (P.id && P.id !== id) P.switches++; P.id = id; log(`You walk the ${CPATHS[id].name} Path. ${CPATHS[id].desc}`, 'loot', '#7fd4ff'); invUI.renderBar(); markDirty(); return true; },
+  pick(row, v) { const P = player.path; if (!P.id || row >= rowsOpen(combatLevel(skills)) || ![0, 1, 2].includes(v)) return false; while (P.talents.length <= row) P.talents.push(null); P.talents[row] = v; markDirty(); return true; },
+  fx() { return pathFx(player.path); },
+  script(lectern = false) {
+    const say = t => [['npc', t]], P = player.path, cl = combatLevel(skills);
+    if (cl < PATH_LEVEL) return say(`Come back at combat level ${PATH_LEVEL}. You're ${cl}.`);
+    const opts = Object.entries(CPATHS).filter(([id]) => id !== P.id).map(([id, d]) => [`${P.id ? 'Switch to' : 'Walk'} the ${d.name} Path (${d.role}).`, [{ run: () => { pathsX.choose(id); return say(`${d.name}: ${d.desc}`); } }]]);
+    const rows = rowsOpen(cl);
+    if (P.id) for (let r = 0; r < rows; r++) opts.push([`Talent row ${r + 1} (combat ${PATH_LEVEL + r * 10}): ${P.talents[r] != null ? TALENTS[r][P.talents[r]][0] : 'unpicked'}`, [{ choose: [...TALENTS[r].map(([n, fx], v) => [`${n}: ${Object.entries(fx).map(([k, x]) => `${k} +${Math.round(x * (k === 'regen' ? 1 : 100))}${k === 'regen' ? '/tick' : '%'}`).join(', ')}`, [{ run: () => { pathsX.pick(r, v); return say(`${n} learned.`); } }]]), ['Never mind.', []]] }]]);
+    opts.push(['Goodbye.', []]);
+    return [['npc', `${lectern ? 'The lectern holds your notes on the three Paths.' : 'Idris, pathwarden.'} ${P.id ? `You walk the ${CPATHS[P.id].name} Path.` : 'Choose a Path: Bulwark guards, Mender heals, Striker kills.'} Talent rows open: ${rows}/7. Switching is free.`], { choose: opts }];
+  }
+};
+EXT.paths = pathsX;
+extTalk.paths = { face: '🧭', talk: () => pathsX.script(false) };
+extIncoming.push(dmg => { const r = pathsX.fx().red + (tick < (buffs.wallUntil || 0) ? 0.6 : 0) + (tick < (buffs.wardUntil || 0) ? 0.4 : 0); return r ? Math.max(1, Math.round(dmg * (1 - Math.min(0.8, r)))) : dmg; });
+extSwing.push((mon, swings, ranged, special) => {
+  const fx = pathsX.fx(); if (fx.dmg || fx.acc) for (const s of swings) { s.dmg = (s.dmg || 0) + fx.dmg; s.acc = (s.acc || 0) + fx.acc; }
+  if (special === 'rend') swings[0].dmg = (swings[0].dmg || 0) + 0.9;
+  else if (special === 'flurry') { swings[0].dmg = (swings[0].dmg || 0) - 0.15; swings.push({ ...swings[0], extra: true }, { ...swings[0], extra: true }); }
+  else if (special === 'challenge') { mon.nextAttackTick = Math.max(mon.nextAttackTick || 0, tick + 4); mon.taunted = tick + 10; }
+});
+extKill.push(() => { const k = pathsX.fx().killHeal; if (k && player.hp > 0) player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * k)); });
+extTick.push(() => {
+  const fx = pathsX.fx(); let r = fx.regen + (tick < (buffs.wardUntil || 0) ? 2 : 0);
+  if (r && player.hp > 0 && player.hp < player.maxHp) { player.pathRegen = (player.pathRegen || 0) + r / 6; while (player.pathRegen >= 1) { player.pathRegen--; player.hp = Math.min(player.maxHp, player.hp + 1); } }
+});
+// Self-cast Path skills (no target needed). Returns true when handled.
+function pathSelfSkill(id, cd) {
+  if (id === 'wall') { buffs.wallUntil = tick + 7; log('Stalwart Wall! (60% less damage)', 'combat'); }
+  else if (id === 'ward') { buffs.wardUntil = tick + 10; log('Warding Hymn! (40% less damage, healing)', 'combat'); }
+  else if (id === 'mend') { const h = Math.round(player.maxHp * 0.12); player.hp = Math.min(player.maxHp, player.hp + h); log(`Mending Light (+${h} hitpoints).`, 'combat'); }
+  else return false;
+  cooldowns[id] = tick + cd; return true;
+}
 extKill.push(mon => writsX.progress('kill', mon.name));
 extXp.push(skill => { if (player.writs.daily.length) writsX.progress('act', skill); return 1; });
 extTick.push(() => { player.writs.playTicks++; if (tick % 100 === 5) { const r = writsX.roll(false); if (r === 'daily') log('New Daily Writs are up on Writkeeper Maelis\'s board in Brightwater.', 'game'); } });
@@ -1905,6 +1945,7 @@ function hearthTalk(ent) {
     const e = payCost(0, f.items); if (e) return say(e);
     H.furniture.push(f.id); giveXP(f.skill, f.xp); refreshHearth(); markDirty(); return say(`You make and place the ${f.name}. ${f.desc}.`);
   } }]]), ['Never mind.', []]] }]]);
+  if (combatLevel(skills) >= PATH_LEVEL) opts.push(['Study at the lectern (choose or switch your Combat Path).', pathsX.script(true)]);
   if (hasRoom(H, 'garden')) opts.push(['Harvest the herb garden.', [{ run: () => { const n = takeHarvest(H, Date.now()); if (!n) return say('Nothing is ready yet. The garden gives herbs every 12 hours.'); player.bank['Grimy guam leaf'] = (player.bank['Grimy guam leaf'] || 0) + n; giveXP('Herblore', n * 10); markDirty(); return say(`You pick ${n} Grimy guam leaves. They go to your bank.`); } }]]);
   if (hasRoom(H, 'quarters')) opts.push(['Visit the companion quarters.', [{ run: () => { const n = takeBondDay(H, Date.now()); const rec = COMPANIONS.filter(c => player.companions[c.id].recruited); if (!n || !rec.length) return say(rec.length ? 'Your companions are resting. Come back tomorrow.' : 'The bunks are empty. Recruit a companion first.'); for (const c of rec) addBond(player, c.id, n); markDirty(); return say(`${rec.map(c => c.short).join(', ')} share a meal by the stove. (+${n} Bond each)`); } }]]);
   opts.push(['Goodbye.', []]);
@@ -2313,7 +2354,7 @@ function useArrow() {
 function useAbility(id) {
   const a = abilityById(id);
   if (!a) return;
-  if (!abilityUnlocked(skills, a)) { log(`You need ${a.skill} level ${a.level} to use ${a.name}.`, 'warn'); return; }
+  if (!abilityUnlocked(skills, a)) { log(a.path ? `${a.name} needs the ${CPATHS[a.path].name} Path (Pathwarden Idris in Falador).` : `You need ${a.skill} level ${a.level} to use ${a.name}.`, 'warn'); return; }
   const left = (cooldowns[id] || 0) - tick;
   if (left > 0) { log(`${a.name} is recharging (${Math.ceil(left * 0.6)}s).`, 'warn'); return; }
   const ranged = isRangedWeapon(player.equipment.weapon);
@@ -2327,11 +2368,12 @@ function useAbility(id) {
   const cost = adrenCost(a);
   const adr = hud ? hud.adrenaline : 0;
   if (cost && adr + 1e-6 < cost) { log(`${a.name} needs ${cost}% adrenaline (you have ${Math.floor(adr)}%). Use basic skills and land hits to build it.`, 'warn'); return; }
-  const queuedNeedsTarget = !['fortify', 'rage', 'rejuv'].includes(id);
+  const queuedNeedsTarget = !['fortify', 'rage', 'rejuv', 'wall', 'ward', 'mend'].includes(id);
   if (queuedNeedsTarget && (!action || action.kind !== 'attack' || !action.mon.alive)) { log('Attack something first, then use that.', 'warn'); return; }
   if (hud) { if (cost) hud.spend(cost); else hud.gain(adrenGain(a) * (a.style === 'magic' ? 1 + perk(skills, 'Combat', 'magicAdren') : 1)); }
   const cd = cooldownTicks(skills, a);
-  if (id === 'fortify') { buffs.fortifyUntil = tick + 10; cooldowns[id] = tick + cd; log('You brace yourself. (Fortify: 50% less damage)', 'combat'); }
+  if (pathSelfSkill(id, cd)) { /* Combat Path self skill */ }
+  else if (id === 'fortify') { buffs.fortifyUntil = tick + 10; cooldowns[id] = tick + cd; log('You brace yourself. (Fortify: 50% less damage)', 'combat'); }
   else if (id === 'rage') { buffs.rageUntil = tick + 15; cooldowns[id] = tick + cd; log('You fly into a rage! (Berserk)', 'combat'); }
   else if (id === 'rejuv') {
     const heal = Math.round(player.maxHp * 0.2);
@@ -3153,7 +3195,7 @@ window.gielinor = {
   renderer, player, skills, flow, doDodge, toggleRide, steedShift, steedState, checkSteeds, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, sagaMarks, minimap, sailing, cardsUI, digHere, readChart, seaTalk, talkTo, refreshQuick, bondsUI, finishErrands, refreshStanding,
-  EXT, tongueWrap,
+  EXT, tongueWrap, ABIL_UNLOCKED: id => abilityUnlocked(skills, abilityById(id)),
   bossMech, buy, sell, playerDied, monsterAttack, killMonster, huntTalk, finishErrands, enterHearth, hearthTalk, refreshHearth, arenaTalk, startDuel, wildsTick, wilds, get duel() { return duel; }, get duellist() { return duellist; }, spawnMonster, refreshStanding, doMagicTick, set queuedAbility(v) { queuedAbility = v; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
