@@ -367,7 +367,7 @@ export function reduceIncoming(dmg, player, skills, buffs = {}) {
   if (dmg <= 0) return 0;
   // Damage reduction from Defence perks, quests and armour sets (capped so nothing gets silly).
   let m = 1 - Math.min(DR_CAP, perk(skills, 'Defence', 'dr') + questFx(player, 'dr') + setFx(player, 'dr'));
-  m *= 1 - prayerFx(player, 'protect');
+  if (!buffs.boss) m *= 1 - prayerFx(player, 'protect'); // bosses: style-matched Protect prayers (bossmech.js)
   if (buffs.fortify) m *= 0.5;
   if (buffs.rage) m *= 1.1;
   return Math.max(0, Math.round(dmg * m));

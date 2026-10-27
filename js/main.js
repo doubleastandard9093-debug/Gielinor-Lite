@@ -49,6 +49,7 @@ import { COMPANIONS, companionById, normalizeCompanions, companionXpBonus, addBo
 import { FACTIONS, TIERS, TIER_REWARDS, BOUNTY_REP, factionById, factionNear, tierOf, nextTier, addRep, repOf } from './standing.js';
 import { ERRANDS, errandById, errandChance, startErrand, collectErrands } from './errands.js';
 import { createBondsUI } from './bondsUI.js';
+import { createBossMech } from './bossmech.js';
 import { TASK, HUNT_SHOP, normalizeTasks, assignTask, taskKill, taskLabel, isDrowned } from './tasks.js';
 import { SEA, SARIM_DOCK, HULLS, OFFICERS, CREW_COST, CREW_MAX, ISLANDS, islandAt, normalizeVessel, inSound } from './sea.js';
 import { createSailing } from './sailing.js';
@@ -2168,10 +2169,25 @@ function bonusHit(mon, now, label) {
   if (d > 0) log(`${label}!`, 'combat');
   if (mon.hp <= 0) killMonster(mon, now);
 }
+// Boss mechanics (bossmech.js): telegraphed slams, style switches, enrage.
+const bossMech = createBossMech(scene, () => gfx.quality);
+function bossEvents(m, now) {
+  for (const e of bossMech.tick(m, tick, { playerPos: pm.mesh.position, groundY: () => pm.mesh.position.y, maxHp: player.maxHp })) {
+    if (e.kind === 'slam') {
+      if (gfx.quality !== 'low') burst('dust', e.x, pm.mesh.position.y, e.z, 14);
+      shakeRig(rig, 0.5);
+      if (!e.inside) { log('The slam misses you.', 'combat'); continue; }
+      if (dodging(flow, now)) { log('You roll through the slam!', 'combat'); onPerfectDodge(); continue; }
+      log(`The slam crushes you for ${e.dmg}!`, 'warn'); hurtPlayer(e.dmg);
+    } else log(e.text, e.kind === 'telegraph' ? 'warn' : 'combat');
+  }
+}
+function onPerfectDodge() {}
 function monsterAttack(mon, now) {
   const raw = rollMonsterHit(mon, player, skills);
   if (mon.ranged) enemyArrow = { from: mon.mesh.position.clone().setY(1.3), t: 0 };
-  let dmg = reduceIncoming(raw, player, skills, { fortify: tick < buffs.fortifyUntil, rage: tick < buffs.rageUntil });
+  let dmg = reduceIncoming(raw, player, skills, { fortify: tick < buffs.fortifyUntil, rage: tick < buffs.rageUntil, boss: !!mon.bm });
+  if (mon.bm && dmg > 0) dmg = Math.round(dmg * bossMech.prayerMult(mon, id => player.activePrayers.includes(id)));
   if (dmg > 0 && mon.witherUntil > tick) dmg = Math.max(1, Math.floor(dmg * 0.7)); // Withering Hex
   if (dmg > 0 && performance.now() < steedState.bulwarkUntil) dmg = Math.max(1, Math.floor(dmg * (1 - BULWARK.reduce)));
   if (dmg > 0 && dodging(flow, now)) { dmg = 0; overlays.splat(playerEnt, 0, now); log('Dodged!', 'combat'); return; }
@@ -2277,8 +2293,10 @@ function gameTick(now) {
 
   // Monster combat
   for (const m of monsters) {
-    if (m.state !== 'fight' || !m.alive) continue;
+    if (m.state !== 'fight' || !m.alive) { if (m.bm) bossMech.reset(m); continue; }
     const d = distTo(m);
+    if (m.boss) bossEvents(m, now);
+    if (!m.alive || player.hp <= 0) continue;
     const leash = Math.hypot(m.mesh.position.x - m.spawnX, m.mesh.position.z - m.spawnZ);
     if (d > 13 || leash > 16) { m.state = 'return'; continue; }
     if (d <= (m.range || 1.7 + (m.radius - 0.7)) && tick >= m.nextAttackTick && !(m.stunUntil > tick)) {
@@ -2727,6 +2745,7 @@ function animate(now) {
     if (player.runEnergy <= 0) { player.settings.run = false; log('You have run out of energy.', 'warn'); markDirty(); }
   }
 
+  bossMech.frame(tick, 1 - Math.max(0, Math.min(1, (nextTickAt - now) / TICK_MS)));
   while (now >= nextTickAt) {
     gameTick(now);
     nextTickAt += TICK_MS;
@@ -2799,7 +2818,7 @@ window.gielinor = {
   renderer, player, skills, flow, doDodge, toggleRide, steedShift, steedState, checkSteeds, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, sagaMarks, minimap, sailing, cardsUI, digHere, readChart, seaTalk, talkTo, refreshQuick, bondsUI, finishErrands, refreshStanding,
-  buy, sell, playerDied, monsterAttack, killMonster, huntTalk, refreshStanding, doMagicTick, set queuedAbility(v) { queuedAbility = v; },
+  bossMech, buy, sell, playerDied, monsterAttack, killMonster, huntTalk, refreshStanding, doMagicTick, set queuedAbility(v) { queuedAbility = v; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
 

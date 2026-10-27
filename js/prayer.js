@@ -21,6 +21,8 @@ export const PRAYERS = [
   { id: 'incredible', name: 'Incredible Reflexes', level: 34, icon: '🌟', drain: 0.5,  group: 'att', fx: { att: 0.15 }, desc: '+15% Attack' },
   { id: 'eagle',    name: 'Eagle Eye',            level: 37, icon: '🏹', drain: 0.5,  group: 'rng', fx: { rng: 0.15 }, desc: '+15% Ranged' },
   { id: 'bounty',   name: "Nature's Bounty",      level: 40, icon: '🌿', drain: 0.4,  group: 'gather', fx: { gather: 0.1 }, desc: '+10% gathering success and XP' },
+  { id: 'protectm', name: 'Protect from Magic',   level: 37, icon: '🔮', drain: 0.5,  group: 'protect', fx: {}, desc: 'Bosses: take 60% less damage while they use magic' },
+  { id: 'protectr', name: 'Protect from Missiles', level: 40, icon: '🏹', drain: 0.5,  group: 'protect', fx: {}, desc: 'Bosses: take 60% less damage while they use ranged' },
   { id: 'protect',  name: 'Protect from Melee',   level: 43, icon: '⚔️', drain: 0.5,  group: 'protect', fx: { protect: 0.4 }, desc: 'Take 40% less damage from monsters', quest: 'fallen' }
 ];
 // Ranged prayers can't be combined with attack/strength prayers (like RuneScape).
