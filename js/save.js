@@ -45,7 +45,7 @@ export function getSaveData(skills, player, playerMesh) {
       steeds: normalizeSteeds(player.steeds),
       flowBest: player.flowBest || 0,
       alignment: player.alignment || {},
-      companions: player.companions || {}, activeCompanion: player.activeCompanion || null, rep: player.rep || {}, errands: player.errands || [], saga: player.saga || null
+      companions: player.companions || {}, activeCompanion: player.activeCompanion || null, rep: player.rep || {}, errands: player.errands || [], saga: player.saga || null, vessel: player.vessel || null
     },
     position: playerMesh ? { x: playerMesh.mesh.position.x, z: playerMesh.mesh.position.z } : null,
     timestamp: Date.now()
