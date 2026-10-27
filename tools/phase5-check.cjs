@@ -42,6 +42,6 @@ const [,,path='',tier='low',sz='390x844',savef]=process.argv;const [w,h]=sz.spli
   const a=vis('#flowbtns [data-q]'),bb=vis('#abilityBar').concat(vis('#dpad'),vis('#minimapWrap'));o.overlap=a.some(x=>bb.some(r=>x.left<r.right&&x.right>r.left&&x.top<r.bottom&&x.bottom>r.top));
   return o;});
  const hi=req.filter(u=>/textures\/|\.webp|detail_/.test(u));
- const ok=r.deed&&r.inHouse&&r.rooms===4&&r.furn===8&&r.harvest&&r.duelIn&&r.win&&r.loss&&r.captured&&r.saved&&r.ver===14&&!r.overlap&&(tier!=='low'||(hi.length===0&&r.hiLights===0&&r.raiders<=3))&&(tier==='low'||r.hiLights>0)&&!errs.length;
+ const ok=r.deed&&r.inHouse&&r.rooms===4&&r.furn===8&&r.harvest&&r.duelIn&&r.win&&r.loss&&r.captured&&r.saved&&r.ver>=14&&!r.overlap&&(tier!=='low'||(hi.length===0&&r.hiLights===0&&r.raiders<=3))&&(tier==='low'||r.hiLights>0)&&!errs.length;
  console.log(JSON.stringify({ok,tier,path,sz,r,highAssetRequests:hi.length,errs:errs.slice(0,4)}));
  await b.close();})();

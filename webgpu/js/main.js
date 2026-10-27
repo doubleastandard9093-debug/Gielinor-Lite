@@ -61,6 +61,8 @@ import { CALLINGS, CHAPTERS, ENDINGS, normalizeSaga, currentChapter, sagaXpBonus
 import { STEEDS, steedById, normalizeSteeds, grantSteeds, buildSteed, buildBulwarkArmor, poseSteed, ROAD_BONUS, BULWARK } from '../../js/steeds.js';
 import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW, FINISHER, flowPerfectDodge } from '../../js/flow.js';
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from '../../js/save.js';
+import { CHECKS, normalizeTongue, checkLabel, resolveCheck, openQuestCheck, QUEST_PRIZE } from '../../js/tongue.js';
+import { QUEST_DATA } from '../../js/quests2.js';
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -1586,6 +1588,27 @@ player.tasks = normalizeTasks(player.tasks);
 player.house = normalizeHouse(player.house);
 player.arena = normalizeArena(player.arena);
 player.wilds = normalizeWilds(player.wilds);
+// ---- Wanderer's Horizons update (WoW / Outer Worlds / TERA inspired): shared hooks. Each feature registers here. ----
+const extTalk = {}, extTick = [], extSwing = [], extHit = [], extIncoming = [], extKill = [], extFrame = [];
+const EXT = { extTalk, extTick, extSwing, extHit, extIncoming, extKill, extFrame };
+// ---- Silver Tongue: Persuade / Lie / Intimidate checks from your skills and tone history ----
+player.tongue = normalizeTongue(player.tongue);
+// Builds a dialogue option for a check. onPass/onFail return script arrays.
+function tongueOpt(kind, need, text, key, onPass, onFail) {
+  return [checkLabel(kind, need, skills, player, text), [{ run: () => {
+    const ok = resolveCheck(player.tongue, key, kind, need, skills, player);
+    log(`${CHECKS[kind].name} check ${ok ? 'passed' : 'failed'}.`, ok ? 'loot' : 'warn', ok ? '#7fd4ff' : undefined); markDirty();
+    return ok ? onPass() : onFail();
+  } }]];
+}
+function tongueWrap(ent, script) {
+  const c = openQuestCheck(player.tongue, ent.npc, player, QUEST_DATA); if (!c) return script;
+  const gold = c.need * QUEST_PRIZE.goldPer;
+  return [...script, { choose: [tongueOpt(c.kind, c.need, c.text, 'q:' + c.id,
+    () => { player.gold += gold; giveXP(CHECKS[c.kind].skill, QUEST_PRIZE.xp); return [['npc', `...Fine. Take ${gold} coins and let's not speak of it.`]]; },
+    () => [['npc', 'Nice try. I wasn\'t born yesterday.']]), ['Never mind.', []]] }];
+}
+EXT.tongueOpt = tongueOpt;
 // ---- Contested Wilds (Phase 5): banners in the scorched wilderness, contested by Ashen Company bots ----
 const wilds = { flags: null, raiders: [], prog: [], lastRaid: 0, lastPay: 0 };
 const BANNER_COL = { you: 0x2a5ad0, rival: 0xb02a1a };
@@ -1983,6 +2006,7 @@ const bondsUI = createBondsUI({
   }
 });
 function talkTo(ent) {
+  if (ent.ext && extTalk[ent.ext]) { const t = extTalk[ent.ext]; ui.dialogue(ent.name, t.face || '📜', t.talk(ent), () => markDirty()); return; }
   if (ent.arena) { ui.dialogue(ent.name, '⚔️', arenaTalk(), () => markDirty()); return; }
   if (ent.hearth) { ui.dialogue(ent.name, ent.hearth === 'agent' ? '📜' : '🏠', hearthTalk(ent), () => markDirty()); return; }
   if (ent.sea) { seaTalk(ent); return; }
@@ -2014,6 +2038,7 @@ function talkTo(ent) {
     ['npc', 'Welcome! I buy and sell all sorts of things.'],
     { choose: [['Let\'s trade.', [{ run: () => invUI.open('shop') }]], ['No thanks.', [['npc', 'Suit yourself.']]]] }
   ];
+  script = tongueWrap(ent, script);
   ui.dialogue(name, face, script, () => { updateQuestMarks(); markDirty(); });
 }
 // ---- Wilds: foraging and repeatable bounties ----
@@ -2262,6 +2287,7 @@ function playerAttack(mon, now) {
     if (flow.best > (player.flowBest || 0)) player.flowBest = flow.best;
     if (hud && hud.setFlow) hud.setFlow(fl.finisher ? FLOW.maxLinks : fl.links);
   }
+  for (const f of extSwing) f(mon, swings, ranged, special);
   let dmg = 0;
   for (let i = 0; i < swings.length && i < 6; i++) {
     const mods = { ...swings[i] };
@@ -2284,6 +2310,7 @@ function playerAttack(mon, now) {
     if (pr.poison && mon.hp > 0 && (!mon.venom || mon.venom.dmg < pr.poison)) { mon.venom = { dmg: pr.poison, next: 10 }; log(`You poison the ${mon.name}!`, 'combat'); }
     if (pr.stun && mon.hp > 0) { mon.stunUntil = tick + 5; log(`The ${mon.name} is stunned!`, 'combat'); }
   }
+  for (const f of extHit) f(mon, dmg, now, ranged);
   if (special === 'bash') { mon.stunUntil = tick + 5; log(`The ${mon.name} is stunned!`, 'combat'); }
   mon.lastHitAt = now;
   const xp = combatXp(player, dmg);
@@ -2318,6 +2345,7 @@ function killMonster(mon, now) {
     else { addRep(player, 'drowned', TASK.killRep); refreshStanding(true); }
   }
   huntKill(mon.name);
+  for (const f of extKill) f(mon, now);
   if (mon.wilds) addRep(player, 'watch', CAP.killRep);
   if (mon.boss) { const tr = addTrophy(player.house, mon.name); if (tr) log(`Trophy: ${tr}. Mount it in your Hearthstead trophy hall.`, 'loot', '#ffd700'); }
   if (action && action.mon === mon) stopAction();
@@ -2374,6 +2402,7 @@ function monsterAttack(mon, now) {
   if (mon.bm && dmg > 0) dmg = Math.round(dmg * bossMech.prayerMult(mon, id => player.activePrayers.includes(id)));
   if (dmg > 0 && mon.witherUntil > tick) dmg = Math.max(1, Math.floor(dmg * 0.7)); // Withering Hex
   if (dmg > 0 && performance.now() < steedState.bulwarkUntil) dmg = Math.max(1, Math.floor(dmg * (1 - BULWARK.reduce)));
+  if (dmg > 0) for (const f of extIncoming) dmg = f(dmg, mon, now);
   if (dmg > 0 && dodging(flow, now)) { dmg = 0; overlays.splat(playerEnt, 0, now); log('Dodged!', 'combat'); if (!flow.perfectAt || now - flow.perfectAt > 1500) { flow.perfectAt = now; onPerfectDodge(); } return; }
   if (dmg > 0 && Math.random() < perk(skills, 'Defence', 'block')) { dmg = 0; log('Parry: you block the attack!', 'combat'); }
   // Retribution: reflect some damage back.
@@ -2433,6 +2462,7 @@ function gameTick(now) {
   restockTick(player, SHOPS);
   companionAssist(now);
   wildsTick();
+  for (const f of extTick) f(now);
   // Hitpoint regen (faster with Hitpoints perks and Rapid Heal) and run energy
   if (player.hp < player.maxHp && player.hp > 0) {
     let rate = 1 + perk(skills, 'Hitpoints', 'regen') + prayerFx(player, 'regen') + regenBonus(player);
@@ -3003,6 +3033,7 @@ window.gielinor = {
   renderer, player, skills, flow, doDodge, toggleRide, steedShift, steedState, checkSteeds, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
   get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, sagaMarks, minimap, sailing, cardsUI, digHere, readChart, seaTalk, talkTo, refreshQuick, bondsUI, finishErrands, refreshStanding,
+  EXT, tongueWrap,
   bossMech, buy, sell, playerDied, monsterAttack, killMonster, huntTalk, finishErrands, enterHearth, hearthTalk, refreshHearth, arenaTalk, startDuel, wildsTick, wilds, get duel() { return duel; }, get duellist() { return duellist; }, spawnMonster, refreshStanding, doMagicTick, set queuedAbility(v) { queuedAbility = v; },
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
