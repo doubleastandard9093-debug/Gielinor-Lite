@@ -6,6 +6,7 @@ export const ARENA = { x: -1000, z: -200, r: 13, gate: { x: -1000, z: -188 } };
 export function inInstance(x) { return x < INSTANCE_X; }
 export function instanceAt(x, z) {
   if (!inInstance(x)) return null;
+  if (z < -340) return 'delve';
   return Math.abs(z - HEARTH.z) < 60 ? 'hearth' : 'arena';
 }
 // Keep a walker inside the instance it's in.
@@ -13,6 +14,10 @@ export function clampInstance(pos) {
   if (instanceAt(pos.x, pos.z) === 'hearth') {
     pos.x = Math.max(HEARTH.x - HEARTH.hw + 0.6, Math.min(HEARTH.x + HEARTH.hw - 0.6, pos.x));
     pos.z = Math.max(HEARTH.z - HEARTH.hd + 0.6, Math.min(HEARTH.z + HEARTH.hd - 0.6, pos.z));
+  } else if (instanceAt(pos.x, pos.z) === 'delve') {
+    const cz = pos.z > -440 ? -400 : -480;
+    pos.x = Math.max(-1000 - 10.4, Math.min(-1000 + 10.4, pos.x));
+    pos.z = Math.max(cz - 10.4, Math.min(cz + 10.4, pos.z));
   } else {
     const dx = pos.x - ARENA.x, dz = pos.z - ARENA.z, d = Math.hypot(dx, dz), R = ARENA.r - 0.6;
     if (d > R) { pos.x = ARENA.x + dx / d * R; pos.z = ARENA.z + dz / d * R; }

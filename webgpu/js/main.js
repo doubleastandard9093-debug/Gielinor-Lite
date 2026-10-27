@@ -63,6 +63,7 @@ import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW, FINISHE
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from '../../js/save.js';
 import { CHECKS, normalizeTongue, checkLabel, resolveCheck, openQuestCheck, QUEST_PRIZE } from '../../js/tongue.js';
 import { QUEST_DATA } from '../../js/quests2.js';
+import { DELVES, ROLES, ROOM_CAP, DELVE, normalizeDelves, roleFx } from '../../js/delves.js';
 import { PATHS as CPATHS, PATH_LEVEL, TALENTS, rowsOpen, normalizePath, pathFx } from '../../js/paths.js';
 import { STILL, SPOT, normalizeStill, addFocus } from '../../js/stillwatch.js';
 import { WRIT_FACTIONS, WRIT_REWARD, normalizeWrits, maybeRoll, writProgress, writLabel } from '../../js/writs.js';
@@ -1725,6 +1726,85 @@ extTick.push(() => {
   const fx = pathsX.fx(); let r = fx.regen + (tick < (buffs.wardUntil || 0) ? 2 : 0);
   if (r && player.hp > 0 && player.hp < player.maxHp) { player.pathRegen = (player.pathRegen || 0) + r / 6; while (player.pathRegen >= 1) { player.pathRegen--; player.hp = Math.min(player.maxHp, player.hp + 1); } }
 });
+// ---- Delves of Three: instanced party dungeons (you + two companions), max 8 foes per room ----
+player.delves = normalizeDelves(player.delves);
+const delveG = {}, delvePool = [];
+function buildDelve(id) {
+  if (delveG[id]) return delveG[id];
+  const D = DELVES[id], G = new THREE.Group(); G.position.set(DELVE.x, 0, D.z); G.name = 'delve-' + id; scene.add(G); delveG[id] = G;
+  const fl = new THREE.Mesh(new THREE.BoxGeometry(DELVE.hw * 2, 0.2, DELVE.hd * 2), plainMat(D.floor)); fl.position.y = -0.1; G.add(fl);
+  const wm = plainMat(D.wall);
+  for (const [w, d, x, z] of [[DELVE.hw * 2, 0.6, 0, -DELVE.hd], [DELVE.hw * 2, 0.6, 0, DELVE.hd], [0.6, DELVE.hd * 2, -DELVE.hw, 0], [0.6, DELVE.hd * 2, DELVE.hw, 0]]) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 3.2, d), wm); m.position.set(x, 1.6, z); G.add(m); }
+  const gate = new THREE.Mesh(new THREE.BoxGeometry(2, 2.4, 0.3), plainMat(0x3a2a1a)); gate.position.y = 1.2;
+  instNode(G, DELVE.x, D.z + DELVE.hd - 0.6, gate, { type: 'cave', verb: 'Leave', name: 'Way out', examine: 'Leaving ends the delve.', dest: { x: -50, z: -72 }, leave: 'You climb out of the delve.', delveExit: true });
+  if (gfx.quality !== 'low') for (const [x, z] of [[-8, -8], [8, -8], [-8, 8], [8, 8]]) { const L = new THREE.PointLight(0x9ad0ff, 4, 16, 1.2); L.position.set(x, 2.6, z); L.name = 'delve-high-light'; G.add(L); }
+  return G;
+}
+function delveParty(role) {
+  const act = player.activeCompanion && companionById(player.activeCompanion), names = [act ? act.short : 'Brother Aldo', 'Wren the Sellsword', 'Sister Maud'];
+  return Object.keys(ROLES).filter(r => r !== role).map((r, i) => `${names[i]} (${ROLES[r].name})`);
+}
+const delvesX = {
+  run: null,
+  enter(id, role = player.delves.role) {
+    const D = DELVES[id]; if (!D || delvesX.run || !ROLES[role] || duel) return false;
+    buildDelve(id); player.delves.role = role;
+    if (!inInstance(pm.mesh.position.x)) player.instanceReturn = { x: pm.mesh.position.x, z: pm.mesh.position.z };
+    for (const n of nodes) if (n.delveExit) n.dest = player.instanceReturn || { x: -50, z: -72 };
+    delvesX.run = { id, role, room: 0, start: Date.now() };
+    travelTo(DELVE.x, D.z + DELVE.hd - 2.5);
+    log(`${D.name}. You go in as ${ROLES[role].name}; ${delveParty(role).join(' and ')} fill the party.`, 'warn');
+    delvesX.spawnRoom(); markDirty(); return true;
+  },
+  spawnRoom() {
+    const r = delvesX.run, D = DELVES[r.id], bx = { minX: DELVE.x - DELVE.hw + 1, maxX: DELVE.x + DELVE.hw - 1, minZ: D.z - DELVE.hd + 1, maxZ: D.z + DELVE.hd - 1 };
+    let k = 0;
+    for (const [type, n] of D.rooms[r.room]) for (let i = 0; i < n && k < ROOM_CAP; i++, k++) {
+      const x = DELVE.x - 7 + (k % 4) * 4.6, z = D.z - 6 + Math.floor(k / 4) * 3.5;
+      let m = delvePool.find(q => q.delveType === type && !q.alive && !q.dying);
+      if (!m) { m = spawnMonster(type, x, z, 2, bx); m.delveType = type; delvePool.push(m); }
+      Object.assign(m, { alive: true, dying: false, hp: m.maxHp, state: 'idle', respawnAt: 0, respawn: 1e12, spawnX: x, spawnZ: z, bounds: bx, stunUntil: 0, venom: null, delve: true });
+      m.mesh.visible = true; m.mesh.rotation.set(0, 0, 0); m.mesh.position.set(x, 0, z);
+    }
+    log(`Room ${r.room + 1}/${D.rooms.length}: ${k} foes.`, 'combat');
+    setTimeout(() => { if (delvesX.run === r) for (const m of delvesX.alive()) { m.state = 'fight'; m.nextAttackTick = tick + 2 + Math.floor(Math.random() * 3); } }, 1500);
+  },
+  alive() { return delvesX.run ? delvePool.filter(m => m.alive && m.delve) : []; },
+  park() { for (const m of delvePool) { m.alive = false; m.dying = false; m.state = 'dead'; m.respawnAt = 0; m.delve = false; m.mesh.visible = false; } if (action && action.mon && action.mon.delveType) stopAction(); },
+  tick() {
+    const r = delvesX.run; if (!r || delvesX.alive().length) return;
+    if (r.room < DELVES[r.id].rooms.length - 1) { r.room++; delvesX.spawnRoom(); } else delvesX.finish(true);
+  },
+  finish(win) {
+    const r = delvesX.run; if (!r) return; delvesX.run = null; const D = DELVES[r.id];
+    if (win) {
+      const P = player.delves, secs = Math.round((Date.now() - r.start) / 1000);
+      P.clears[r.id]++; if (!P.best[r.id] || secs < P.best[r.id]) P.best[r.id] = secs;
+      addItem(player, 'Coins', D.coins); giveXP('Hitpoints', D.xp / 2); giveXP(r.role === 'healer' ? 'Prayer' : r.role === 'tank' ? 'Defence' : 'Strength', D.xp / 2);
+      log(`${D.name} cleared in ${secs}s! +${D.coins} coins. (${P.clears[r.id]} clears)`, 'loot', '#ffd700');
+    } else log(`The delve is over. ${D.name} will reset.`, 'warn');
+    delvesX.park(); markDirty();
+    const back = player.instanceReturn || { x: -50, z: -72 };
+    setTimeout(() => { if (!delvesX.run && inInstance(pm.mesh.position.x) && pm.mesh.position.z < -340) travelTo(back.x, back.z); }, win ? 1500 : 10);
+  },
+  script() {
+    const say = t => [['npc', t]], P = player.delves;
+    const opts = Object.entries(DELVES).map(([id, D]) => [`${D.name} (level ${D.level}+, ${D.rooms.length} rooms, cleared ${P.clears[id]}x${P.best[id] ? `, best ${P.best[id]}s` : ''})`, [{ choose: [...Object.entries(ROLES).map(([rid, R]) => [`Go in as ${R.name}. ${R.desc}`, [{ run: () => delvesX.enter(id, rid) ? [] : say('Not now. Finish what you are doing first.') }]]), ['Never mind.', []]] }]]);
+    opts.push(['Goodbye.', []]);
+    return [['npc', 'Corvin, delvemaster. Delves are made for three. Pick your role and two companions fill the rest. Each room holds a few foes; clear them all to win.'], { choose: opts }];
+  }
+};
+EXT.delves = delvesX;
+extTalk.delves = { face: '🕯️', talk: () => delvesX.script() };
+extTick.push(() => {
+  const r = delvesX.run; if (!r) return;
+  if (!inInstance(pm.mesh.position.x) || pm.mesh.position.z > -340) return delvesX.finish(false);
+  const fx = roleFx(r.role); if (player.hp > 0 && player.hp < player.maxHp && tick % 3 === 0) player.hp = Math.min(player.maxHp, player.hp + fx.regen);
+  delvesX.tick();
+});
+extIncoming.push(dmg => delvesX.run ? Math.max(1, Math.round(dmg * (1 - roleFx(delvesX.run.role).red))) : dmg);
+extSwing.push((mon, swings) => { if (delvesX.run && mon.delve) { const d = roleFx(delvesX.run.role).dmg; for (const s of swings) s.dmg = (s.dmg || 0) + d; } });
+extDeath.push(() => { if (delvesX.run) delvesX.finish(false); });
 // Self-cast Path skills (no target needed). Returns true when handled.
 function pathSelfSkill(id, cd) {
   if (id === 'wall') { buffs.wallUntil = tick + 7; log('Stalwart Wall! (60% less damage)', 'combat'); }

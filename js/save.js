@@ -18,12 +18,13 @@ import { normalizeQuirks } from './quirks.js';
 import { normalizeWrits } from './writs.js';
 import { normalizeStill } from './stillwatch.js';
 import { normalizePath } from './paths.js';
+import { normalizeDelves } from './delves.js';
 
 export const SAVE_VERSION = 16;
 export const POS_LIMIT = 146; // world half-size (150) minus a margin
 const KEY = 'gielinor3d';
 // Wanderer's Horizons (v15+): extra player fields saved and loaded as-is (normalized in migrateSave).
-export const EXTRA_KEYS = ['tongue', 'quirks', 'writs', 'still', 'path'];
+export const EXTRA_KEYS = ['tongue', 'quirks', 'writs', 'still', 'path', 'delves'];
 
 export function getSaveData(skills, player, playerMesh) {
   return JSON.stringify({
@@ -188,6 +189,7 @@ export function migrateSave(saved) {
   p.still = normalizeStill(p.still);
   // v16 (Wanderer's Horizons, phase 7): Combat Paths, Delves of Three, Stable Codex.
   p.path = normalizePath(p.path);
+  p.delves = normalizeDelves(p.delves);
   if (fromVersion < 16) notes.push('New: Wanderer\'s Horizons part 2. Combat Paths, Delves of Three and the Stable Codex. See Settings → What\'s new.');
   if (fromVersion < 15) notes.push('New: Wanderer\'s Horizons part 1. Silver Tongue checks, Quirks, Daily Writs and Stillwatch. See Settings → What\'s new.');
   if (fromVersion < 14) notes.push('New: Hearth & Arena. Deedwarden Oswin behind Brightwater sells a Hearthstead deed. See Settings → What\'s new.');
