@@ -13,17 +13,32 @@ export const FLOW = {
   dodgeDist: 4.2
 };
 
-export function createFlow() { return { links: 0, lastTick: -99, best: 0, dodgeReadyAt: 0, iframeUntil: 0 }; }
+export function createFlow() { return { links: 0, lastTick: -99, best: 0, dodgeReadyAt: 0, iframeUntil: 0, used: [] }; }
+// Finisher by style: melee bleeds, ranged pierces armour, magic chains to a nearby foe.
+export const FINISHER = { melee: { name: 'Bleeding Finisher', bleed: 0.12, ticks: 5 }, ranged: { name: 'Piercing Finisher', acc: 0.5, dmg: 0.25 }, magic: { name: 'Chain Finisher', chain: 0.6, range: 6 } };
 
 // Called when a queued combat skill actually fires. Returns { bonus, finisher, links }.
-export function flowOnSkillHit(f, tick) {
-  f.links = (tick - f.lastTick <= FLOW.windowTicks) ? f.links + 1 : 1;
+// Links only count with a skill not already in the chain; repeating one holds the chain (repeat: true).
+export function flowOnSkillHit(f, tick, id = null) {
+  const live = tick - f.lastTick <= FLOW.windowTicks && f.links > 0;
+  if (!live) f.used = [];
+  if (live && id && (f.used || []).includes(id)) { f.lastTick = tick; return { bonus: (f.links - 1) * FLOW.perLink, finisher: false, links: f.links, repeat: true }; }
+  f.links = live ? f.links + 1 : 1;
+  f.used = [...(live ? f.used || [] : []), id].filter(Boolean);
   f.lastTick = tick;
   if (f.links > f.best) f.best = f.links;
   const finisher = f.links >= FLOW.maxLinks;
   const out = { bonus: (f.links - 1) * FLOW.perLink, finisher, links: f.links };
-  if (finisher) f.links = 0;
+  if (finisher) { f.links = 0; f.used = []; }
   return out;
+}
+// Perfect dodge: rolling through an attack adds a link (never fires the finisher by itself).
+export function flowPerfectDodge(f, tick) {
+  const live = tick - f.lastTick <= FLOW.windowTicks + 2;
+  f.links = Math.min(FLOW.maxLinks - 1, (live ? f.links : 0) + 1); f.lastTick = tick;
+  if (!live) f.used = [];
+  if (f.links > f.best) f.best = f.links;
+  return f.links;
 }
 export function flowDecay(f, tick) { if (f.links && tick - f.lastTick > FLOW.windowTicks) f.links = 0; }
 

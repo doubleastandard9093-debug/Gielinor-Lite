@@ -57,7 +57,7 @@ import { createCards } from './cards.js';
 let sailing = null; // Sails of Sarim runtime (set up after the player loads)
 import { CALLINGS, CHAPTERS, ENDINGS, normalizeSaga, currentChapter, sagaXpBonus, objNeed, endingTone } from './saga.js';
 import { STEEDS, steedById, normalizeSteeds, grantSteeds, buildSteed, buildBulwarkArmor, poseSteed, ROAD_BONUS, BULWARK } from './steeds.js';
-import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW } from './flow.js';
+import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW, FINISHER, flowPerfectDodge } from './flow.js';
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from './save.js';
 
 // ---------------------------------------------------------------------------
@@ -745,9 +745,16 @@ function magicKit(special, spell, mon, res, now) {
     if (gfx.quality !== 'low') burst('hit', mp.x, mp.y + 2, mp.z, 18);
   }
   // Flow: Magic skills chain like the others.
-  const fl = flowOnSkillHit(flow, tick);
+  const fl = flowOnSkillHit(flow, tick, special);
+  if (fl.repeat) log('Flow holds: use a different skill to add a link.', 'combat');
   if (fl.bonus) extra = Math.floor(extra * (1 + fl.bonus));
-  if (fl.finisher) { extra += Math.floor(mh * FLOW.finisher); log('Flow Finisher!', 'combat'); if (hud) hud.gain(10); }
+  if (fl.finisher) {
+    extra += Math.floor(mh * FLOW.finisher); log(`${FINISHER.magic.name}!`, 'combat'); if (hud) hud.gain(10);
+    const mp = mon.mesh.position; let best = null, bd = FINISHER.magic.range;
+    for (const m of monsters) { if (m === mon || !m.alive || m.hp <= 0) continue; const d = m.mesh.position.distanceTo(mp); if (d < bd) { bd = d; best = m; } }
+    if (best) { const d = Math.min(best.hp, Math.floor(mh * FINISHER.magic.chain * (0.6 + Math.random() * 0.4))); best.hp -= d; overlays.splat(best, d, now + 400); log(`The spell chains to the ${best.name}!`, 'combat');
+      if (best.state !== 'fight') { best.state = 'fight'; best.nextAttackTick = tick + 1; } if (best.hp <= 0) killMonster(best, now); }
+  }
   if (flow.best > (player.flowBest || 0)) player.flowBest = flow.best;
   if (hud && hud.setFlow) hud.setFlow(fl.finisher ? FLOW.maxLinks : fl.links);
   return extra;
@@ -2080,10 +2087,15 @@ function playerAttack(mon, now) {
   if (special) log(`${abilityById(special).name}!`, 'combat');
   // Flow Strikes: skills landed back to back build a chain; the 3rd link adds a finisher swing.
   if (special) {
-    const fl = flowOnSkillHit(flow, tick);
+    const fl = flowOnSkillHit(flow, tick, special);
+    if (fl.repeat) log('Flow holds: use a different skill to add a link.', 'combat');
     if (fl.bonus) for (const sw of swings) sw.dmg = (sw.dmg || 0) + fl.bonus;
-    if (fl.links > 1 && !fl.finisher) log(`Flow x${fl.links} (+${Math.round(fl.bonus * 100)}% damage)`, 'combat');
-    if (fl.finisher) { swings.push({ ...base, dmg: base.dmg + FLOW.finisher + fl.bonus, acc: base.acc + 0.2 }); log('Flow Finisher!', 'combat'); if (hud) hud.gain(10); }
+    if (fl.links > 1 && !fl.finisher && !fl.repeat) log(`Flow x${fl.links} (+${Math.round(fl.bonus * 100)}% damage)`, 'combat');
+    if (fl.finisher) {
+      const fin = ranged ? FINISHER.ranged : FINISHER.melee;
+      swings.push({ ...base, dmg: base.dmg + FLOW.finisher + fl.bonus + (fin.dmg || 0), acc: base.acc + 0.2 + (fin.acc || 0), finisher: ranged ? 'pierce' : 'bleed' });
+      log(`${fin.name}!`, 'combat'); if (hud) hud.gain(10);
+    }
     if (flow.best > (player.flowBest || 0)) player.flowBest = flow.best;
     if (hud && hud.setFlow) hud.setFlow(fl.finisher ? FLOW.maxLinks : fl.links);
   }
@@ -2100,6 +2112,7 @@ function playerAttack(mon, now) {
       if (d > 0) { const fire = () => { burst('hit', mp.x, hy, mp.z, 12 + Math.min(24, d * 2)); if (k > 0.5) burst('dust', mp.x, mp.y, mp.z, 5); shakeRig(rig, 0.35 + 0.45 * k); };
         if (i) setTimeout(fire, i * 150); else fire(); }
       else burst('dust', mp.x, mp.y, mp.z, 6); }
+    if (mods.finisher === 'bleed' && d > 0 && mon.hp > 0) { mon.venom = { dmg: Math.max(3, Math.round(d * FINISHER.melee.bleed)), next: 2, left: FINISHER.melee.ticks }; log(`The ${mon.name} bleeds!`, 'combat'); }
     if (mods.procs && mods.procs.includes('bigHit')) log(`${ITEMS[player.equipment.weapon].special.split(':')[0]}!`, 'combat');
     // Unique weapon specials
     const pr = weaponProcs(player, d);
@@ -2182,7 +2195,12 @@ function bossEvents(m, now) {
     } else log(e.text, e.kind === 'telegraph' ? 'warn' : 'combat');
   }
 }
-function onPerfectDodge() {}
+function onPerfectDodge() {
+  const n = flowPerfectDodge(flow, tick);
+  log(`Perfect dodge! Flow x${n}.`, 'combat');
+  if (hud && hud.setFlow) hud.setFlow(n);
+  if (flow.best > (player.flowBest || 0)) player.flowBest = flow.best;
+}
 function monsterAttack(mon, now) {
   const raw = rollMonsterHit(mon, player, skills);
   if (mon.ranged) enemyArrow = { from: mon.mesh.position.clone().setY(1.3), t: 0 };
@@ -2190,7 +2208,7 @@ function monsterAttack(mon, now) {
   if (mon.bm && dmg > 0) dmg = Math.round(dmg * bossMech.prayerMult(mon, id => player.activePrayers.includes(id)));
   if (dmg > 0 && mon.witherUntil > tick) dmg = Math.max(1, Math.floor(dmg * 0.7)); // Withering Hex
   if (dmg > 0 && performance.now() < steedState.bulwarkUntil) dmg = Math.max(1, Math.floor(dmg * (1 - BULWARK.reduce)));
-  if (dmg > 0 && dodging(flow, now)) { dmg = 0; overlays.splat(playerEnt, 0, now); log('Dodged!', 'combat'); return; }
+  if (dmg > 0 && dodging(flow, now)) { dmg = 0; overlays.splat(playerEnt, 0, now); log('Dodged!', 'combat'); if (!flow.perfectAt || now - flow.perfectAt > 1500) { flow.perfectAt = now; onPerfectDodge(); } return; }
   if (dmg > 0 && Math.random() < perk(skills, 'Defence', 'block')) { dmg = 0; log('Parry: you block the attack!', 'combat'); }
   // Retribution: reflect some damage back.
   const refl = dmg > 0 ? Math.floor(dmg * Math.min(0.6, perk(skills, 'Defence', 'reflect') + (gearEffects(player).reflect || 0))) : 0;
