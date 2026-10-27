@@ -63,6 +63,7 @@ import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW, FINISHE
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from '../../js/save.js';
 import { CHECKS, normalizeTongue, checkLabel, resolveCheck, openQuestCheck, QUEST_PRIZE } from '../../js/tongue.js';
 import { QUEST_DATA } from '../../js/quests2.js';
+import { QUIRKS, QUIRK_MAX, REMEDY, FIRE_RE, quirkById, normalizeQuirks, dueQuirk, has as hasQuirk, quirkXp, quirkIncoming } from '../../js/quirks.js';
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -133,10 +134,14 @@ const fires = [];
 function refreshMaxHp() {
   recalcMaxHp(player, skills, perk(skills, 'Hitpoints', 'maxHp') + questFx(player, 'maxHp'));
 }
+// ---- Wanderer's Horizons update (WoW / Outer Worlds / TERA inspired): shared hooks. Each feature registers here. ----
+const extTalk = {}, extTick = [], extSwing = [], extHit = [], extIncoming = [], extKill = [], extFrame = [], extXp = [], extDeath = [];
+const EXT = { extTalk, extTick, extSwing, extHit, extIncoming, extKill, extFrame, extXp, extDeath };
 function giveXP(skill, amount) {
   if (amount <= 0) return;
   amount *= xpMultiplier(player, skill); // quest + gear XP bonuses
   amount *= 1 + companionXpBonus(player, skill) + standingXp(skill) + sagaXpBonus(player, skill) + houseXpBonus(player.house, skill); // Sworn Companion bond and faction Standing perks
+  for (const f of extXp) amount *= f(skill);
   addXP(skills, skill, amount, (s, l, old) => {
     const perks = perksBetween(s, old, l);
     ui.levelUp(s, SKILL_ICONS[s], l, perks);
@@ -1589,8 +1594,6 @@ player.house = normalizeHouse(player.house);
 player.arena = normalizeArena(player.arena);
 player.wilds = normalizeWilds(player.wilds);
 // ---- Wanderer's Horizons update (WoW / Outer Worlds / TERA inspired): shared hooks. Each feature registers here. ----
-const extTalk = {}, extTick = [], extSwing = [], extHit = [], extIncoming = [], extKill = [], extFrame = [];
-const EXT = { extTalk, extTick, extSwing, extHit, extIncoming, extKill, extFrame };
 // ---- Silver Tongue: Persuade / Lie / Intimidate checks from your skills and tone history ----
 player.tongue = normalizeTongue(player.tongue);
 // Builds a dialogue option for a check. onPass/onFail return script arrays.
@@ -1609,6 +1612,51 @@ function tongueWrap(ent, script) {
     () => [['npc', 'Nice try. I wasn\'t born yesterday.']]), ['Never mind.', []]] }];
 }
 EXT.tongueOpt = tongueOpt;
+// ---- Scars and Quirks: repeated habits offer a Quirk (a downside plus a boon). Remove one with Apothecary Ysolde. ----
+player.quirks = normalizeQuirks(player.quirks);
+const quirksX = {
+  max: QUIRK_MAX,
+  bump(k, n = 1) { const Q = player.quirks; Q.counters[k] = (Q.counters[k] || 0) + n; },
+  offerDue() {
+    const Q = player.quirks, id = dueQuirk(Q); if (!id) return null; Q.offered = id; const q = quirkById(id); markDirty();
+    log(`A Quirk is on offer: ${q.name}. Talk to the prompt or open it from Apothecary Ysolde in Brightwater.`, 'game', '#e0b0ff');
+    if (!monsters.some(m => m.alive && m.state === 'fight')) ui.dialogue(`Quirk: ${q.name}`, '🩹', quirksX.offerScript(), () => markDirty());
+    return id;
+  },
+  offerScript() {
+    const Q = player.quirks, q = quirkById(Q.offered); if (!q) return [['npc', 'No quirk is on offer right now.']];
+    return [['npc', `${q.why} Take the ${q.name} quirk? Downside: ${q.down}. Boon: ${q.up}. You hold ${Q.held.length}/${QUIRK_MAX}.`],
+      { choose: [[`Accept ${q.name}.`, [{ run: () => { quirksX.accept(q.id); return [['npc', `${q.name} is part of you now.`]]; } }]], ['Decline.', [{ run: () => { quirksX.decline(q.id); return [['npc', 'So be it. It won\'t be offered again.']]; } }]]] }];
+  },
+  accept(id) { const Q = player.quirks; if (Q.held.length >= QUIRK_MAX || Q.held.includes(id)) return false; Q.held.push(id); Q.offered = null; log(`Quirk gained: ${quirkById(id).name}.`, 'loot', '#e0b0ff'); markDirty(); return true; },
+  decline(id) { const Q = player.quirks; if (!Q.declined.includes(id)) Q.declined.push(id); Q.offered = null; markDirty(); },
+  remove(id) { const Q = player.quirks; Q.held = Q.held.filter(x => x !== id); Q.removed++; Q.declined.push(id); markDirty(); }
+};
+EXT.quirks = quirksX;
+extXp.push(skill => 1 + quirkXp(player.quirks, skill));
+extIncoming.push((dmg, mon) => { if (FIRE_RE.test(mon.name || '')) quirksX.bump('fire', dmg); return quirkIncoming(player.quirks, dmg, mon.name, player.hp / player.maxHp); });
+extDeath.push(() => quirksX.bump('deaths'));
+extKill.push(mon => { if (!isRangedWeapon(player.equipment.weapon) && !/staff|wand/i.test(player.equipment.weapon || '')) quirksX.bump('meleeKills'); });
+extSwing.push((mon, swings, ranged) => { const Q = player.quirks; if (ranged && hasQuirk(Q, 'brawler')) for (const s of swings) s.acc = (s.acc || 0) - 0.1; if (!ranged && hasQuirk(Q, 'brawler')) for (const s of swings) s.dmg = (s.dmg || 0) + 0.05; });
+extTick.push(() => {
+  const Q = player.quirks, p = pm.mesh.position;
+  if (player.hp > 0 && player.hp < player.maxHp * 0.35) for (const m of monsters) if (m.alive && m.state === 'fight' && !m.fledFrom && Math.hypot(m.mesh.position.x - p.x, m.mesh.position.z - p.z) > 10) { m.fledFrom = true; quirksX.bump('flee'); }
+  for (const m of monsters) if (m.fledFrom && m.state !== 'fight') m.fledFrom = false;
+  if (hasQuirk(Q, 'skittish') && player.settings.run && pm.moving && player.runEnergy < 100) player.runEnergy = Math.min(100, player.runEnergy + 0.35);
+  if (tick % 10 === 0) quirksX.offerDue();
+});
+extTalk.quirks = { face: '⚗️', talk() {
+  const Q = player.quirks, say = t => [['npc', t]], opts = [];
+  if (Q.offered) opts.push(['About the quirk on offer...', quirksX.offerScript()]);
+  if (Q.held.length) opts.push([`Brew a remedy (Herblore ${REMEDY.herblore}, ${REMEDY.gold} coins, ${REMEDY.items.map(([i, n]) => n + ' ' + i).join(', ')}).`, [{ choose: [...Q.held.map(id => [`Remove ${quirkById(id).name}.`, [{ run: () => {
+    if (skills.Herblore.level < REMEDY.herblore) return say(`You need Herblore ${REMEDY.herblore} to help me brew it.`);
+    const e = payCost(REMEDY.gold, REMEDY.items); if (e) return say(e);
+    quirksX.remove(id); giveXP('Herblore', REMEDY.xp); return say(`Drink up. ${quirkById(id).name} fades.`);
+  } }]]), ['Never mind.', []]] }]]);
+  opts.push(['Goodbye.', []]);
+  const list = Q.held.length ? Q.held.map(id => { const q = quirkById(id); return `${q.name} (${q.down}; ${q.up})`; }).join('; ') : 'none';
+  return [['npc', `Ysolde, apothecary. Habits leave marks: I can see yours. Quirks held (${Q.held.length}/${QUIRK_MAX}): ${list}.`], { choose: opts }];
+} };
 // ---- Contested Wilds (Phase 5): banners in the scorched wilderness, contested by Ashen Company bots ----
 const wilds = { flags: null, raiders: [], prog: [], lastRaid: 0, lastPay: 0 };
 const BANNER_COL = { you: 0x2a5ad0, rival: 0xb02a1a };
@@ -2432,6 +2480,7 @@ function monsterAttack(mon, now) {
 }
 
 function playerDied() {
+  for (const f of extDeath) f();
   if (duel) { arenaResult(false); player.hp = player.maxHp; return; }
   log('Oh dear, you are dead!', 'warn');
   ui.banner('<div class="lu-icon">💀</div><div><b>Oh dear, you are dead!</b><br>You wake up in town with full health.</div>');

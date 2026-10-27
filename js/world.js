@@ -1551,6 +1551,7 @@ export function createWorld(scene) {
       { id: 'corvane', name: 'Huntmaster Corvane', x: -70, z: 58, look: { body: 0x4a3a2a, legs: 0x2a2a22, hat: 0x3a2a1a, hatW: 0.5, hatH: 0.1, beard: 0x5a4a3a }, flag: { sea: 'tasks' } },
       { id: 'oswin', name: 'Deedwarden Oswin', x: -14, z: 20, look: { body: 0x5a4a6a, legs: 0x2a2a3a, hat: 0x3a2a4a, hatH: 0.2 }, flag: { hearth: 'agent' } },
       { id: 'sefa', name: 'Arenamaster Sefa', x: 128, z: -34, look: { body: 0x7a2a2a, legs: 0x3a2a1a, hat: 0xb8902a, hatH: 0.12 }, flag: { arena: 'master' } },
+      { id: 'ysolde', name: 'Apothecary Ysolde', x: 9, z: 18, look: { body: 0x4a6a5a, legs: 0x2a3a2a, apron: 0xd0c8a0, hat: 0x2a4a3a, hatH: 0.14 }, flag: { ext: 'quirks' } },
       { id: 'sorrel', name: 'Mama Sorrel', x: -88, z: 54, look: { body: 0x3a5a2a, legs: 0x2a2a1a, hat: 0x5a3a2a, hatW: 0.6, hatH: 0.12 }, flag: { sea: 'hexer' } }
     ];
     for (const c of SARIM) {

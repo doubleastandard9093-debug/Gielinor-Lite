@@ -17,7 +17,7 @@ const [,,path='',tier='low',sz='390x844',savef]=process.argv;const [w,h]=sz.spli
   o.tonguePass=P.tongue.done['q:hilda_pie']==='pass'&&P.gold>g0;o.tongueOnce=!pick(g.tongueWrap({npc:'hilda'},[]),/Persuade/);
   // Quirks
   if(E.quirks){const Q=E.quirks;Q.bump('deaths',99);Q.offerDue();const off=P.quirks.offered;o.quirkOffer=!!off;
-   if(off){Q.accept(off);o.quirkHeld=P.quirks.held.includes(off);o.quirkMax=Q.max;}}
+   if(off){Q.accept(off);o.quirkHeld=P.quirks.held.includes(off);o.quirkMax=Q.max;}o.ysolde=!!g.nodes.find(n=>n.ext==='quirks')&&E.extTalk.quirks.talk().length===2;}
   // Daily Writs
   if(E.writs){const W=E.writs;W.roll();o.writs=P.writs.daily.length;const wr=P.writs.daily[0];const r0=JSON.stringify(P.rep);
    W.progress(wr.kind,wr.target,wr.n);o.writDone=P.writs.daily[0].done===true;o.writRep=JSON.stringify(P.rep)!==r0;o.weekly=!!P.writs.weekly;}
@@ -29,6 +29,6 @@ const [,,path='',tier='low',sz='390x844',savef]=process.argv;const [w,h]=sz.spli
   o.notes=(await import('/js/save.js')).applySaveData.lastNotes.length;o.hp=P.hp>0;o.skillsKept=g.skills.Attack.level;
   return o;});
  const hi=req.filter(u=>/textures\/|\.webp|detail_/.test(u));
- const ok=r.tongueOpt&&r.tonguePass&&r.tongueOnce&&r.ver>=15&&r.saved&&(r.quirkOffer!==false)&&(r.quirkHeld!==false)&&(r.writs===undefined||(r.writs===3&&r.writDone&&r.writRep&&r.weekly))&&(r.stillReady===undefined||(r.stillReady&&r.stillOn&&r.timeScale<0.5&&(tier!=='low'||r.stillHigh===0)))&&(tier!=='low'||hi.length===0)&&!errs.length;
+ const ok=r.tongueOpt&&r.tonguePass&&r.tongueOnce&&r.ver>=15&&r.saved&&(r.quirkOffer!==false)&&(r.quirkHeld!==false)&&(r.ysolde!==false)&&(r.writs===undefined||(r.writs===3&&r.writDone&&r.writRep&&r.weekly))&&(r.stillReady===undefined||(r.stillReady&&r.stillOn&&r.timeScale<0.5&&(tier!=='low'||r.stillHigh===0)))&&(tier!=='low'||hi.length===0)&&!errs.length;
  console.log(JSON.stringify({ok,tier,path,sz,r,highAssetRequests:hi.length,errs:errs.slice(0,4)}));
  await b.close();})();
