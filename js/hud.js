@@ -106,7 +106,7 @@ export function createHud({ player, skills, monsters, getTarget, levelColor, com
   const mk = (id, label, tip) => `<button data-q="${id}" title="${tip}" style="width:52px;height:52px;border-radius:50%;border:2px solid #c8a040;background:radial-gradient(#5a4632,#2a2018);color:#ffe9b0;font:700 12px sans-serif;opacity:.88">${label}</button>`;
   function setQuick(opts) {
     const html = opts.sea ? mk('port', '◀Port', 'Fire port broadside (Z)') + mk('star', 'Stbd▶', 'Fire starboard broadside (X)') + mk('helm', opts.sailing ? 'Furl' : 'Sail', 'Set or strike sail (W / S)') :
-      (opts.dig ? mk('dig', 'Dig', 'Dig for buried treasure') : '') + mk('dodge', 'Roll', 'Dodge-roll (Space)') + (opts.ride ? mk('ride', opts.riding ? 'Off' : 'Ride', 'Ride or dismount (G)') : '') + (opts.shift ? mk('shift', 'Shift', 'Bulwark shift (F)') : '') + (opts.bonds ? mk('bonds', 'Bonds', 'Companions, standing, errands (B)') : '');
+      (opts.dig ? mk('dig', 'Dig', 'Dig for buried treasure') : '') + mk('dodge', 'Roll', 'Dodge-roll (Space)') + (opts.ride ? mk('ride', opts.riding ? 'Off' : 'Ride', 'Ride or dismount (G)') : '') + (opts.shift ? mk('shift', 'Shift', 'Bulwark shift (F)') : '') + (opts.bonds ? mk('bonds', 'Bonds', 'Companions, standing, errands (B)') : '') + (opts.extra || []).map(e => mk(...e)).join('');
     if (qb._h !== html) { qb._h = html; qb.innerHTML = html; layoutQuick(); }
   }
   document.body.appendChild(qb);

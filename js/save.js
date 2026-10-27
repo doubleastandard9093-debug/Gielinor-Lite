@@ -16,12 +16,13 @@ import { inInstance } from './instances.js';
 import { normalizeTongue } from './tongue.js';
 import { normalizeQuirks } from './quirks.js';
 import { normalizeWrits } from './writs.js';
+import { normalizeStill } from './stillwatch.js';
 
 export const SAVE_VERSION = 15;
 export const POS_LIMIT = 146; // world half-size (150) minus a margin
 const KEY = 'gielinor3d';
 // Wanderer's Horizons (v15+): extra player fields saved and loaded as-is (normalized in migrateSave).
-export const EXTRA_KEYS = ['tongue', 'quirks', 'writs'];
+export const EXTRA_KEYS = ['tongue', 'quirks', 'writs', 'still'];
 
 export function getSaveData(skills, player, playerMesh) {
   return JSON.stringify({
@@ -183,6 +184,7 @@ export function migrateSave(saved) {
   p.tongue = normalizeTongue(p.tongue);
   p.quirks = normalizeQuirks(p.quirks);
   p.writs = normalizeWrits(p.writs);
+  p.still = normalizeStill(p.still);
   if (fromVersion < 15) notes.push('New: Wanderer\'s Horizons part 1. Silver Tongue checks, Quirks, Daily Writs and Stillwatch. See Settings → What\'s new.');
   if (fromVersion < 14) notes.push('New: Hearth & Arena. Deedwarden Oswin behind Brightwater sells a Hearthstead deed. See Settings → What\'s new.');
   if (fromVersion < 12) notes.push('New: Sails of Sarim. See the Shipwright on the Port Sarim docks for a ship, then sail the Sound. Cutlasses, flintlocks, Hexcraft and card tables too. Press M for the world map.');

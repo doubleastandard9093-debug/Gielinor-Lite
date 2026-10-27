@@ -65,6 +65,7 @@ import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW, FINISHE
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from './save.js';
 import { CHECKS, normalizeTongue, checkLabel, resolveCheck, openQuestCheck, QUEST_PRIZE } from './tongue.js';
 import { QUEST_DATA } from './quests2.js';
+import { STILL, SPOT, normalizeStill, addFocus } from './stillwatch.js';
 import { WRIT_FACTIONS, WRIT_REWARD, normalizeWrits, maybeRoll, writProgress, writLabel } from './writs.js';
 import { QUIRKS, QUIRK_MAX, REMEDY, FIRE_RE, quirkById, normalizeQuirks, dueQuirk, has as hasQuirk, quirkXp, quirkIncoming } from './quirks.js';
 
@@ -535,6 +536,7 @@ const inputCtl = setupInput(renderer.domElement, {
     else if (act === 'ride') toggleRide();
     else if (act === 'shift') steedShift();
     else if (act === 'bonds') bondsUI.toggle();
+    else if (act === 'stillwatch') stillX.trigger();
     else if (act === 'map') minimap.toggleMap();
     else if (act === 'firePort') sailing.fire('port');
     else if (act === 'fireStar') sailing.fire('star');
@@ -615,7 +617,7 @@ hud = createHud({ player, skills, monsters, levelColor, combatLevelOf: () => com
   getTarget: () => (action && action.kind === 'attack' && action.mon && action.mon.alive ? action.mon : null) });
 // Words of Choice: every tone you pick is remembered (companions and factions react to it).
 ui.onTone(tone => { player.alignment = player.alignment || {}; player.alignment[tone] = (player.alignment[tone] || 0) + 1; const m = compTalking ? null : toneReaction(player, tone, Date.now()); if (m) log(m, 'game'); markDirty(); });
-hud.onQuick = q => { if (q === 'dig') digHere(); else if (q === 'port' || q === 'star') sailing.fire(q); else if (q === 'helm') sailing.S.throttle = sailing.S.throttle ? 0 : 1; else if (q === 'dodge') doDodge(); else if (q === 'ride') toggleRide(); else if (q === 'shift') steedShift(); else if (q === 'bonds') bondsUI.toggle(); };
+hud.onQuick = q => { if (q === 'dig') digHere(); else if (q === 'port' || q === 'star') sailing.fire(q); else if (q === 'helm') sailing.S.throttle = sailing.S.throttle ? 0 : 1; else if (q === 'dodge') doDodge(); else if (q === 'ride') toggleRide(); else if (q === 'shift') steedShift(); else if (q === 'bonds') bondsUI.toggle(); else if (EXT.quick && EXT.quick[q]) EXT.quick[q](); };
 hud.setQuick({});
 
 // ---------------------------------------------------------------------------
@@ -762,6 +764,7 @@ function magicKit(special, spell, mon, res, now) {
   if (fl.bonus) extra = Math.floor(extra * (1 + fl.bonus));
   if (fl.finisher) {
     extra += Math.floor(mh * FLOW.finisher); log(`${FINISHER.magic.name}!`, 'combat'); if (hud) hud.gain(10);
+    stillX.fill(STILL.finisher);
     const mp = mon.mesh.position; let best = null, bd = FINISHER.magic.range;
     for (const m of monsters) { if (m === mon || !m.alive || m.hp <= 0) continue; const d = m.mesh.position.distanceTo(mp); if (d < bd) { bd = d; best = m; } }
     if (best) { const d = Math.min(best.hp, Math.floor(mh * FINISHER.magic.chain * (0.6 + Math.random() * 0.4))); best.hp -= d; overlays.splat(best, d, now + 400); log(`The spell chains to the ${best.name}!`, 'combat');
@@ -994,10 +997,16 @@ function segDist(px, pz, x1, z1, x2, z2) {
   return Math.hypot(px - x1 - vx * t, pz - z1 - vz * t);
 }
 function riding() { return !!steedState.mesh; }
+// Extra quick buttons from the Wanderer's Horizons features: [id, label, tip].
+function quickExtras() {
+  const x = [];
+  if (player.still && (player.still.meter >= STILL.max || stillX.active())) x.push(['still', stillX.active() ? SPOT[player.still.spot].icon + SPOT[player.still.spot].name : 'Still', 'Stillwatch: slow the world (V); tap again to change aim']);
+  return x;
+}
 function refreshQuick() {
   const st = player.steeds || { owned: [] };
   if (hud && sailing && sailing.atSea) { hud.setQuick({ sea: true, sailing: sailing.S.throttle > 0 }); return; }
-  if (hud) hud.setQuick({ dig: nearChart(), ride: st.owned.length > 0, riding: riding(), shift: riding() && steedById(steedState.id).shift, bonds: COMPANIONS.some(c => player.companions && player.companions[c.id] && player.companions[c.id].recruited) || !!(player.saga && player.saga.calling) });
+  if (hud) hud.setQuick({ dig: nearChart(), ride: st.owned.length > 0, riding: riding(), shift: riding() && steedById(steedState.id).shift, bonds: COMPANIONS.some(c => player.companions && player.companions[c.id] && player.companions[c.id].recruited) || !!(player.saga && player.saga.calling), extra: quickExtras() });
 }
 function mount(id) {
   const def = steedById(id); if (!def) return;
@@ -1687,6 +1696,41 @@ const writsX = {
   }
 };
 EXT.writs = writsX;
+// ---- Stillwatch: focus meter -> 4 s of slowed world and weak-spot hits. Low: plain tint; High adds desaturation. ----
+player.still = normalizeStill(player.still);
+const stillX = {
+  until: 0, boss: false, el: null,
+  fill(n) { const full = addFocus(player.still, n); if (full && !stillX.told) { stillX.told = true; log('Stillwatch is ready (V or the Still button).', 'combat', '#9fe0ff'); } refreshQuick(); return full; },
+  ready() { return player.still.meter >= STILL.max; },
+  active(now = performance.now()) { return now < stillX.until; },
+  scale(now = performance.now()) { return stillX.active(now) ? STILL.scale : 1; },
+  trigger(now = performance.now()) {
+    if (stillX.active(now)) { const s = STILL.spots; player.still.spot = s[(s.indexOf(player.still.spot) + 1) % s.length]; log(`Stillwatch aim: ${SPOT[player.still.spot].name} (${SPOT[player.still.spot].desc}).`, 'combat'); refreshQuick(); return true; }
+    if (!stillX.ready()) { log(`Stillwatch focus ${Math.floor(player.still.meter)}/${STILL.max}: land Flow finishers and perfect dodges.`, 'warn'); return false; }
+    const boss = monsters.some(m => m.alive && m.state === 'fight' && (m.boss || m.bm));
+    stillX.until = now + (boss ? STILL.bossMs : STILL.ms); stillX.told = false; player.still.meter = 0; player.still.uses++;
+    log(`Stillwatch! The world slows${boss ? ' (the boss resists: shorter window)' : ''}. Aim: ${SPOT[player.still.spot].name}. Tap again to change.`, 'combat', '#9fe0ff');
+    stillX.tint(true); refreshQuick(); markDirty(); return true;
+  },
+  tint(on) {
+    if (!stillX.el) { const d = document.createElement('div'); d.id = 'stillwatchTint'; d.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5;background:rgba(80,140,200,.16);box-shadow:inset 0 0 80px rgba(120,190,255,.45);display:none;font:700 15px sans-serif;color:#cfefff;text-align:center;padding-top:70px;letter-spacing:3px'; d.textContent = 'STILLWATCH'; document.body.appendChild(d); stillX.el = d; }
+    stillX.el.style.display = on ? 'block' : 'none';
+    const high = on && gfx.quality !== 'low'; stillX.el.dataset.high = high ? '1' : '0';
+    renderer.domElement.style.filter = high ? 'saturate(.35) contrast(1.08)' : '';
+  }
+};
+EXT.still = stillX;
+extTick.push(now => {
+  if (stillX.active(now)) for (const m of monsters) if (m.alive && m.state === 'fight') { m.swAcc = (m.swAcc || 0) + (1 - STILL.scale); while (m.swAcc >= 1) { m.swAcc--; m.nextAttackTick = (m.nextAttackTick || tick) + 1; } }
+  else if (stillX.el && stillX.el.style.display === 'block') { stillX.tint(false); refreshQuick(); }
+});
+extSwing.push((mon, swings) => {
+  if (!stillX.active()) return; const sp = SPOT[player.still.spot];
+  if (player.still.spot === 'head') for (const s of swings) { s.dmg = (s.dmg || 0) + sp.dmg; s.acc = (s.acc || 0) + sp.acc; }
+  else if (player.still.spot === 'legs') mon.nextAttackTick = Math.max(mon.nextAttackTick || 0, tick + sp.slowTicks + (mon.speed || 4));
+  else mon.witherUntil = Math.max(mon.witherUntil || 0, tick + sp.weakTicks);
+});
+EXT.quick = EXT.quick || {}; EXT.quick.still = () => stillX.trigger();
 extKill.push(mon => writsX.progress('kill', mon.name));
 extXp.push(skill => { if (player.writs.daily.length) writsX.progress('act', skill); return 1; });
 extTick.push(() => { player.writs.playTicks++; if (tick % 100 === 5) { const r = writsX.roll(false); if (r === 'daily') log('New Daily Writs are up on Writkeeper Maelis\'s board in Brightwater.', 'game'); } });
@@ -2394,6 +2438,7 @@ function playerAttack(mon, now) {
       const fin = ranged ? FINISHER.ranged : FINISHER.melee;
       swings.push({ ...base, dmg: base.dmg + FLOW.finisher + fl.bonus + (fin.dmg || 0), acc: base.acc + 0.2 + (fin.acc || 0), finisher: ranged ? 'pierce' : 'bleed' });
       log(`${fin.name}!`, 'combat'); if (hud) hud.gain(10);
+      stillX.fill(STILL.finisher);
     }
     if (flow.best > (player.flowBest || 0)) player.flowBest = flow.best;
     if (hud && hud.setFlow) hud.setFlow(fl.finisher ? FLOW.maxLinks : fl.links);
@@ -2501,6 +2546,7 @@ function bossEvents(m, now) {
   }
 }
 function onPerfectDodge() {
+  if (EXT.still) EXT.still.fill(STILL.perfect);
   const n = flowPerfectDodge(flow, tick);
   log(`Perfect dodge! Flow x${n}.`, 'combat');
   if (hud && hud.setFlow) hud.setFlow(n);
@@ -3086,7 +3132,7 @@ function animate(now) {
   if (frame % 300 === 11) { refreshStanding(true); finishErrands(); }
   if (frame % 30 === 13) refreshQuick();
   if (frame % 30 === 7) { const vm = onVisit(player, pm.mesh.position.x, pm.mesh.position.z); for (const m of vm) log(m, 'game'); if (vm.length) markDirty(); }
-  updateMonsters(dt, now);
+  updateMonsters(dt * stillX.scale(now), now);
   updatePatrols(dt, now);
   updateCompanion(dt);
   updateCharacters(dt, now);
