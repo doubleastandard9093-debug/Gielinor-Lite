@@ -3,6 +3,7 @@ import { makeRng } from './rng.js';
 import { MONSTER_TYPES, AGILITY_COURSES, RUNE_ALTARS, BOUNTIES } from './gameplay.js';
 import { agilityStyle, swingGeom } from './agilityAnim.js';
 import { QUEST_NPCS } from './questnpcs.js';
+import { COMPANIONS } from './companions.js';
 import { addFire } from './vfx.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise, WATER_MESHES } from './gfx.js';
 import { buildHumanoidRig, apronGeo, varyLook, hashStr, contactShadow, plateCharMat, chainCharMat } from './anatomy.js';
@@ -1520,6 +1521,22 @@ export function createWorld(scene) {
     { const m = npcAt(196, 118 + 12, 'pilgrim', 'Pilgrim', { body: 0xd8d0b0, legs: 0x8a8070 }, "I walk from the ruins to the shrine and back, and pray for the lost along the way.");
       m.patrol = [[193, 132], [175, 150], [160, 170], [175, 150]]; m.wander = true; }
     for (const [x, z] of [[-168, -132], [196, 132], [-12, 222], [52, -190], [174, 112]]) nodes.push(createSignpost(x, z));
+  }
+
+  // ---- Sworn Companions (Bonds & Choices): placed last with a free-spot search so nothing else moves ----
+  for (const c of COMPANIONS) {
+    let p = null;
+    for (let i = 0; i < 80 && !p; i++) {
+      const r = 0.5 + i * 0.15, a = i * 2.39996, x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r;
+      if (insideLake(x, z, 1.5) || colliders.some(b => x > b.minX - 0.8 && x < b.maxX + 0.8 && z > b.minZ - 0.8 && z < b.maxZ + 0.8)) continue;
+      if (occupied.some(o => Math.hypot(o.x - x, o.z - z) < Math.min(o.r, 2.5) + 0.6)) continue;
+      p = { x, z };
+    }
+    p = p || { x: c.x, z: c.z };
+    occupied.push({ x: p.x, z: p.z, r: 0.8 });
+    const n = createNpc(p.x, p.z, 'comp_' + c.id, c.name, c.look, p.x + 1, p.z + 1);
+    n.companion = c.id; n.home = { x: p.x, z: p.z }; n.wander = true;
+    nodes.push(n);
   }
 
   // ---- Elevation: keep every town, road, building and work spot level, then lift the land ----

@@ -183,7 +183,7 @@ export function setupUI(settings) {
         dlg.style.display = 'flex';
         return;
       }
-      if (e.run) { e.run(); continue; }
+      if (e.run) { const more = e.run(); if (Array.isArray(more)) dq.unshift(...more); continue; }
       if (e.wheel) {
         // Words of Choice: a dialogue wheel. Each option has a tone (kind, firm, cunning) that companions and factions notice.
         const opts = e.wheel;

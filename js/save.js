@@ -1,3 +1,4 @@
+import { normalizeCompanions } from './companions.js';
 import { normalizeSkills } from './skills.js';
 import { DEFAULT_SETTINGS, INV_SIZE } from './playerState.js';
 import { ITEMS, isTool, STARTER_TOOLS } from './items.js';
@@ -41,7 +42,8 @@ export function getSaveData(skills, player, playerMesh) {
       caveLoot: !!player.caveLoot,
       steeds: normalizeSteeds(player.steeds),
       flowBest: player.flowBest || 0,
-      alignment: player.alignment || {}
+      alignment: player.alignment || {},
+      companions: player.companions || {}, activeCompanion: player.activeCompanion || null, rep: player.rep || {}, errands: player.errands || []
     },
     position: playerMesh ? { x: playerMesh.mesh.position.x, z: playerMesh.mesh.position.z } : null,
     timestamp: Date.now()
@@ -145,6 +147,10 @@ export function migrateSave(saved) {
   if (fromVersion < 9) notes.push('New: Flow Strikes (chain combat skills, dodge-roll with Space) and Shiftsteeds (rides unlocked by Agility 10 and 30, G to ride). See Settings → What\'s new.');
   // v10 (Bonds & Choices): dialogue-wheel tone counts.
   { const a = p.alignment && typeof p.alignment === 'object' ? p.alignment : {}; p.alignment = {}; for (const t of ['kind', 'firm', 'cunning']) p.alignment[t] = Math.max(0, Math.floor(Number(a[t]) || 0)); }
+  p.companions = normalizeCompanions(p.companions);
+  if (!p.activeCompanion || !p.companions[p.activeCompanion] || !p.companions[p.activeCompanion].recruited) p.activeCompanion = null;
+  { const r = p.rep && typeof p.rep === 'object' ? p.rep : {}; p.rep = {}; for (const k of Object.keys(r)) { const v = Math.floor(Number(r[k]) || 0); if (v > 0) p.rep[k] = Math.min(99999, v); } }
+  p.errands = Array.isArray(p.errands) ? p.errands.filter(e => e && typeof e === 'object' && typeof e.id === 'string' && typeof e.comp === 'string').slice(0, 8) : [];
   saved.version = SAVE_VERSION;
   return notes;
 }
@@ -156,7 +162,7 @@ export function applySaveData(data, skills, player, playerMesh) {
     const notes = migrateSave(saved);
     Object.assign(skills, saved.skills);
     const p = saved.player;
-    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints', 'effects', 'poison', 'poisonImmune', 'questCapeLegacy', 'bounties', 'bountiesDone', 'caveLoot', 'steeds', 'flowBest', 'alignment']) {
+    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints', 'effects', 'poison', 'poisonImmune', 'questCapeLegacy', 'bounties', 'bountiesDone', 'caveLoot', 'steeds', 'flowBest', 'alignment', 'companions', 'activeCompanion', 'rep', 'errands']) {
       if (p[k] !== undefined) player[k] = p[k];
     }
     if (p.skillTrees) {

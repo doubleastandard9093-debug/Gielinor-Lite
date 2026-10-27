@@ -41,6 +41,7 @@ import { ABILITIES, abilityById, unlocked as abilityUnlocked, cooldownTicks } fr
 import { QUESTS, questForNpc, questsForNpc, questTalk, onXp, onVisit, questStatus, isDone, onKill, onBury, onPray, NPC_INFO, questPoints, questFx } from '../../js/quests.js';
 import { QUEST_NPCS } from '../../js/questnpcs.js';
 import { createInventoryUI } from '../../js/inventoryUI.js';
+import { COMPANIONS, companionById, normalizeCompanions, companionXpBonus, addBond, toneReaction, assistMax, assistEvery, GIFT_COOLDOWN_MS, BOND_MAX, BOND_PERKS } from '../../js/companions.js';
 import { STEEDS, steedById, normalizeSteeds, grantSteeds, buildSteed, buildBulwarkArmor, poseSteed, ROAD_BONUS, BULWARK } from '../../js/steeds.js';
 import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW } from '../../js/flow.js';
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from '../../js/save.js';
@@ -117,6 +118,7 @@ function refreshMaxHp() {
 function giveXP(skill, amount) {
   if (amount <= 0) return;
   amount *= xpMultiplier(player, skill); // quest + gear XP bonuses
+  amount *= 1 + companionXpBonus(player, skill); // Sworn Companion bond perk
   addXP(skills, skill, amount, (s, l, old) => {
     const perks = perksBetween(s, old, l);
     ui.levelUp(s, SKILL_ICONS[s], l, perks);
@@ -536,7 +538,7 @@ const minimap = createMinimap({
 hud = createHud({ player, skills, monsters, levelColor, combatLevelOf: () => combatLevel(skills),
   getTarget: () => (action && action.kind === 'attack' && action.mon && action.mon.alive ? action.mon : null) });
 // Words of Choice: every tone you pick is remembered (companions and factions react to it).
-ui.onTone(tone => { player.alignment = player.alignment || {}; player.alignment[tone] = (player.alignment[tone] || 0) + 1; markDirty(); });
+ui.onTone(tone => { player.alignment = player.alignment || {}; player.alignment[tone] = (player.alignment[tone] || 0) + 1; const m = compTalking ? null : toneReaction(player, tone, Date.now()); if (m) log(m, 'game'); markDirty(); });
 hud.onQuick = q => { if (q === 'dodge') doDodge(); else if (q === 'ride') toggleRide(); else if (q === 'shift') steedShift(); };
 hud.setQuick({});
 
@@ -954,6 +956,7 @@ function entExamine(ent) {
   if (ent.type === 'poi' || ent.type === 'cave') return ent.examine;
   if (ent.type === 'chest') return player.caveLoot ? 'The hoard is empty now. You already took everything.' : ent.examine;
   if (ent.type === 'forage') return ent.alive ? `A bush heavy with ${ent.item.toLowerCase()}. (Herblore ${ent.level})` : 'This bush has been picked clean. It will grow back soon.';
+  if (ent.companion) return companionById(ent.companion).examine;
   if (ent.type === 'npc') return (NPC_INFO[ent.npc] || {}).examine || `It's ${ent.name}.`;
   if (ent.type === 'tree' && !ent.alive) return 'This tree has been cut down.';
   if (ent.type === 'rock' && !ent.alive) return 'There is currently no ore available in this rock.';
@@ -1307,7 +1310,93 @@ const questHelpers = {
     markDirty();
   }
 };
+// ---- Sworn Companions: recruiting, gifts, following and combat assists ----
+player.companions = normalizeCompanions(player.companions);
+if (player.activeCompanion && !(player.companions[player.activeCompanion] || {}).recruited) player.activeCompanion = null;
+const compEnts = {};
+let compTalking = null;
+for (const n of nodes) if (n.companion) compEnts[n.companion] = n;
+function compState(id) { player.companions = player.companions && player.companions[id] ? player.companions : normalizeCompanions(player.companions); return player.companions[id]; }
+function compTaskText(d, s) {
+  const r = d.recruit;
+  if (r.kind === 'kill') return `Defeat ${r.n} ${r.mon}s (${Math.min(s.task, r.n)}/${r.n}).`;
+  return `Bring ${r.n} ${r.item}${r.req ? ` and reach ${r.req[0]} ${r.req[1]}` : ''}.`;
+}
+function setCompanion(id) {
+  const prev = player.activeCompanion;
+  if (prev && prev !== id && compEnts[prev]) { const e = compEnts[prev], h = e.home; e.mesh.position.set(h.x, terrainHeight(h.x, h.z), h.z); e.x = h.x; e.z = h.z; }
+  player.activeCompanion = id;
+  if (!id && prev && compEnts[prev]) { const e = compEnts[prev], h = e.home; e.mesh.position.set(h.x, terrainHeight(h.x, h.z), h.z); e.x = h.x; e.z = h.z; }
+  markDirty();
+}
+function giftCompanion(d) {
+  const s = compState(d.id), now = Date.now();
+  if (now - s.giftAt < GIFT_COOLDOWN_MS) return [['npc', `You already gave me something. Maybe later — in about ${Math.ceil((GIFT_COOLDOWN_MS - (now - s.giftAt)) / 60000)} minutes.`]];
+  const item = Object.keys(player.inventory).find(i => d.giftRe.test(i));
+  if (!item) return [['npc', `I like ${d.giftWord}. You don't have any on you.`]];
+  removeItem(player, item, 1); s.giftAt = now; addBond(player, d.id, 1); markDirty();
+  return [['player', `Here, I brought you this ${item}.`], ['npc', `For me? Thank you. (Bond ${s.bond}/${BOND_MAX})`]];
+}
+function companionTalk(ent) {
+  const d = companionById(ent.companion), s = compState(d.id), r = d.recruit;
+  if (!s.recruited) {
+    if (!s.started) return [['npc', r.ask], { wheel: [
+      ['kind', 'I\'d be glad to help.', [['npc', 'You\'re kind. I\'ll remember that.'], { run: () => { s.started = true; s.firstTone = 'kind'; markDirty(); log(`New task: ${compTaskText(d, s)}`, 'game'); } }]],
+      ['firm', 'Fine. But you follow my lead.', [['npc', 'Fair enough. Prove it and I\'ll follow.'], { run: () => { s.started = true; s.firstTone = 'firm'; markDirty(); log(`New task: ${compTaskText(d, s)}`, 'game'); } }]],
+      ['cunning', 'What\'s in it for me?', [['npc', 'A sharp friend in a tight spot. Deal?'], { run: () => { s.started = true; s.firstTone = 'cunning'; markDirty(); log(`New task: ${compTaskText(d, s)}`, 'game'); } }]],
+      ['neutral', 'Not now.', [['npc', 'Come back if you change your mind.']]]
+    ] }];
+    let ok = r.kind === 'kill' ? s.task >= r.n : (player.inventory[r.item] || 0) >= r.n;
+    if (ok && r.req && skills[r.req[0]].level < r.req[1]) return [['npc', `You'll need ${r.req[0]} level ${r.req[1]} first.`]];
+    if (!ok) return [['npc', `Still waiting. ${compTaskText(d, s)}`]];
+    return [['npc', 'You did it. Then I\'m with you.'], { run: () => {
+      if (r.kind === 'item') removeItem(player, r.item, r.n);
+      s.recruited = true; s.bond = s.firstTone === d.likes ? 2 : 1;
+      log(`${d.name} is now your Sworn Companion. Open Bonds (B) to manage companions.`, 'skill');
+      if (!player.activeCompanion) setCompanion(d.id); markDirty();
+    } }];
+  }
+  const active = player.activeCompanion === d.id;
+  const chat = { wheel: [
+    ['kind', 'How are you holding up?', [['npc', d.likes === 'kind' ? 'Better for you asking.' : 'I\'m fine. Don\'t fuss.'], { run: () => talkTone(d, 'kind') }]],
+    ['firm', 'Stay sharp. We move soon.', [['npc', d.likes === 'firm' ? 'Ha! That\'s the spirit.' : 'Yes, yes.'], { run: () => talkTone(d, 'firm') }]],
+    ['cunning', 'Any tricks I should know?', [['npc', d.likes === 'cunning' ? 'Oh, a few. Watch this.' : 'Tricks? Just fight well.'], { run: () => talkTone(d, 'cunning') }]],
+    ['neutral', 'Never mind.', []]
+  ] };
+  return [['npc', `Bond ${s.bond}/${BOND_MAX}. ${active ? 'Lead on.' : 'Need me?'}`], { choose: [
+    [active ? 'Wait here.' : 'Follow me.', [{ run: () => { setCompanion(active ? null : d.id); log(active ? `${d.short} heads home.` : `${d.short} follows you.`, 'game'); } }]],
+    ['I brought you something.', [{ run: () => giftCompanion(d) }]],
+    ['Let\'s talk.', [chat]],
+    ['Goodbye.', []]
+  ] }];
+  function talkTone(d, tone) { const s = compState(d.id), now = Date.now(); if (tone === d.likes && now - (s.talkAt || 0) > GIFT_COOLDOWN_MS) { s.talkAt = now; addBond(player, d.id, 1); log(`${d.short} liked that. (Bond ${s.bond}/${BOND_MAX})`, 'game'); markDirty(); } }
+}
+function companionKill(name) {
+  for (const d of COMPANIONS) { const s = compState(d.id); if (s.started && !s.recruited && d.recruit.kind === 'kill' && name === d.recruit.mon && s.task < d.recruit.n) { s.task++; log(`${d.short}: ${s.task}/${d.recruit.n} ${d.recruit.mon}s defeated.`, 'game'); markDirty(); } }
+}
+function updateCompanion(dt) {
+  const id = player.activeCompanion, e = id && compEnts[id]; if (!e) return;
+  const o = e.mesh, p = pm.mesh.position;
+  if (action && action.node === e) return;
+  const dx = p.x - o.position.x, dz = p.z - o.position.z, d = Math.hypot(dx, dz);
+  if (d > 25 || !o.parent) { o.position.set(p.x - 1.5, p.y, p.z - 1.5); }
+  else if (d > 2.2) { const st = Math.min(d - 2, dt * Math.max(3, d * 1.6)); o.position.x += dx / d * st; o.position.z += dz / d * st; o.rotation.y = Math.atan2(dx, dz); }
+  o.position.y = terrainHeight(o.position.x, o.position.z) + (pm.rideLift && d < 3 ? 0 : 0);
+  e.x = o.position.x; e.z = o.position.z;
+}
+function companionAssist(now) {
+  const id = player.activeCompanion, e = id && compEnts[id]; if (!e) return;
+  const s = compState(id); if (!(action && action.kind === 'attack' && action.mon && action.mon.alive)) return;
+  if (tick % assistEvery(s.bond) !== 0) return;
+  const mon = action.mon, mp = mon.mesh.position;
+  if (Math.hypot(mp.x - e.mesh.position.x, mp.z - e.mesh.position.z) > 14) return;
+  const dmg = Math.min(mon.hp, Math.floor(Math.random() * (assistMax(s.bond, combatLevel(skills)) + 1)));
+  mon.hp -= dmg; overlays.splat(mon, dmg, now + 200); if (dmg > 0) mon.hitT = 1;
+  e.mesh.rotation.y = Math.atan2(mp.x - e.mesh.position.x, mp.z - e.mesh.position.z);
+  if (mon.hp <= 0) killMonster(mon, now);
+}
 function talkTo(ent) {
+  if (ent.companion) { const d = companionById(ent.companion); compTalking = d.id; ui.dialogue(d.name, d.face, companionTalk(ent), () => { compTalking = null; markDirty(); }); return; }
   const name = ent.name;
   const face = NPC_FACE[ent.npc] || (ent.type === 'shop' ? NPC_FACE.merchant : '🙂');
   const qd = questForNpc(ent.npc, player, questHelpers);
@@ -1592,6 +1681,7 @@ function killMonster(mon, now) {
   }
   for (const m of onKill(player, mon.name)) log(m, 'game');
   bountyKill(mon.name);
+  companionKill(mon.name);
   if (action && action.mon === mon) stopAction();
   const drops = rollLoot(mon.name);
   const x = mon.mesh.position.x, z = mon.mesh.position.z;
@@ -1677,6 +1767,7 @@ function inRange(ent, range) { return distTo(ent) <= range + (ent.radius || 0.5)
 function gameTick(now) {
   tick++;
   flowDecay(flow, tick);
+  companionAssist(now);
   // Hitpoint regen (faster with Hitpoints perks and Rapid Heal) and run energy
   if (player.hp < player.maxHp && player.hp > 0) {
     let rate = 1 + perk(skills, 'Hitpoints', 'regen') + prayerFx(player, 'regen') + regenBonus(player);
@@ -2184,6 +2275,7 @@ function animate(now) {
   if (frame % 30 === 7) { const vm = onVisit(player, pm.mesh.position.x, pm.mesh.position.z); for (const m of vm) log(m, 'game'); if (vm.length) markDirty(); }
   updateMonsters(dt, now);
   updatePatrols(dt, now);
+  updateCompanion(dt);
   updateCharacters(dt, now);
   updateCritters(dt, now, pm.mesh.position.x, pm.mesh.position.z);
   updateFish(dt);
