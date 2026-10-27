@@ -1900,7 +1900,8 @@ EXT.codex = codexX;
 extTalk.codex = { face: '🪶', talk: () => codexX.script() };
 extFrame.push((dt, now) => {
   const f = codexX.flight; if (!f) return;
-  const t = Math.min(1, (now - f.t0) / f.ms), x = f.ax + (f.bx - f.ax) * t, z = f.az + (f.bz - f.az) * t, y = terrainHeight(x, z) + Math.sin(t * Math.PI) * FLIGHT.height;
+  f.el = (f.el || 0) + Math.min(dt, 0.1) * 1000; // frame-time based, so a stalled frame can't skip the flight
+  const t = Math.min(1, f.el / f.ms), x = f.ax + (f.bx - f.ax) * t, z = f.az + (f.bz - f.az) * t, y = terrainHeight(x, z) + Math.sin(t * Math.PI) * FLIGHT.height;
   pm.target = null; pm.goal = null; pm.mesh.position.set(x, y + 1.2, z); pm.mesh.rotation.y = Math.atan2(f.bx - f.ax, f.bz - f.az);
   if (rig.fx !== undefined) { rig.fx = x; rig.fz = z; }
   rook.position.set(x, y, z); rook.rotation.y = pm.mesh.rotation.y; for (const [i, w] of rook.userData.wings.entries()) w.rotation.z = Math.sin(now / 140) * 0.5 * (i ? -1 : 1);
