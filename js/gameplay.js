@@ -515,10 +515,10 @@ export const RARE_DROPS = new Set(['Bronze sword', 'Iron sword', 'Bronze shield'
   'Steel pickaxe', 'Mithril sword', 'Adamantite ore', 'Steel platelegs', 'Amulet of accuracy', 'Holy symbol', 'Red cape', 'Amulet of strength',
   'Warrior ring', 'Amulet of defence', 'Ring of regeneration', 'Amulet of glory', 'Hard leather body', 'Oak shortbow', 'Archer ring']);
 
-export function rollLoot(monName, rng = Math.random) {
+export function rollLoot(monName, rng = Math.random, rareBoost = 0) {
   const drops = [];
   for (const d of LOOT_TABLES[monName] || [{ item: 'Bones', chance: 1 }]) {
-    if (rng() < d.chance) {
+    if (rng() < (d.chance < 0.1 ? d.chance * (1 + rareBoost) : d.chance)) {
       const [lo, hi] = d.qty || [1, 1];
       const item = d.herbs ? grimyOf(d.herbs[Math.floor(rng() * d.herbs.length) % d.herbs.length]) : d.item;
       drops.push({ item, qty: lo + Math.floor(rng() * (hi - lo + 1)) });

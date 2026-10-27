@@ -28,12 +28,12 @@ export function flowOnSkillHit(f, tick) {
 export function flowDecay(f, tick) { if (f.links && tick - f.lastTick > FLOW.windowTicks) f.links = 0; }
 
 // Starts a roll if allowed. dir is a unit {x,z}. Returns an error string or null.
-export function tryDodge(f, pm, player, dir, now) {
+export function tryDodge(f, pm, player, dir, now, bonusMs = 0) {
   if (now < f.dodgeReadyAt) return null; // silently ignore mashing
   if (player.runEnergy < FLOW.dodgeCost) return 'You are too tired to roll.';
   player.runEnergy -= FLOW.dodgeCost;
   f.dodgeReadyAt = now + FLOW.dodgeCdMs;
-  f.iframeUntil = now + FLOW.iframeMs;
+  f.iframeUntil = now + FLOW.iframeMs + bonusMs;
   pm.dodge = { x: dir.x, z: dir.z, left: FLOW.dodgeMs, speed: FLOW.dodgeDist / (FLOW.dodgeMs / 1000) };
   pm.target = null;
   return null;

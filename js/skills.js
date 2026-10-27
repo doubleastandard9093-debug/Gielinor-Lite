@@ -102,6 +102,7 @@ export const FX_LABEL = {
   magicAcc: v => `+${P(v)} magic accuracy`, magicDmg: v => `+${P(v)} magic damage`, runeSave: v => `${P(v)} chance to save runes`,
   agilityXp: v => `+${P(v)} Agility XP`, failLess: v => `${P(v)} less chance to fail obstacles`,
   thieveXp: v => `+${P(v)} Thieving XP`, lootChance: v => `+${P(v)} chance of better loot`,
+  dodgeMs: v => `+${Math.round(v)} ms dodge i-frames`, rareDrop: v => `+${P(v)} rare drop chance`, magicAdren: v => `+${P(v)} adrenaline from Magic skills`,
   rcXp: v => `+${P(v)} Runecrafting XP`, runeDouble: v => `${P(v)} chance of double runes`
 };
 export const PERK_MULT = 5;
@@ -111,7 +112,7 @@ export const PERK_CAPS = {
   saveBar: 0.75, saveMat: 0.75, crit: 0.5, rcrit: 0.5, quick: 0.5, reflect: 0.5, dr: 0.6, acc: 0.6, racc: 0.6, speed: 0.6,
   abilityCd: 0.6, drainLess: 0.75, burnLess: 1, critMult: 1, execute: 0.75, healBonus: 1, regen: 2, killHeal: 0.1,
   extraArrows: 15, xpBonus: 1, buryXp: 1, potionTime: 1, ppRegen: 0.3, maxHp: 100, maxHit: 60, rmaxHit: 40,
-  magicAcc: 0.6, magicDmg: 0.5, runeSave: 0.75, agilityXp: 1, failLess: 0.75, thieveXp: 1, lootChance: 0.5, rcXp: 1, runeDouble: 0.5
+  magicAcc: 0.6, magicDmg: 0.5, runeSave: 0.75, agilityXp: 1, failLess: 0.75, thieveXp: 1, lootChance: 0.5, rcXp: 1, runeDouble: 0.5, dodgeMs: 120, rareDrop: 0.25, magicAdren: 0.4
 };
 export const CAPS_TEXT = "Level bonuses are 5x. Caps: chance effects 75% (crits 50%), damage reduction 60% total, accuracy +60%, food heals +100%, HP regen +200%, heal on kill 10% of max HP, actions never faster than 1 tick.";
 function describe(fx) { return Object.entries(fx).map(([k, v]) => FX_LABEL[k] ? FX_LABEL[k](v) : k).join(", "); }
@@ -169,12 +170,35 @@ export const PERKS = {
 export function setPerkBoost(skills, boosts) {
   Object.defineProperty(skills, "_boost", { value: boosts, enumerable: false, writable: true, configurable: true });
 }
+// Skill synergy web: every 10 levels in one skill gives a small passive to a related skill.
+// [from, to, key, per 10 levels]
+export const SYNERGY = [
+  ['Mining', 'Smithing', 'saveBar', 0.002], ['Fishing', 'Cooking', 'burnLess', 0.01], ['Woodcutting', 'Fletching', 'saveMat', 0.004],
+  ['Herblore', 'Hitpoints', 'healBonus', 0.005], ['Cooking', 'Hitpoints', 'regen', 0.01], ['Prayer', 'Magic', 'runeSave', 0.004],
+  ['Runecrafting', 'Magic', 'magicDmg', 0.003], ['Thieving', 'Ranged', 'ammoSave', 0.004], ['Fletching', 'Ranged', 'racc', 0.002],
+  ['Smithing', 'Defence', 'dr', 0.002], ['Agility', 'Attack', 'quick', 0.003], ['Strength', 'Mining', 'speed', 0.003],
+  ['Strength', 'Woodcutting', 'speed', 0.003], ['Crafting', 'Runecrafting', 'runeDouble', 0.003], ['Magic', 'Runecrafting', 'rcXp', 0.004],
+  ['Attack', 'Thieving', 'thieveXp', 0.004], ['Agility', 'Combat', 'dodgeMs', 12], ['Thieving', 'Combat', 'rareDrop', 0.02],
+  ['Prayer', 'Combat', 'magicAdren', 0.04], ['Defence', 'Agility', 'failLess', 0.004], ['Hitpoints', 'Prayer', 'drainLess', 0.004]
+];
+export function synergy(skills, skill, key) {
+  let v = 0;
+  for (const [f, t, k, per] of SYNERGY) if (t === skill && k === key && skills[f]) v += Math.floor(skills[f].level / 10) * per;
+  return v;
+}
+export function synergyLines(skills, skill) {
+  return SYNERGY.filter(s => s[0] === skill || s[1] === skill).map(([f, t, k, per]) => {
+    const v = Math.floor((skills[f] ? skills[f].level : 1) / 10) * per;
+    return { from: f, to: t, gives: f === skill, text: `${f} → ${t}: ${FX_LABEL[k] ? FX_LABEL[k](v) : k} (+${FX_LABEL[k] ? FX_LABEL[k](per).replace(/^\+/, '') : per} per 10 ${f} levels)` };
+  });
+}
 export function perk(skills, skill, key) {
   const lvl = skills[skill] ? skills[skill].level : 1;
   let v = 0;
   for (const p of PERKS[skill] || []) { if (p.level > lvl) break; if (p.fx[key]) v += p.fx[key]; }
   const boost = skills._boost && skills._boost[skill];
   if (boost) v *= 1 + boost;
+  v += synergy(skills, skill, key);
   return PERK_CAPS[key] !== undefined ? Math.min(PERK_CAPS[key], v) : v;
 }
 export function perkTotals(skills, skill) {

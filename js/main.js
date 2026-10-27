@@ -910,7 +910,7 @@ function doDodge() {
   if (x || z) { const c = Math.cos(rig.yaw), s = Math.sin(rig.yaw); const rx = x * c + z * s, rz = -x * s + z * c; x = rx; z = rz; }
   else { x = -Math.sin(pm.facing); z = -Math.cos(pm.facing); }
   const l = Math.hypot(x, z) || 1;
-  const err = tryDodge(flow, pm, player, { x: x / l, z: z / l }, performance.now());
+  const err = tryDodge(flow, pm, player, { x: x / l, z: z / l }, performance.now(), perk(skills, 'Combat', 'dodgeMs'));
   if (err) log(err, 'warn'); else markDirty();
 }
 // ---- Shiftsteeds ----
@@ -1915,7 +1915,7 @@ function useAbility(id) {
   if (cost && adr + 1e-6 < cost) { log(`${a.name} needs ${cost}% adrenaline (you have ${Math.floor(adr)}%). Use basic skills and land hits to build it.`, 'warn'); return; }
   const queuedNeedsTarget = !['fortify', 'rage', 'rejuv'].includes(id);
   if (queuedNeedsTarget && (!action || action.kind !== 'attack' || !action.mon.alive)) { log('Attack something first, then use that.', 'warn'); return; }
-  if (hud) { if (cost) hud.spend(cost); else hud.gain(adrenGain(a)); }
+  if (hud) { if (cost) hud.spend(cost); else hud.gain(adrenGain(a) * (a.style === 'magic' ? 1 + perk(skills, 'Combat', 'magicAdren') : 1)); }
   const cd = cooldownTicks(skills, a);
   if (id === 'fortify') { buffs.fortifyUntil = tick + 10; cooldowns[id] = tick + cd; log('You brace yourself. (Fortify: 50% less damage)', 'combat'); }
   else if (id === 'rage') { buffs.rageUntil = tick + 15; cooldowns[id] = tick + cd; log('You fly into a rage! (Berserk)', 'combat'); }
@@ -2034,7 +2034,7 @@ function killMonster(mon, now) {
   sagaKill(mon.name);
   if (mon.drowned) { player.vessel.drowned++; if (mon.boss) log('Captain Saltgrave sinks into the reef... for now.', 'loot'); }
   if (action && action.mon === mon) stopAction();
-  const drops = rollLoot(mon.name);
+  const drops = rollLoot(mon.name, Math.random, perk(skills, 'Combat', 'rareDrop'));
   const x = mon.mesh.position.x, z = mon.mesh.position.z;
   // Drop announcements: uniques in their rarity colour, other rares in gold.
   for (const d of drops) {
