@@ -63,6 +63,7 @@ import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW, FINISHE
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from '../../js/save.js';
 import { CHECKS, normalizeTongue, checkLabel, resolveCheck, openQuestCheck, QUEST_PRIZE } from '../../js/tongue.js';
 import { QUEST_DATA } from '../../js/quests2.js';
+import { WRIT_FACTIONS, WRIT_REWARD, normalizeWrits, maybeRoll, writProgress, writLabel } from '../../js/writs.js';
 import { QUIRKS, QUIRK_MAX, REMEDY, FIRE_RE, quirkById, normalizeQuirks, dueQuirk, has as hasQuirk, quirkXp, quirkIncoming } from '../../js/quirks.js';
 
 // ---------------------------------------------------------------------------
@@ -1633,6 +1634,30 @@ const quirksX = {
   remove(id) { const Q = player.quirks; Q.held = Q.held.filter(x => x !== id); Q.removed++; Q.declined.push(id); markDirty(); }
 };
 EXT.quirks = quirksX;
+// ---- Daily Writs and the Weekly Hearthboard (Writkeeper Maelis, Brightwater) ----
+player.writs = normalizeWrits(player.writs);
+const writsX = {
+  roll(force = true) { const r = maybeRoll(player.writs, Date.now(), force); if (r) markDirty(); return r; },
+  progress(kind, target, n = 1) {
+    for (const w of writProgress(player.writs, kind, target, n)) {
+      const weekly = w === player.writs.weekly, f = factionById(w.fac);
+      addRep(player, w.fac, weekly ? WRIT_REWARD.weeklyRep : WRIT_REWARD.rep); player.gold += weekly ? WRIT_REWARD.weeklyGold : WRIT_REWARD.gold;
+      if (weekly) { player.arena.tokens += WRIT_REWARD.weeklyTokens; player.writs.weeklyDone++; } else player.writs.done++;
+      log(`${weekly ? 'Great deed' : 'Writ'} done for the ${f.name}: ${writLabel(w)}. +${weekly ? WRIT_REWARD.weeklyRep : WRIT_REWARD.rep} standing, +${weekly ? WRIT_REWARD.weeklyGold : WRIT_REWARD.gold} coins${weekly ? `, +${WRIT_REWARD.weeklyTokens} arena tokens` : ''}.`, 'loot', '#ffd700');
+      refreshStanding(true); markDirty();
+    }
+  }
+};
+EXT.writs = writsX;
+extKill.push(mon => writsX.progress('kill', mon.name));
+extXp.push(skill => { if (player.writs.daily.length) writsX.progress('act', skill); return 1; });
+extTick.push(() => { player.writs.playTicks++; if (tick % 100 === 5) { const r = writsX.roll(false); if (r === 'daily') log('New Daily Writs are up on Writkeeper Maelis\'s board in Brightwater.', 'game'); } });
+extTalk.writs = { face: '📜', talk() {
+  writsX.roll(false); const W = player.writs;
+  const lines = WRIT_FACTIONS.map(fid => `${factionById(fid).icon} ${factionById(fid).name}: ${W.daily.filter(w => w.fac === fid).map(writLabel).join('; ')}`);
+  return [['npc', `Maelis, writkeeper. Today's writs, each worth ${WRIT_REWARD.rep} standing and ${WRIT_REWARD.gold} coins. New writs every day.`], ...lines.map(l => ['npc', l]),
+    ['npc', `Great deed this week (${WRIT_REWARD.weeklyRep} standing, ${WRIT_REWARD.weeklyGold} coins, ${WRIT_REWARD.weeklyTokens} arena tokens): ${W.weekly ? writLabel(W.weekly) : 'none'}. You've finished ${W.done} writs and ${W.weeklyDone} great deeds.`]];
+} };
 extXp.push(skill => 1 + quirkXp(player.quirks, skill));
 extIncoming.push((dmg, mon) => { if (FIRE_RE.test(mon.name || '')) quirksX.bump('fire', dmg); return quirkIncoming(player.quirks, dmg, mon.name, player.hp / player.maxHp); });
 extDeath.push(() => quirksX.bump('deaths'));

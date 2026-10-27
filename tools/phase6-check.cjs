@@ -20,15 +20,15 @@ const [,,path='',tier='low',sz='390x844',savef]=process.argv;const [w,h]=sz.spli
    if(off){Q.accept(off);o.quirkHeld=P.quirks.held.includes(off);o.quirkMax=Q.max;}o.ysolde=!!g.nodes.find(n=>n.ext==='quirks')&&E.extTalk.quirks.talk().length===2;}
   // Daily Writs
   if(E.writs){const W=E.writs;W.roll();o.writs=P.writs.daily.length;const wr=P.writs.daily[0];const r0=JSON.stringify(P.rep);
-   W.progress(wr.kind,wr.target,wr.n);o.writDone=P.writs.daily[0].done===true;o.writRep=JSON.stringify(P.rep)!==r0;o.weekly=!!P.writs.weekly;}
+   W.progress(wr.kind,wr.target,wr.n);o.writDone=P.writs.daily[0].done===true;o.writRep=JSON.stringify(P.rep)!==r0;o.weekly=!!P.writs.weekly;o.maelis=!!g.nodes.find(n=>n.ext==='writs')&&E.extTalk.writs.talk().length>4;const d0=P.writs.day;P.writs.lastNow=Date.now()+86400000*3;o.clockBack=W.roll(false)===null&&P.writs.day===d0;}
   // Stillwatch
   if(E.still){const St=E.still;St.fill(100);o.stillReady=St.ready();St.trigger(performance.now());o.stillOn=St.active(performance.now());o.timeScale=St.scale(performance.now());
    let hi=0;g.scene.traverse(x=>{if(/stillwatch-high/.test(x.name))hi++;});o.stillHigh=hi+(document.getElementById('stillwatchTint')?.dataset.high==='1'?1:0);}
   const sv=JSON.parse((await import('/js/save.js')).getSaveData(g.skills,P,g.pm));o.ver=sv.version;
-  o.saved=!!(sv.player.tongue&&sv.player.tongue.done['q:hilda_pie'])&&(!E.quirks||sv.player.quirks.held.length>0)&&(!E.writs||sv.player.writs.daily.length===3);
+  o.saved=!!(sv.player.tongue&&sv.player.tongue.done['q:hilda_pie'])&&(!E.quirks||sv.player.quirks.held.length>0)&&(!E.writs||sv.player.writs.daily.length===12);
   o.notes=(await import('/js/save.js')).applySaveData.lastNotes.length;o.hp=P.hp>0;o.skillsKept=g.skills.Attack.level;
   return o;});
  const hi=req.filter(u=>/textures\/|\.webp|detail_/.test(u));
- const ok=r.tongueOpt&&r.tonguePass&&r.tongueOnce&&r.ver>=15&&r.saved&&(r.quirkOffer!==false)&&(r.quirkHeld!==false)&&(r.ysolde!==false)&&(r.writs===undefined||(r.writs===3&&r.writDone&&r.writRep&&r.weekly))&&(r.stillReady===undefined||(r.stillReady&&r.stillOn&&r.timeScale<0.5&&(tier!=='low'||r.stillHigh===0)))&&(tier!=='low'||hi.length===0)&&!errs.length;
+ const ok=r.tongueOpt&&r.tonguePass&&r.tongueOnce&&r.ver>=15&&r.saved&&(r.quirkOffer!==false)&&(r.quirkHeld!==false)&&(r.ysolde!==false)&&(r.writs===undefined||(r.writs===12&&r.writDone&&r.writRep&&r.weekly&&r.maelis&&r.clockBack))&&(r.stillReady===undefined||(r.stillReady&&r.stillOn&&r.timeScale<0.5&&(tier!=='low'||r.stillHigh===0)))&&(tier!=='low'||hi.length===0)&&!errs.length;
  console.log(JSON.stringify({ok,tier,path,sz,r,highAssetRequests:hi.length,errs:errs.slice(0,4)}));
  await b.close();})();
