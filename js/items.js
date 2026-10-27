@@ -79,6 +79,13 @@ XBOW_METALS.forEach((m, t) => {
   def(`${m} throwing axe`, { type: 'weapon', thrown: true, ranged: [5, 9, 13, 19, 26, 36][t], rstr: [3, 6, 9, 14, 20, 30][t], speed: 4, tier: t, metal: m, req: { Ranged: TIER_REQ[t] }, value: [14, 35, 80, 200, 500, 1300][t] });
 });
 
+// ---- Sails of Sarim: cutlasses (fast, combo-building blades) and flintlocks (slow, heavy shots) ----
+METALS.slice(0, 6).forEach((m, t) => def(`${m} cutlass`, { type: 'weapon', cutlass: true, atk: [5, 8, 13, 18, 25, 34][t], str: [3, 5, 9, 13, 19, 28][t], speed: 3, tier: t, metal: m, req: { Attack: TIER_REQ[t] }, value: [40, 130, 340, 900, 2100, 5600][t] }));
+['Iron', 'Steel', 'Mithril', 'Adamant'].forEach((m, t) => def(`${m} flintlock`, { type: 'weapon', pistol: true, ranged: [24, 34, 46, 60][t], speed: 7, tier: t + 1, metal: m, req: { Ranged: [10, 20, 30, 40][t] }, value: [240, 640, 1600, 4200][t] }));
+def('Lead shot', { type: 'ammo', count: 10, rstr: 22, shot: true, value: 5 });
+def('Silver shot', { type: 'ammo', count: 10, rstr: 30, shot: true, vsUndead: 0.25, value: 20 });
+def('Treasure chart', { type: 'chart', value: 0 });
+
 // ---- Leather and wood armour ----
 // Leather is weaker in melee but good against arrows and helps your aim.
 def('Leather cowl', { type: 'head', def: 2, rdef: 4, ranged: 2, set: 'Leather', req: { Defence: 1 }, value: 8 });
@@ -112,13 +119,15 @@ for (const sk of SKILL_CAPE_SKILLS) def(`${sk} cape`, { type: 'cape', def: 4, rd
 // counts as an endless supply of its rune. `mag` is the magic attack bonus.
 def('Rune essence', { type: 'resource', value: 4 });
 def('Pure essence', { type: 'resource', value: 6 });
+export const HEX_RUNES = [['Bog rune', 20, '#5a7a3a'], ['Bone rune', 35, '#d8d0b0']];
 export const RUNES = [['Air rune', 4, '#d8e8f0'], ['Mind rune', 3, '#e0a040'], ['Water rune', 4, '#3a7ad0'], ['Earth rune', 4, '#8a6a3a'], ['Fire rune', 4, '#e04a2a'],
   ['Body rune', 3, '#6a8ad0'], ['Chaos rune', 90, '#e0c030'], ['Death rune', 180, '#e8e8e8'], ['Blood rune', 400, '#c01a1a']];
-for (const [n, v] of RUNES) def(n, { type: 'rune', value: v });
+for (const [n, v] of [...RUNES, ...HEX_RUNES]) def(n, { type: 'rune', value: v });
 def('Staff', { type: 'weapon', atk: 2, str: 1, mag: 4, speed: 5, value: 15 });
 for (const [el, rune] of [['air', 'Air rune'], ['water', 'Water rune'], ['earth', 'Earth rune'], ['fire', 'Fire rune']]) {
   def(`Staff of ${el}`, { type: 'weapon', atk: 4, str: 2, mag: 10, speed: 5, runeSource: rune, value: 1500 });
 }
+def('Hexwood staff', { type: 'weapon', atk: 5, str: 3, mag: 14, speed: 5, req: { Magic: 20 }, hexBoost: 0.15, value: 900 });
 def('Mystic staff', { type: 'weapon', atk: 8, str: 4, mag: 18, speed: 5, req: { Magic: 40 }, value: 8000 });
 def('Wizard hat', { type: 'head', mag: 2, value: 30 });
 def('Wizard robe', { type: 'body', mag: 3, value: 45 });
@@ -186,6 +195,8 @@ for (const [n, , , , , v] of POTION_RECIPES) def(n, { type: 'potion', value: v }
 export const RARITY = { uncommon: '#3ad03a', rare: '#3aa0ff', epic: '#c060ff', legendary: '#ff9a2a' };
 const U = (name, o) => def(name, { unique: true, ...o });
 U('Venom dagger', { type: 'weapon', atk: 22, str: 16, speed: 3, rarity: 'rare', eff: { poison: { chance: 0.25, dmg: 30 } }, special: '25% chance to poison (30 damage, fading)', req: { Attack: 30 }, value: 4000 });
+U("Saltgrave's tricorn", { type: 'head', def: 8, rdef: 10, ranged: 6, mag: 4, rarity: 'epic', eff: { dmgPct: 0.04 }, special: '+4% damage with every style', req: { Defence: 40 }, value: 12000 });
+U('Tidecaller cutlass', { type: 'weapon', cutlass: true, atk: 40, str: 36, speed: 3, rarity: 'epic', eff: { lifesteal: 0.08 }, special: 'A Drowned blade: heals 8% of damage dealt', req: { Attack: 50 }, value: 15000 });
 U('Vampyric blade', { type: 'weapon', atk: 32, str: 30, speed: 4, rarity: 'epic', eff: { lifesteal: 0.15 }, special: 'Heals you for 15% of the damage you deal', req: { Attack: 40 }, value: 9000 });
 U('Granite maul', { type: 'weapon', atk: 40, str: 58, speed: 6, rarity: 'rare', eff: { stun: 0.15 }, special: '15% chance to stun for 3 seconds. Slow but brutal', req: { Attack: 50, Strength: 50 }, value: 12000 });
 U('Dragon dagger', { type: 'weapon', atk: 40, str: 38, speed: 3, rarity: 'rare', eff: { doubleHit: 0.2 }, special: 'Puncture: 20% chance to strike twice', req: { Attack: 60 }, value: 18000 });
@@ -214,10 +225,11 @@ export const TOOL_TYPES = [
   { id: 'hammer', name: 'Hammer', icon: '🔨' },
   { id: 'knife', name: 'Knife', icon: '🔪' },
   { id: 'needle', name: 'Needle', icon: '🪡' },
-  { id: 'tinderbox', name: 'Tinderbox', icon: '🔥' }
+  { id: 'tinderbox', name: 'Tinderbox', icon: '🔥' },
+  { id: 'spade', name: 'Spade', icon: '🪏' }
 ];
 for (const [n, tool, v] of [['Small fishing net', 'net', 5], ['Fly fishing rod', 'rod', 10], ['Lobster pot', 'cage', 20], ['Harpoon', 'harpoon', 25],
-  ['Hammer', 'hammer', 1], ['Knife', 'knife', 1], ['Needle', 'needle', 1], ['Tinderbox', 'tinderbox', 1]]) {
+  ['Hammer', 'hammer', 1], ['Knife', 'knife', 1], ['Needle', 'needle', 1], ['Tinderbox', 'tinderbox', 1], ['Spade', 'spade', 6]]) {
   def(n, { type: 'tool', tool, tier: 0, value: v });
 }
 export const STARTER_TOOLS = ['Bronze axe', 'Bronze pickaxe', 'Small fishing net', 'Hammer', 'Knife', 'Needle', 'Tinderbox'];
@@ -237,7 +249,7 @@ export function isRangedWeapon(item) { return !!(item && ITEMS[item] && ITEMS[it
 export function itemValue(item) { return ITEMS[item] ? ITEMS[item].value : 1; }
 
 // ---- Icons: [emoji, tint] ----
-const KIND_ICON = { sword: '⚔️', 'full helm': '🪖', shield: '🛡️', platelegs: '👖', platebody: '🦺', axe: '🪓', pickaxe: '⛏️', arrows: '🏹', bar: '🧱', crossbow: '🏹', bolts: '➶', 'thrown dagger': '🔪', 'throwing axe': '🪓' };
+const KIND_ICON = { cutlass: '🗡️', flintlock: '🔫', sword: '⚔️', 'full helm': '🪖', shield: '🛡️', platelegs: '👖', platebody: '🦺', axe: '🪓', pickaxe: '⛏️', arrows: '🏹', bar: '🧱', crossbow: '🏹', bolts: '➶', 'thrown dagger': '🔪', 'throwing axe': '🪓' };
 const FIXED_ICONS = {
   Coal: ['🪨', '#11111180'], 'Copper ore': ['🪨', '#b8733340'], 'Tin ore': ['🪨', '#c8c8c840'], 'Iron ore': ['🪨', '#8a4b3a50'],
   'Mithril ore': ['🪨', '#5a6ad060'], 'Adamantite ore': ['🪨', '#3a9a5a60'], 'Runite ore': ['🪨', '#3ab8d060'],
@@ -288,11 +300,16 @@ export function iconFor(item) {
     if (item === 'Vial of water') return ['🧪', '#3a7ad040'];
     if (info0.type === 'potion') { const r = POTION_RECIPES.find(p => p[0] === item); return ['🧪', (r ? r[6] : '#888888') + '60']; }
   }
-  if (info0 && info0.type === 'rune') { const r = RUNES.find(x => x[0] === item); return ['🔶', (r ? r[2] : '#888888') + '70']; }
+  if (info0 && info0.type === 'rune') { const r = [...RUNES, ...HEX_RUNES].find(x => x[0] === item); return ['🔶', (r ? r[2] : '#888888') + '70']; }
   if (item === 'Rune essence' || item === 'Pure essence') return ['🪨', item === 'Pure essence' ? '#f0f0ff70' : '#c0c8d070'];
   if (info0 && info0.runeSource) { const r = RUNES.find(x => x[0] === info0.runeSource); return ['🪄', r[2] + '70']; }
   if (item === 'Battlestaff') return ['🪄', '#8a8a9a70'];
   if (item === 'Cloth') return ['🧻', ''];
+  if (item === 'Treasure chart') return ['🗺️', '#d4af3750'];
+  if (item === 'Lead shot' || item === 'Silver shot') return ['⚫', item === 'Silver shot' ? '#e0e0f070' : '#50505070'];
+  if (item === 'Hexwood staff') return ['🪄', '#5a7a3a70'];
+  if (item === "Saltgrave's tricorn") return ['🎩', '#2a1a3a80'];
+  if (item === 'Tidecaller cutlass') return ['🗡️', '#3ad0b070'];
   if (info0 && info0.buff) return [{ 'Hearty stew': '🍲', "Monk's broth": '🥣', "Fisherman's pie": '🥧', "Warrior's feast": '🍖' }[item] || '🍲', '#d4af3740'];
   if (item === 'Staff' || item === 'Mystic staff') return ['🪄', item === 'Mystic staff' ? '#6a3ad070' : ''];
   if (/^(Wizard|Mystic) /.test(item)) return [/hat$/.test(item) ? '🎩' : /bottom$/.test(item) ? '👖' : '🥻', /^Mystic/.test(item) ? '#3a5ad070' : '#2a3a9a60'];

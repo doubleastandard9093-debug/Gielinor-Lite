@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { shapes, contactShadow, gearDetail } from './anatomy.js';
 import { terrainHeight } from './world.js';
 import { WORLD_HALF, waterAt, colliders } from './world.js';
+import { inSound, clampToIsland } from './sea.js';
 
 export const WALK_SPEED = 3.3;  // world units per second
 export const RUN_SPEED = 6.2;
@@ -291,7 +292,8 @@ export function moveWithCollision(pos, dx, dz, dist, opts = {}) {
   for (let i = 0; i < n; i++) {
     prev.x = pos.x; prev.z = pos.z;
     pos.x += dx * s; pos.z += dz * s;
-    if (opts.world !== false) {
+    if (opts.world !== false && inSound(pos.x, pos.z)) clampToIsland(pos);
+    else if (opts.world !== false) {
       pos.x = Math.max(-WORLD_HALF + 1, Math.min(WORLD_HALF - 1, pos.x));
       pos.z = Math.max(-WORLD_HALF + 1, Math.min(WORLD_HALF - 1, pos.z));
     }

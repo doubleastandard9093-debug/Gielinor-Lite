@@ -183,7 +183,11 @@ export const MONSTER_TYPES = {
   Cow:           { name: 'Cow',          level: 2,  hp: 80,  maxHit: 6,  att: 1,  def: 1,  speed: 4, color: 0x8a6a4a, scale: 1.0 },
   Guard:         { name: 'Guard',        level: 21, hp: 220, maxHit: 28, att: 18, def: 18, speed: 4, color: 0x3a3a6a, scale: 1.1 },
   'Hill Giant':  { name: 'Hill Giant',   level: 28, hp: 350, maxHit: 36, att: 22, def: 24, speed: 5, color: 0x8a7a5a, scale: 1.8 },
-  'Black Knight':{ name: 'Black Knight', level: 33, hp: 420, maxHit: 42, att: 30, def: 34, speed: 4, color: 0x1a1a22, scale: 1.15 }
+  'Black Knight':{ name: 'Black Knight', level: 33, hp: 420, maxHit: 42, att: 30, def: 34, speed: 4, color: 0x1a1a22, scale: 1.15 },
+  // Sails of Sarim: the Drowned Crew of Wreckers' Reef (undead; silver shot bites them harder)
+  'Drowned Deckhand': { name: 'Drowned Deckhand', level: 24, hp: 240, maxHit: 26, att: 20, def: 16, speed: 4, color: 0x3a5a5a, scale: 1.0, skin: 0x7aa898, undead: true, drowned: true },
+  'Drowned Gunner':   { name: 'Drowned Gunner', level: 34, hp: 320, maxHit: 34, att: 28, def: 20, speed: 5, color: 0x4a3a2a, scale: 1.05, skin: 0x6a9a8a, ranged: true, range: 6, undead: true, drowned: true },
+  'Captain Saltgrave':{ name: 'Captain Saltgrave', title: 'Captain Saltgrave of the Drowned Crew', level: 72, hp: 1500, maxHit: 64, att: 56, def: 48, speed: 4, color: 0x2a1a3a, scale: 1.35, skin: 0x5a8a7a, boss: true, respawn: 180000, undead: true, drowned: true }
 };
 
 export const MELEE_STYLES = [
@@ -375,6 +379,18 @@ const LOW_HERBS = ['Guam leaf', 'Marrentill', 'Tarromin'];
 const MID_HERBS = ['Harralander', 'Ranarr weed', 'Toadflax', 'Irit leaf'];
 const HIGH_HERBS = ['Avantoe', 'Kwuarm', 'Snapdragon', 'Cadantine', 'Dwarf weed', 'Torstol'];
 export const LOOT_TABLES = {
+  'Drowned Deckhand': [
+    { item: 'Bones', chance: 1 }, { item: 'Coins', chance: 0.6, qty: [10, 45] }, { item: 'Lead shot', chance: 0.2, qty: [3, 10] },
+    { item: 'Treasure chart', chance: 0.06 }, { item: 'Iron cutlass', chance: 0.04 }, { item: 'Raw swordfish', chance: 0.1 }
+  ],
+  'Drowned Gunner': [
+    { item: 'Bones', chance: 1 }, { item: 'Coins', chance: 0.6, qty: [20, 70] }, { item: 'Lead shot', chance: 0.4, qty: [5, 15] },
+    { item: 'Treasure chart', chance: 0.09 }, { item: 'Iron flintlock', chance: 0.03 }, { item: 'Silver shot', chance: 0.1, qty: [2, 6] }
+  ],
+  'Captain Saltgrave': [
+    { item: 'Big bones', chance: 1 }, { item: 'Coins', chance: 1, qty: [400, 1200] }, { item: 'Treasure chart', chance: 0.5 },
+    { item: 'Silver shot', chance: 0.5, qty: [10, 25] }, { item: 'Bone rune', chance: 0.4, qty: [10, 30] }, { item: "Saltgrave's tricorn", chance: 1 / 20 }, { item: 'Tidecaller cutlass', chance: 1 / 40 }
+  ],
   Wolf: [
     { item: 'Bones', chance: 1 }, { item: 'Goat horn dust', chance: 0.15 }, { item: 'White berries', chance: 0.1 },
     { herbs: LOW_HERBS, chance: 0.2 }, { item: 'Raw beef', chance: 0.3 }, { item: 'Coins', chance: 0.3, qty: [3, 15] }
@@ -589,7 +605,15 @@ export const SHOPS = {
   weapons: { title: 'Highcrag Weaponsmith', stock: WEAPON_STOCK },
   general2: { title: 'Saltmere General Store', stock: SHOP_STOCK },
   general3: { title: 'Highcrag Trading Post', stock: SHOP_STOCK },
-  apothecary: { title: 'Brightwater Apothecary', stock: HERB_STOCK }
+  apothecary: { title: 'Brightwater Apothecary', stock: HERB_STOCK },
+  chandlery: { title: 'Gullrest Chandlery', stock: [
+    { item: 'Bronze cutlass', price: 50 }, { item: 'Iron cutlass', price: 160 }, { item: 'Steel cutlass', price: 420 }, { item: 'Mithril cutlass', price: 1100 },
+    { item: 'Iron flintlock', price: 300 }, { item: 'Steel flintlock', price: 800 }, { item: 'Lead shot', price: 6 }, { item: 'Silver shot', price: 24 },
+    { item: 'Spade', price: 8 }, { item: 'Cooked swordfish', price: 75 }] },
+  armsBrine: { title: 'Brineholt Gunsmith', stock: [
+    { item: 'Adamant cutlass', price: 2600 }, { item: 'Rune cutlass', price: 7000 }, { item: 'Mithril flintlock', price: 2000 }, { item: 'Adamant flintlock', price: 5200 }, { item: 'Lead shot', price: 6 }, { item: 'Silver shot', price: 22 }] },
+  hexer: { title: "Mama Sorrel's Hex Shop", stock: [
+    { item: 'Bog rune', price: 22 }, { item: 'Bone rune', price: 40 }, { item: 'Hexwood staff', price: 900 }, { item: 'Mind rune', price: 4 }] }
 };
 
 // ---- Items in hand ---------------------------------------------------------
@@ -685,7 +709,12 @@ export const SPELLS = [
   { id: 'wind_wave',    name: 'Wind Wave',    level: 62, maxHit: 170, xp: 36,   icon: '💨', runes: { 'Air rune': 5, 'Blood rune': 1 } },
   { id: 'water_wave',   name: 'Water Wave',   level: 65, maxHit: 180, xp: 37.5, icon: '💧', runes: { 'Air rune': 5, 'Water rune': 7, 'Blood rune': 1 } },
   { id: 'earth_wave',   name: 'Earth Wave',   level: 70, maxHit: 190, xp: 40,   icon: '🪨', runes: { 'Air rune': 5, 'Earth rune': 7, 'Blood rune': 1 } },
-  { id: 'fire_wave',    name: 'Fire Wave',    level: 75, maxHit: 200, xp: 42.5, icon: '🔥', runes: { 'Air rune': 5, 'Fire rune': 7, 'Blood rune': 1 } }
+  { id: 'fire_wave',    name: 'Fire Wave',    level: 75, maxHit: 200, xp: 42.5, icon: '🔥', runes: { 'Air rune': 5, 'Fire rune': 7, 'Blood rune': 1 } },
+  // Hexcraft (Sails of Sarim): swamp-and-bone hexes taught by Mama Sorrel. Each lands an effect as well as damage.
+  { id: 'hex_rot',   name: 'Rotting Hex',  level: 12, maxHit: 50,  xp: 12, icon: '🪲', hex: 'rot',   school: 'Hexcraft', runes: { 'Bog rune': 1, 'Mind rune': 1 }, about: 'rots the target for 4 extra hits over time' },
+  { id: 'hex_bind',  name: 'Binding Hex',  level: 25, maxHit: 40,  xp: 18, icon: '🪢', hex: 'bind',  school: 'Hexcraft', runes: { 'Bog rune': 2, 'Bone rune': 1 }, about: 'roots the target so it cannot strike for 4 ticks' },
+  { id: 'hex_wither',name: 'Withering Hex',level: 38, maxHit: 70,  xp: 26, icon: '🥀', hex: 'wither',school: 'Hexcraft', runes: { 'Bone rune': 2, 'Bog rune': 1 }, about: 'the target hits 30% softer for 20 seconds' },
+  { id: 'hex_leech', name: 'Leeching Hex', level: 52, maxHit: 130, xp: 34, icon: '🩸', hex: 'leech', school: 'Hexcraft', runes: { 'Bone rune': 3, 'Blood rune': 1 }, about: 'half the damage dealt heals you' }
 ];
 export const SPELL_TICKS = 5; // 3 seconds per cast
 export function spellById(id) { return SPELLS.find(s => s.id === id) || null; }

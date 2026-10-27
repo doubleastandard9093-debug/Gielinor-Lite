@@ -1,4 +1,5 @@
 import { normalizeSaga } from './saga.js';
+import { normalizeVessel, inSea } from './sea.js';
 import { normalizeCompanions } from './companions.js';
 import { normalizeSkills } from './skills.js';
 import { DEFAULT_SETTINGS, INV_SIZE } from './playerState.js';
@@ -7,7 +8,7 @@ import { PRAYERS } from './prayer.js';
 import { questPoints } from './quests.js';
 import { normalizeSteeds } from './steeds.js';
 
-export const SAVE_VERSION = 11;
+export const SAVE_VERSION = 12;
 export const POS_LIMIT = 146; // world half-size (150) minus a margin
 const KEY = 'gielinor3d';
 
@@ -153,6 +154,9 @@ export function migrateSave(saved) {
   // v11 (The Wanderer's Saga): your story, calling and choices.
   p.saga = normalizeSaga(p.saga);
   if (fromVersion < 11) notes.push('New: The Wanderer\'s Saga. Talk to Chronicler Corwin in Brightwater to begin your story.');
+  // v12 (Sails of Sarim): your ship, crew, officers, treasure charts and card-table record.
+  p.vessel = normalizeVessel(p.vessel);
+  if (fromVersion < 12) notes.push('New: Sails of Sarim. See the Shipwright on the Port Sarim docks for a ship, then sail the Sound. Cutlasses, flintlocks, Hexcraft and card tables too. Press M for the world map.');
   if (!p.activeCompanion || !p.companions[p.activeCompanion] || !p.companions[p.activeCompanion].recruited) p.activeCompanion = null;
   { const r = p.rep && typeof p.rep === 'object' ? p.rep : {}; p.rep = {}; for (const k of Object.keys(r)) { const v = Math.floor(Number(r[k]) || 0); if (v > 0) p.rep[k] = Math.min(99999, v); } }
   p.errands = Array.isArray(p.errands) ? p.errands.filter(e => e && typeof e === 'object' && typeof e.id === 'string' && typeof e.comp === 'string').slice(0, 8) : [];
@@ -167,7 +171,7 @@ export function applySaveData(data, skills, player, playerMesh) {
     const notes = migrateSave(saved);
     Object.assign(skills, saved.skills);
     const p = saved.player;
-    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints', 'effects', 'poison', 'poisonImmune', 'questCapeLegacy', 'bounties', 'bountiesDone', 'caveLoot', 'steeds', 'flowBest', 'alignment', 'companions', 'activeCompanion', 'rep', 'errands', 'saga']) {
+    for (const k of ['hp', 'maxHp', 'mana', 'maxMana', 'gold', 'inventory', 'equipment', 'ammoCount', 'runEnergy', 'attackStyle', 'settings', 'bank', 'tools', 'prayerPoints', 'activePrayers', 'quests', 'questPoints', 'effects', 'poison', 'poisonImmune', 'questCapeLegacy', 'bounties', 'bountiesDone', 'caveLoot', 'steeds', 'flowBest', 'alignment', 'companions', 'activeCompanion', 'rep', 'errands', 'saga', 'vessel']) {
       if (p[k] !== undefined) player[k] = p[k];
     }
     if (p.skillTrees) {
@@ -176,7 +180,9 @@ export function applySaveData(data, skills, player, playerMesh) {
       }
     }
     if (typeof player.hp !== 'number' || !(player.hp > 0)) player.hp = player.maxHp || 100;
-    if (saved.position && playerMesh && isFinite(saved.position.x) && isFinite(saved.position.z)) {
+    if (saved.position && playerMesh && isFinite(saved.position.x) && isFinite(saved.position.z) && inSea(saved.position.x, saved.position.z)) {
+      playerMesh.mesh.position.x = saved.position.x; playerMesh.mesh.position.z = saved.position.z;
+    } else if (saved.position && playerMesh && isFinite(saved.position.x) && isFinite(saved.position.z)) {
       playerMesh.mesh.position.x = Math.max(-POS_LIMIT, Math.min(POS_LIMIT, saved.position.x));
       playerMesh.mesh.position.z = Math.max(-POS_LIMIT, Math.min(POS_LIMIT, saved.position.z));
     }

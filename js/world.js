@@ -4,6 +4,7 @@ import { MONSTER_TYPES, AGILITY_COURSES, RUNE_ALTARS, BOUNTIES } from './gamepla
 import { agilityStyle, swingGeom } from './agilityAnim.js';
 import { QUEST_NPCS } from './questnpcs.js';
 import { COMPANIONS } from './companions.js';
+import { SEA, seaGround, ISLANDS } from './sea.js';
 import { addFire } from './vfx.js';
 import { terrainMaterial, waterMaterial, hookWaterNoise, WATER_MESHES } from './gfx.js';
 import { buildHumanoidRig, apronGeo, varyLook, hashStr, contactShadow, plateCharMat, chainCharMat } from './anatomy.js';
@@ -195,6 +196,7 @@ function edgeHeight(x, z) {
   return Math.min(34, d * d * 0.018 * roll + d * 0.15);
 }
 export function terrainHeight(x, z) {
+  if (z > SEA.z0) return seaGround(x, z); // the Sarim Sound (Sails of Sarim)
   const H = HF.data;
   if (!H) return edgeHeight(x, z);
   const gx = x + HF.off, gz = z + HF.off;
@@ -1539,6 +1541,40 @@ export function createWorld(scene) {
     const n = createNpc(p.x, p.z, c === QM || c === SAGA ? c.id : 'comp_' + c.id, c.name, c.look, p.x + 1, p.z + 1);
     if (c === QM) n.standing = true; else if (c === SAGA) n.saga = true; else { n.companion = c.id; n.home = { x: p.x, z: p.z }; n.wander = true; }
     nodes.push(n);
+  }
+
+  // ---- Sails of Sarim: the Shipwright and Mama Sorrel in Port Sarim; port folk on the Sound's islands; the Drowned Crew on Wreckers' Reef ----
+  {
+    const SARIM = [
+      { id: 'shipwright', name: 'Shipwright Halvard', x: -77, z: 70, look: { body: 0x6a4a2a, legs: 0x3a2a1a, apron: 0xb89a6a, beard: 0x8a5a2a }, flag: { sea: 'shipwright' } },
+      { id: 'sorrel', name: 'Mama Sorrel', x: -88, z: 54, look: { body: 0x3a5a2a, legs: 0x2a2a1a, hat: 0x5a3a2a, hatW: 0.6, hatH: 0.12 }, flag: { sea: 'hexer' } }
+    ];
+    for (const c of SARIM) {
+      let p = null;
+      for (let i = 0; i < 80 && !p; i++) {
+        const r = 0.5 + i * 0.15, a = i * 2.39996, x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r;
+        if (insideLake(x, z, 1.5) || colliders.some(b => x > b.minX - 0.8 && x < b.maxX + 0.8 && z > b.minZ - 0.8 && z < b.maxZ + 0.8)) continue;
+        if (occupied.some(o => Math.hypot(o.x - x, o.z - z) < Math.min(o.r, 2.5) + 0.6)) continue;
+        p = { x, z };
+      }
+      p = p || { x: c.x, z: c.z }; occupied.push({ x: p.x, z: p.z, r: 0.8 });
+      nodes.push(Object.assign(createNpc(p.x, p.z, c.id, c.name, c.look, p.x + 1, p.z + 1), c.flag));
+    }
+    const isl = id => ISLANDS.find(i => i.id === id);
+    const at = (id, fx, fz) => { const i = isl(id); return [i.x + fx * i.r, i.z + fz * i.r]; };
+    const ISLE = [
+      ['gullrest', 0.05, -0.35, 'harbour_g', 'Harbourmaster Pell', { body: 0x2a3a5a, legs: 0x2a2a2a, hat: 0x1a2a4a, hatH: 0.15 }, { sea: 'harbour' }],
+      ['gullrest', -0.25, -0.15, 'chandler', 'Chandler Wenna', { body: 0xc8a06a, legs: 0x4a3a2a, apron: 0xe0d0b0 }, { shop: 'chandlery' }],
+      ['gullrest', 0.3, 0.1, 'gullfisher', 'Old Gaffer Brune', { body: 0x5a6a7a, legs: 0x3a3a3a, beard: 0xd0d0d0 }, { say: 'Saltgrave were a captain once, a cruel one. The sea took him and gave him back wrong. Sink his ships and bring me no charts, mind: charts lead to digging, and digging leads to trouble.' }],
+      ['brineholt', -0.35, -0.05, 'harbour_b', 'Harbourmistress Ines', { body: 0x4a2a3a, legs: 0x2a2a2a, hat: 0x3a1a2a, hatH: 0.15 }, { sea: 'harbour' }],
+      ['brineholt', 0.0, 0.3, 'dealer_crown', 'Dealer Quill', { body: 0x7a1a1a, legs: 0x2a1a1a, hat: 0x1a1a1a, hatH: 0.3 }, { sea: 'crown' }],
+      ['brineholt', 0.25, 0.25, 'dealer_tides', 'Dealer Maris', { body: 0x1a4a5a, legs: 0x1a2a2a, hat: 0x1a1a1a, hatH: 0.3 }, { sea: 'tides' }],
+      ['brineholt', 0.1, -0.3, 'gunsmith', 'Gunsmith Harrow', { body: 0x3a3a3a, legs: 0x2a2a2a, apron: 0x5a4a3a, beard: 0x3a2a1a }, { shop: 'armsBrine' }]
+    ];
+    for (const [id, fx, fz, nid, name, look, flag] of ISLE) { const [x, z] = at(id, fx, fz); nodes.push(Object.assign(createNpc(x, z, nid, name, look, x, z - 1), flag)); }
+    const R = isl('reef');
+    for (const [fx, fz, t] of [[-0.4, 0, 'Drowned Deckhand'], [0.35, -0.2, 'Drowned Deckhand'], [0, 0.35, 'Drowned Deckhand'], [-0.2, -0.4, 'Drowned Deckhand'], [0.4, 0.2, 'Drowned Gunner'], [-0.35, 0.3, 'Drowned Gunner'], [0.1, -0.05, 'Drowned Gunner'], [0, 0.1, 'Captain Saltgrave']])
+      monsters.push(createMonster(t, R.x + fx * R.r, R.z + fz * R.r, t === 'Captain Saltgrave' ? 2 : 3));
   }
 
   // ---- Elevation: keep every town, road, building and work spot level, then lift the land ----

@@ -48,6 +48,10 @@ import { COMPANIONS, companionById, normalizeCompanions, companionXpBonus, addBo
 import { FACTIONS, TIERS, TIER_REWARDS, BOUNTY_REP, factionById, factionNear, tierOf, nextTier, addRep, repOf } from './standing.js';
 import { ERRANDS, errandById, errandChance, startErrand, collectErrands } from './errands.js';
 import { createBondsUI } from './bondsUI.js';
+import { SEA, SARIM_DOCK, HULLS, OFFICERS, CREW_COST, CREW_MAX, ISLANDS, islandAt, normalizeVessel, inSound } from './sea.js';
+import { createSailing } from './sailing.js';
+import { createCards } from './cards.js';
+let sailing = null; // Sails of Sarim runtime (set up after the player loads)
 import { CALLINGS, CHAPTERS, ENDINGS, normalizeSaga, currentChapter, sagaXpBonus, objNeed, endingTone } from './saga.js';
 import { STEEDS, steedById, normalizeSteeds, grantSteeds, buildSteed, buildBulwarkArmor, poseSteed, ROAD_BONUS, BULWARK } from './steeds.js';
 import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW } from './flow.js';
@@ -394,6 +398,7 @@ function itemMenu(item, x, y, mode) {
     else if (info.type === 'bones') {
       opts.push({ action: 'Bury', target: item, color: c, fn: () => startBury(item, 1) });
       if (have > 1) opts.push({ action: 'Bury all', target: `${item} (${have})`, color: c, fn: () => startBury(item, Infinity) });
+    } else if (item === 'Treasure chart') { opts.push({ action: 'Read', target: item, color: c, fn: () => readChart() }); opts.push({ action: 'Dig here', target: item, color: c, fn: () => digHere() });
     } else if (info.type === 'tool') opts.push({ action: 'Add to toolbelt', target: item, color: c, fn: () => beltFromInventory(item) });
     else if (slotFor(item)) opts.push({ action: info.type === 'weapon' ? 'Wield' : 'Wear', target: item, color: c, fn: () => useItem(item) });
     if (WOODS.includes(item)) opts.push({ action: 'Light', target: item, color: c, fn: () => startAction({ kind: 'light', item, wait: 2 }) });
@@ -496,7 +501,7 @@ const inputCtl = setupInput(renderer.domElement, {
   onTap, onContext, onHover,
   onRotate: (dy, dp) => rotateRig(rig, dy, dp),
   onZoom: f => zoomRig(rig, f),
-  onEscape: () => { ui.hideMenu(); invUI.close(); bondsUI.close(); minimap.closeMap(); },
+  onEscape: () => { ui.hideMenu(); invUI.close(); bondsUI.close(); minimap.closeMap(); cardsUI.close(); },
   onDpad: () => { if (action && action.kind !== 'craft') stopAction(); },
   onKey: k => { if ('wasd'.includes(k) && action && action.kind !== 'craft') stopAction(); },
   onAction: act => {
@@ -507,6 +512,8 @@ const inputCtl = setupInput(renderer.domElement, {
     else if (act === 'shift') steedShift();
     else if (act === 'bonds') bondsUI.toggle();
     else if (act === 'map') minimap.toggleMap();
+    else if (act === 'firePort') sailing.fire('port');
+    else if (act === 'fireStar') sailing.fire('star');
     else if (act.startsWith('tab')) invUI.showTab({ tabInv: 'inv', tabEquip: 'equip', tabSkills: 'skills', tabQuests: 'quests', tabPrayer: 'prayer', tabSettings: 'settings' }[act]);
   }
 });
@@ -584,7 +591,7 @@ hud = createHud({ player, skills, monsters, levelColor, combatLevelOf: () => com
   getTarget: () => (action && action.kind === 'attack' && action.mon && action.mon.alive ? action.mon : null) });
 // Words of Choice: every tone you pick is remembered (companions and factions react to it).
 ui.onTone(tone => { player.alignment = player.alignment || {}; player.alignment[tone] = (player.alignment[tone] || 0) + 1; const m = compTalking ? null : toneReaction(player, tone, Date.now()); if (m) log(m, 'game'); markDirty(); });
-hud.onQuick = q => { if (q === 'dodge') doDodge(); else if (q === 'ride') toggleRide(); else if (q === 'shift') steedShift(); else if (q === 'bonds') bondsUI.toggle(); };
+hud.onQuick = q => { if (q === 'dig') digHere(); else if (q === 'port' || q === 'star') sailing.fire(q); else if (q === 'helm') sailing.S.throttle = sailing.S.throttle ? 0 : 1; else if (q === 'dodge') doDodge(); else if (q === 'ride') toggleRide(); else if (q === 'shift') steedShift(); else if (q === 'bonds') bondsUI.toggle(); };
 hud.setQuick({});
 
 // ---------------------------------------------------------------------------
@@ -605,6 +612,7 @@ function interactive(ent) {
   if (ent.hp !== undefined) return ent.alive;
   return true;
 }
+const seaPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 function pick(cx, cy, all = false) {
   const rect = renderer.domElement.getBoundingClientRect();
   ndc.set(((cx - rect.left) / rect.width) * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1);
@@ -638,7 +646,9 @@ function pick(cx, cy, all = false) {
     for (const n of near) ents.push(n.ent);
   }
   const g = raycaster.intersectObject(ground);
-  const point = g.length ? g[0].point : null;
+  let point = g.length ? g[0].point : null;
+  // The Sound has no terrain mesh: pick on the sea/island plane instead.
+  if (!point && inSound(pm.mesh.position.x, pm.mesh.position.z)) { const pt = new THREE.Vector3(); seaPlane.constant = sailing.atSea ? 0 : -1.3; if (raycaster.ray.intersectPlane(seaPlane, pt)) point = pt; }
   if (!ents.length && !point) return null;
   return { ent: ents[0] || null, ents: all ? ents.slice(0, 4) : ents.slice(0, 1), point };
 }
@@ -652,6 +662,14 @@ function stunned() {
 }
 function walkTo(x, z) {
   if (crossing || stunned()) return;
+  if (sailing && sailing.atSea) { sailing.steerTo(x, z); return; }
+  if (sailing && sailing.moored && sailing.ship) {
+    const sp = sailing.ship.mesh.position;
+    if (Math.hypot(x - sp.x, z - sp.z) < 6 * sailing.ship.mesh.scale.x) {
+      if (Math.hypot(pm.mesh.position.x - sp.x, pm.mesh.position.z - sp.z) < 24) { sailing.reboard(); return; }
+      log('Walk to the end of the dock to board your ship.', 'game');
+    }
+  }
   pm.goal = null;
   pm.target = { x, z, walk: true };
   pm.stopDist = 0.1;
@@ -679,12 +697,23 @@ const spellMesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), new THRE
 spellMesh.visible = false;
 scene.add(spellMesh);
 let spellFlight = null;
+// Hexcraft: each hex lands an effect on top of its damage (Hexwood staff adds 15% hex damage).
+function applyHex(spell, mon, res) {
+  const boost = (ITEMS[player.equipment.weapon] || {}).hexBoost || 0;
+  if (boost && res.dmg > 0) res.dmg = Math.min(mon.hp, Math.round(res.dmg * (1 + boost)));
+  if (spell.hex === 'rot') { mon.venom = { dmg: Math.max(4, Math.round(spell.maxHit * 0.2)), next: 4, left: 4 }; log(`The ${mon.name} begins to rot.`, 'combat'); }
+  else if (spell.hex === 'bind') { mon.stunUntil = tick + 4; log(`Roots of bog-rope bind the ${mon.name}!`, 'combat'); }
+  else if (spell.hex === 'wither') { mon.witherUntil = tick + 33; log(`The ${mon.name} withers. It hits softer.`, 'combat'); }
+  else if (spell.hex === 'leech' && res.dmg > 0) { player.hp = Math.min(player.maxHp, player.hp + Math.floor(res.dmg / 2)); }
+  player.hexCasts = (player.hexCasts || 0) + 1;
+}
 function doMagicTick(a, now) {
   const mon = a.mon;
   const spell = spellById(a.spell);
   const res = castSpell(spell, skills, player, mon);
   if (res.error) { log(res.error, 'warn'); stopAction(); return; }
-  spellMesh.material.color.setHex(SPELL_COLOR[spell.icon] || 0xffffff);
+  if (spell.hex && res.dmg >= 0) applyHex(spell, mon, res);
+  spellMesh.material.color.setHex(SPELL_COLOR[spell.icon] || (spell.hex ? 0x7ad04a : 0xffffff));
   spellFlight = { from: pm.mesh.position.clone().setY(1.3), mon, t: 0 };
   pm.actionAnim = 1; pm.actionKind = 'bow';
   mon.hp -= res.dmg;
@@ -898,7 +927,8 @@ function segDist(px, pz, x1, z1, x2, z2) {
 function riding() { return !!steedState.mesh; }
 function refreshQuick() {
   const st = player.steeds || { owned: [] };
-  if (hud) hud.setQuick({ ride: st.owned.length > 0, riding: riding(), shift: riding() && steedById(steedState.id).shift, bonds: COMPANIONS.some(c => player.companions && player.companions[c.id] && player.companions[c.id].recruited) || !!(player.saga && player.saga.calling) });
+  if (hud && sailing && sailing.atSea) { hud.setQuick({ sea: true, sailing: sailing.S.throttle > 0 }); return; }
+  if (hud) hud.setQuick({ dig: nearChart(), ride: st.owned.length > 0, riding: riding(), shift: riding() && steedById(steedState.id).shift, bonds: COMPANIONS.some(c => player.companions && player.companions[c.id] && player.companions[c.id].recruited) || !!(player.saga && player.saga.calling) });
 }
 function mount(id) {
   const def = steedById(id); if (!def) return;
@@ -1472,6 +1502,116 @@ function companionAssist(now) {
   e.mesh.rotation.y = Math.atan2(mp.x - e.mesh.position.x, mp.z - e.mesh.position.z);
   if (mon.hp <= 0) killMonster(mon, now);
 }
+// ---- Sails of Sarim: your ship, the Shipwright, harbours, Drowned Crew rewards ----
+player.vessel = normalizeVessel(player.vessel);
+sailing = createSailing({
+  scene, pm, player, log: (m, k) => log(m, k), quality: () => gfx.quality, burst, markDirty: () => markDirty(),
+  onChange: () => { if (sailing && sailing.atSea) rig.targetDist = Math.max(rig.targetDist, 22); refreshQuick(); markDirty(); },
+  onSunk: () => { player.vessel.hp = 0; },
+  onSinkEnemy: kind => {
+    const v = player.vessel; v.sank++; const g = kind.loot[0] + Math.floor(Math.random() * (kind.loot[1] - kind.loot[0]));
+    player.gold += g; giveXP('Ranged', 60 + kind.hp * 0.6); giveXP('Smithing', 15);
+    log(`The ${kind.name} sinks! You salvage ${g} coins.`, 'loot');
+    if (Math.random() < 0.25) { giveItem('Treasure chart'); log('A sodden Treasure chart floats up from the wreck.', 'loot'); }
+  },
+  companionsAboard: id => player.activeCompanion === id
+});
+sailing.restore();
+const cardsUI = createCards({ player, log: (m, k) => log(m, k), markDirty: () => markDirty() });
+function seaMarks() {
+  const p = pm.mesh.position, out = [];
+  for (const c of player.vessel.charts) { const i = ISLANDS.find(x => x.id === c.isl); out.push({ x: c.x, z: c.z, label: `Treasure: dig on ${i ? i.name : 'an island'} (X marks the spot)` }); }
+  if (inSound(p.x, p.z)) for (const i of ISLANDS) out.push({ x: i.dock.x, z: i.dock.z, label: `${i.name}${i.port ? ' (port)' : ' (Drowned Crew)'}` });
+  else if (player.vessel.hull || player.vessel.charts.length) out.push({ x: SARIM_DOCK.x, z: SARIM_DOCK.z, label: 'Port Sarim docks: set sail' });
+  return out;
+}
+const shipName = () => HULLS[player.vessel.hull - 1].name;
+function shipwrightTalk() {
+  const v = player.vessel, out = [];
+  if (!v.hull) {
+    out.push(['npc', "Halvard, shipwright. Want to see the Sound? You'll need a hull under you. A Sloop's 2,000 coins: two guns a side, quick on the wind."]);
+    out.push({ choose: [['Build me a Sloop (2,000 coins).', [{ run: () => { if (player.gold < 2000) return [['npc', 'Come back with 2,000 coins.']]; player.gold -= 2000; player.vessel = normalizeVessel({ hull: 1 }); refreshQuick(); markDirty(); return [['npc', "She's yours. Talk to me when you want to cast off."]]; } }]], ['Not today.', []]] });
+    return out;
+  }
+  const H = HULLS[v.hull - 1], next = HULLS[v.hull];
+  out.push(['npc', `Your ${H.name}: hull ${v.hp}/${H.hp}, ${v.crew}/${CREW_MAX} deckhands${v.officers.length ? ', officers: ' + v.officers.map(o => companionById(o).name.split(' ')[0]).join(', ') : ''}.`]);
+  const opts = [['Cast off into the Sound.', [{ run: () => { ui.closeDialogue && setTimeout(() => sailing.setSail(), 0); return []; } }]]];
+  if (v.hp < H.hp) { const cost = Math.ceil((H.hp - v.hp) * 4); opts.push([`Patch the hull (${cost} coins).`, [{ run: () => { if (player.gold < cost) return [['npc', 'Not enough coin for the timber.']]; player.gold -= cost; v.hp = H.hp; markDirty(); return [['npc', 'Good as new.']]; } }]]); }
+  if (v.crew < CREW_MAX) opts.push([`Hire a deckhand (${CREW_COST} coins).`, [{ run: () => { if (player.gold < CREW_COST) return [['npc', 'Deckhands want paying up front.']]; player.gold -= CREW_COST; v.crew++; markDirty(); return [['npc', `A strong back for the guns. ${v.crew} aboard; each one reloads the broadsides faster.`]]; } }]]);
+  if (next) {
+    const reqTxt = Object.entries(next.req).map(([k, l]) => `${k} ${l}`).join(', '), mats = next.mats.map(([i, q]) => `${q} ${i}`).join(', ');
+    opts.push([`Upgrade to a ${next.name} (${next.cost} coins, ${mats}).`, [{ run: () => {
+      for (const [k, l] of Object.entries(next.req)) if (skills[k].level < l) return [['npc', `You'll need ${reqTxt} to help me build a ${next.name}.`]];
+      if (player.gold < next.cost) return [['npc', `That's ${next.cost} coins.`]];
+      for (const [i, q] of next.mats) if (countItem(i) < q) return [['npc', `Bring me ${mats}.`]];
+      player.gold -= next.cost; for (const [i, q] of next.mats) removeItem(player, i, q);
+      v.hull++; v.hp = next.hp; giveXP('Smithing', next.n * 300); giveXP('Crafting', next.n * 300); markDirty();
+      return [['npc', `There she is: a ${next.name}. ${next.guns} guns a side and a tougher hull.`]];
+    } }]]);
+  }
+  const rec = COMPANIONS.filter(c => player.companions[c.id] && player.companions[c.id].recruited && OFFICERS[c.id]);
+  if (rec.length) opts.push(['Appoint officers.', [['npc', 'Companions sworn to you can serve as officers. They only help while they travel with you.'], { choose: rec.map(c => [`${v.officers.includes(c.id) ? 'Stand down' : 'Appoint'} ${c.name} (${OFFICERS[c.id].trait}: ${OFFICERS[c.id].desc})`, [{ run: () => { v.officers = v.officers.includes(c.id) ? v.officers.filter(o => o !== c.id) : [...v.officers, c.id]; markDirty(); return [['npc', 'Done.']]; } }]]) }]]);
+  opts.push(['Goodbye.', []]);
+  out.push({ choose: opts });
+  return out;
+}
+function countItem(it) { return player.inventory[it] || 0; }
+const grimyHerbs = () => Object.keys(player.inventory).filter(k => /^Grimy /.test(k));
+function harbourTalk(ent) {
+  const v = player.vessel, i = islandAt(ent.x, ent.z, 4);
+  const opts = [];
+  if (sailing.moored) opts.push(['Ready my ship.', [{ run: () => { sailing.reboard(); return []; } }]]);
+  opts.push(['Ferry me back to Port Sarim (30 coins).', [{ run: () => { if (player.gold < 30) return [['npc', "Thirty coins, or swim."]]; player.gold -= 30; setTimeout(() => sailing.homeToSarim('The harbour launch drops you on the Port Sarim docks. Your ship is towed home.'), 0); return []; } }]]);
+  opts.push(['Goodbye.', []]);
+  return [['npc', `Welcome to ${i ? i.name : 'port'}. ${i ? i.desc : ''} Mind the Drowned Crew south at Wreckers' Reef.`], { choose: opts }];
+}
+function seaTalk(ent) {
+  const face = ent.sea === 'hexer' ? '🪲' : ent.sea === 'shipwright' ? '⚓' : ent.sea === 'harbour' ? '⚓' : '🃏';
+  let script;
+  if (ent.sea === 'shipwright') script = shipwrightTalk();
+  else if (ent.sea === 'harbour') script = harbourTalk(ent);
+  else if (ent.sea === 'hexer') script = hexerTalk();
+  else if (ent.sea === 'crown' || ent.sea === 'tides') { cardsUI.open(ent.sea, ent.name); return; }
+  ui.dialogue(ent.name, face, script, () => markDirty());
+}
+// ---- Hexcraft: Mama Sorrel brews hex runes and sells her wares ----
+function hexerTalk() {
+  const brew = (rune, from, xp) => [{ run: () => {
+    const ess = countItem('Rune essence') + countItem('Pure essence'); const src = from === 'Bones' ? countItem('Bones') : grimyHerbs().reduce((n, k) => n + countItem(k), 0);
+    const n = Math.min(ess, src, 10); if (!n) return [['npc', from === 'Bones' ? 'Bring me Bones and Rune essence, child.' : 'Bring me grimy herbs from the bog and Rune essence.']];
+    for (let k = 0; k < n; k++) { if (!removeItem(player, 'Rune essence', 1)) removeItem(player, 'Pure essence', 1); if (from === 'Bones') removeItem(player, 'Bones', 1); else removeItem(player, grimyHerbs()[0], 1); }
+    addItem(player, rune, n * 3); giveXP('Runecrafting', n * xp); giveXP('Magic', n * xp * 0.5); markDirty();
+    return [['npc', `There: ${n * 3} ${rune}s. Hexes take from the bog and the grave; mind what you curse.`]];
+  } }];
+  return [['npc', "Ah, a seeker. I am Mama Sorrel. Hexcraft is old magic of bog and bone: rotting, binding, withering and leeching hexes. Open your Spellbook to cast them."],
+    { choose: [["Let's trade.", [{ run: () => invUI.open('hexer') }]], ['Brew Bog runes (Rune essence + grimy herbs).', brew('Bog rune', 'herb', 6)], ['Brew Bone runes (Rune essence + Bones).', brew('Bone rune', 'Bones', 9)], ['Goodbye.', []]] }];
+}
+// ---- Treasure charts: read one to mark a dig spot; dig there with a Spade ----
+const CHART_SPOTS = { gullrest: [[0.55, 0.2], [-0.5, 0.35], [0.2, 0.6]], brineholt: [[-0.55, -0.45], [0.55, -0.2], [0.35, 0.6]], reef: [[0.6, -0.4], [-0.6, -0.1], [0.3, 0.55]] };
+function nearChart() { const p = pm.mesh.position; return !!(player.vessel && player.vessel.charts.some(c => Math.hypot(c.x - p.x, c.z - p.z) < 6)); }
+function readChart() {
+  const v = player.vessel; if (v.charts.length >= 5) { log('You already carry five marked spots. Dig some up first.', 'warn'); return; }
+  if (!removeItem(player, 'Treasure chart', 1)) return;
+  const isl = ISLANDS[Math.floor(Math.random() * ISLANDS.length)], sp = CHART_SPOTS[isl.id][Math.floor(Math.random() * 3)];
+  const tier = isl.id === 'reef' ? 3 : Math.random() < 0.3 ? 2 : 1;
+  v.charts.push({ x: isl.x + sp[0] * isl.r, z: isl.z + sp[1] * isl.r, isl: isl.id, tier });
+  log(`The chart shows an X on ${isl.name}. It's marked on your map (M).`, 'game'); markDirty();
+}
+function digHere() {
+  if (!ownsToolType(player, 'spade')) { log('You need a Spade on your toolbelt. The Gullrest Chandlery sells them.', 'warn'); return; }
+  const p = pm.mesh.position, v = player.vessel, c = v.charts.find(c => Math.hypot(c.x - p.x, c.z - p.z) < 3);
+  pm.actionAnim = 1; pm.actionKind = 'melee';
+  if (!c) { log(v.charts.length ? 'Nothing here. The X must be somewhere else.' : 'You dig a hole, but find nothing. Treasure charts show where to dig.', 'game'); return; }
+  v.charts.splice(v.charts.indexOf(c), 1); v.dug++;
+  const g = [0, 400, 1100, 2600][c.tier] + Math.floor(Math.random() * 400 * c.tier);
+  player.gold += g; burst('dust', p.x, p.y, p.z, 14);
+  const gems = ['Uncut sapphire', 'Uncut emerald', 'Uncut ruby', 'Uncut diamond'].filter(n => ITEMS[n]);
+  const gem = gems[Math.min(gems.length - 1, Math.floor(Math.random() * (c.tier + 1)))];
+  if (gem) giveItem(gem);
+  if (c.tier >= 2 && Math.random() < 0.5) giveItem('Silver shot', 15);
+  if (c.tier === 3 && Math.random() < 0.08) giveItem("Saltgrave's tricorn");
+  log(`You dig up a buried chest: ${g} coins${gem ? ' and an ' + gem.toLowerCase() : ''}!`, 'loot'); giveXP('Crafting', 40 * c.tier); markDirty();
+}
 // ---- The Wanderer's Saga: Chronicler Corwin tells your story; choices are remembered ----
 player.saga = normalizeSaga(player.saga);
 function sagaGate(ch) { const t = totalLevel(skills), q = questPoints(player); return t >= ch.req.total && q >= ch.req.qp ? null : `You'll need total level ${ch.req.total} and ${ch.req.qp} quest points (you have ${t} and ${q}).`; }
@@ -1580,6 +1720,7 @@ const bondsUI = createBondsUI({
   }
 });
 function talkTo(ent) {
+  if (ent.sea) { seaTalk(ent); return; }
   if (ent.saga) { ui.dialogue(ent.name, '📖', sagaTalk(), () => markDirty()); return; }
   if (ent.standing) { ui.dialogue(ent.name, '📜', quartermasterTalk(), () => markDirty()); return; }
   if (ent.companion) { const d = companionById(ent.companion); compTalking = d.id; ui.dialogue(d.name, d.face, companionTalk(ent), () => { compTalking = null; markDirty(); }); return; }
@@ -1735,7 +1876,7 @@ function updateShafts() {
   U.shaftCol.value.copy(DAY.lightCol);
 }
 
-let ammoMsg = null;
+let ammoMsg = null, pistolShot = null;
 function useArrow() {
   ammoMsg = null;
   const wi = ITEMS[player.equipment.weapon];
@@ -1743,6 +1884,13 @@ function useArrow() {
   if (!player.equipment.ammo || player.ammoCount <= 0) return false;
   // crossbows fire bolts, bows fire arrows
   const am = player.equipment.ammo, xbow = /crossbow/i.test(player.equipment.weapon || '');
+  const pistol = !!(wi && wi.pistol), isShot = !!(ITEMS[am] && ITEMS[am].shot);
+  if (pistol || isShot) {
+    if (pistol && !isShot) { ammoMsg = `Your flintlock needs lead or silver shot, not ${am.toLowerCase()}.`; return false; }
+    if (!pistol) { ammoMsg = `You can't fire ${am.toLowerCase()} from a bow.`; return false; }
+    player.ammoCount--; if (player.ammoCount <= 0) { player.equipment.ammo = null; player.ammoCount = 0; }
+    return true;
+  }
   const isBolt = /bolts$/i.test(am), isArrow = /arrows?$/i.test(am);
   if (xbow && !isBolt) { ammoMsg = `Your crossbow needs bolts, not ${am.toLowerCase()}.`; return false; }
   if (!xbow && !isArrow) { ammoMsg = `Your bow needs arrows, not ${am.toLowerCase()}.`; return false; }
@@ -1792,6 +1940,7 @@ function playerAttack(mon, now) {
   queuedAbility = null;
   if (special) cooldowns[special] = tick + cooldownTicks(skills, abilityById(special));
   if (ranged) {
+    pistolShot = player.equipment.ammo;
     if (!useArrow()) { log(ammoMsg || (/crossbow/i.test(player.equipment.weapon || '') ? 'You have no bolts left. Equip bolts in your ammo slot.' : 'There is no ammo left in your quiver.'), 'warn'); stopAction(); return; }
     arrowFlight = { from: pm.mesh.position.clone().setY(1.3), mon, t: 0 };
   }
@@ -1805,6 +1954,19 @@ function playerAttack(mon, now) {
   else if (special === 'snipe') swings.push({ acc: base.acc + 0.3, dmg: base.dmg + 1.0 });
   else if (special === 'volley') { swings.push({ ...base, acc: base.acc - 0.15 }); for (let i = 0; i < 2; i++) if (useArrow()) swings.push({ ...base, acc: base.acc - 0.15 }); }
   else swings.push(base);
+  // Sails of Sarim styles. Cutlass: every 3rd swing on the same foe adds a quick flurry cut.
+  // Flintlock: slow but steady at close range; silver shot bites the undead.
+  const wInfo = ITEMS[player.equipment.weapon] || {};
+  if (wInfo.cutlass && !ranged) {
+    pm.cutN = pm.cutMon === mon ? (pm.cutN || 0) + 1 : 1; pm.cutMon = mon;
+    if (pm.cutN % 3 === 0) { swings.push({ ...base, acc: base.acc + 0.1, dmg: base.dmg - 0.3, extra: true }); log('Cutlass flurry!', 'combat'); }
+  }
+  if (wInfo.pistol && ranged) {
+    for (const sw of swings) sw.acc = (sw.acc || 0) + 0.15;
+    const sh = ITEMS[player.equipment.ammo || ''] || ITEMS[pistolShot] || {};
+    if (mon.undead && sh.vsUndead) for (const sw of swings) sw.dmg = (sw.dmg || 0) + sh.vsUndead;
+    const pp = pm.mesh.position; burst('dust', pp.x, pp.y + 1.2, pp.z, 6);
+  }
   // Dark bow: fires extra arrows every shot.
   const ge = gearEffects(player);
   if (ranged && ge.multiArrow) for (let i = 1; i < ge.multiArrow; i++) if (useArrow()) swings.push({ ...base });
@@ -1870,6 +2032,7 @@ function killMonster(mon, now) {
   bountyKill(mon.name);
   companionKill(mon.name);
   sagaKill(mon.name);
+  if (mon.drowned) { player.vessel.drowned++; if (mon.boss) log('Captain Saltgrave sinks into the reef... for now.', 'loot'); }
   if (action && action.mon === mon) stopAction();
   const drops = rollLoot(mon.name);
   const x = mon.mesh.position.x, z = mon.mesh.position.z;
@@ -1902,6 +2065,7 @@ function monsterAttack(mon, now) {
   const raw = rollMonsterHit(mon, player, skills);
   if (mon.ranged) enemyArrow = { from: mon.mesh.position.clone().setY(1.3), t: 0 };
   let dmg = reduceIncoming(raw, player, skills, { fortify: tick < buffs.fortifyUntil, rage: tick < buffs.rageUntil });
+  if (dmg > 0 && mon.witherUntil > tick) dmg = Math.max(1, Math.floor(dmg * 0.7)); // Withering Hex
   if (dmg > 0 && performance.now() < steedState.bulwarkUntil) dmg = Math.max(1, Math.floor(dmg * (1 - BULWARK.reduce)));
   if (dmg > 0 && dodging(flow, now)) { dmg = 0; overlays.splat(playerEnt, 0, now); log('Dodged!', 'combat'); return; }
   if (dmg > 0 && Math.random() < perk(skills, 'Defence', 'block')) { dmg = 0; log('Parry: you block the attack!', 'combat'); }
@@ -2442,7 +2606,8 @@ function animate(now) {
   updateAction();
   const running = player.settings.run && player.runEnergy > 0;
   routeThroughDoors();
-  const moved = crossing ? 0 : updatePlayer(pm, keys, dt, running, rig.yaw);
+  const moved = crossing || sailing.atSea ? 0 : updatePlayer(pm, keys, dt, running, rig.yaw);
+  sailing.update(dt, keys);
   updateSteed(dt, moved);
   updateSound(pm, dt, player.settings, DAY.night < 0.5);
   updateCrossing(dt);
@@ -2461,6 +2626,7 @@ function animate(now) {
   if (frame % 5 === 2) updateRoofs();
   if (frame % 10 === 3) { setLoadRadius(gfx.quality === 'low' ? 2 : 3); updateChunks(pm.mesh.position.x, pm.mesh.position.z, scene); }
   if (frame % 300 === 11) { refreshStanding(true); finishErrands(); }
+  if (frame % 30 === 13) refreshQuick();
   if (frame % 30 === 7) { const vm = onVisit(player, pm.mesh.position.x, pm.mesh.position.z); for (const m of vm) log(m, 'game'); if (vm.length) markDirty(); }
   updateMonsters(dt, now);
   updatePatrols(dt, now);
@@ -2471,7 +2637,7 @@ function animate(now) {
   updateFires(now);
   updateArrow(dt);
   rig.shakeOff = player.settings.shake === false;
-  updateRig(rig, camera, pm.mesh.position.x, pm.mesh.position.z, dt, crossing ? pm.mesh.position.y * 0.6 + terrainHeight(pm.mesh.position.x, pm.mesh.position.z) * 0.4 : terrainHeight(pm.mesh.position.x, pm.mesh.position.z));
+  updateRig(rig, camera, pm.mesh.position.x, pm.mesh.position.z, dt, sailing && sailing.atSea ? pm.mesh.position.y - 0.5 : crossing ? pm.mesh.position.y * 0.6 + terrainHeight(pm.mesh.position.x, pm.mesh.position.z) * 0.4 : terrainHeight(pm.mesh.position.x, pm.mesh.position.z));
   updateCave(dt);
   followLight(dirLight, rig.fx, rig.fz, DAY.lightDir);
   sky.follow(camera);
@@ -2485,7 +2651,7 @@ function animate(now) {
   overlays.updatePlates(camera, now);
   if (frame % 3 === 1) hud.update(now);
   if (frame % 3 === 0) {
-    if (frame % 20 === 4) minimap.setMarks(sagaMarks());
+    if (frame % 20 === 4) minimap.setMarks([...seaMarks(), ...sagaMarks()]);
     minimap.draw(pm.mesh.position.x, pm.mesh.position.z, rig.yaw, nodes, monsters, piles);
     minimap.setOrbs(player.hp, player.maxHp, player.runEnergy, player.settings.run, player.prayerPoints, maxPrayer(skills), player.activePrayers.length > 0);
     updateStatus();
@@ -2521,7 +2687,7 @@ window.gielinor = {
   gfx, terrainHeight, applyLook() { applyEquipmentLook(pm, player.equipment); }, setGfx(q) { player.settings.gfx = q; gfx.autoLow = false; applyGfx(); markDirty(); }, scene, camera,
   renderer, player, skills, flow, doDodge, toggleRide, steedShift, steedState, checkSteeds, monsters, nodes, piles, pm, rig, fires, buildings, ui, invUI, get hud() { return hud; }, giveXP, setAutocast, get crossing() { return crossing; }, gtao, get gfxQ() { return gfx.quality; }, useAbility, talkTo, startCraft, stopAction, startAction, useItem, RECIPES, optionsFor, walkTo,
   soundStats, get queued() { return queuedAbility; }, cooldowns, buffs,
-  get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, sagaMarks, minimap, bondsUI, finishErrands, refreshStanding,
+  get action() { return action; }, get tick() { return tick; }, startAction, setCompanion, compEnts, sagaTalk, sagaMarks, minimap, sailing, cardsUI, digHere, readChart, seaTalk, talkTo, refreshQuick, bondsUI, finishErrands, refreshStanding,
   screenOf(x, y, z) { tmpV.set(x, y, z).project(camera); return { x: (tmpV.x + 1) / 2 * window.innerWidth, y: (1 - tmpV.y) / 2 * window.innerHeight }; }
 };
 

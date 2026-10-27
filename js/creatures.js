@@ -263,9 +263,12 @@ const HUMANOID_LOOK = {
   Bandit: v => ({ body: v.tint, build: 0.95 * v.k, legs: 0x3a3028, boots: 0x2a1e14, hair: undefined, eyes: undefined }),
   'Dark Archer': v => ({ body: v.tint, build: 0.9, legs: 0x1e2a1e, boots: 0x1a1a14, hair: null }),
   'Black Knight': v => ({ body: 0x24242c, sleeve: 0x2a2a34, sleeveLen: 0.7, build: 1.1, legs: 0x1e1e26, boots: 0x18181e, skin: 0xc89a74, hair: null, bootH: 0.3 }),
+  'Drowned Deckhand': v => ({ body: 0x3a5a5a, sleeveLen: 0.2, build: 0.9, skin: 0x7aa898, legs: 0x2a3a3a, barefoot: true, hair: 0x2a4a3a, hairStyle: 'long', eyes: 0x60f0d0, mottle: 0.3, curl: 1.0 }),
+  'Drowned Gunner': v => ({ body: 0x4a3a2a, sleeveLen: 0.6, build: 1.0, skin: 0x6a9a8a, legs: 0x2a2a2a, boots: 0x1a1a14, hair: null, eyes: 0x60f0d0, mottle: 0.3 }),
+  'Captain Saltgrave': v => ({ body: 0x2a1a3a, sleeve: 0x3a2a4a, sleeveLen: 0.8, build: 1.2, skin: 0x5a8a7a, legs: 0x1a1a22, boots: 0x14100c, bootH: 0.3, hair: 0x1a2a2a, hairStyle: 'long', eyes: 0x80ffe0, mottle: 0.35 }),
   Guard: v => ({ body: v.tint, build: 1.05 * v.k, legs: 0x2a2a3a, boots: 0x1e1a16, hair: null, bootH: 0.25 })
 };
-const CLAWED = /Goblin|Ogre|Grumsh|Demon|Zombie|Skeleton/;
+const CLAWED = /Goblin|Ogre|Grumsh|Demon|Zombie|Skeleton|Drowned Deckhand/;
 // Body/leg colours of the far (cheap) LOD mesh so it matches the detailed rig it swaps with:
 // bare-chested monsters (giants, ogres, goblins, demons) show skin, not a shirt.
 export function loColours(typeName, t, seed) {
