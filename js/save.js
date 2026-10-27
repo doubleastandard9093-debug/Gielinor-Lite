@@ -148,6 +148,7 @@ export function migrateSave(saved) {
   // v10 (Bonds & Choices): dialogue-wheel tone counts.
   { const a = p.alignment && typeof p.alignment === 'object' ? p.alignment : {}; p.alignment = {}; for (const t of ['kind', 'firm', 'cunning']) p.alignment[t] = Math.max(0, Math.floor(Number(a[t]) || 0)); }
   p.companions = normalizeCompanions(p.companions);
+  if (fromVersion < 10) notes.push('New: Bonds & Choices. Recruit Sworn Companions, earn faction Standing and send errands (press B). See Settings → What\'s new.');
   if (!p.activeCompanion || !p.companions[p.activeCompanion] || !p.companions[p.activeCompanion].recruited) p.activeCompanion = null;
   { const r = p.rep && typeof p.rep === 'object' ? p.rep : {}; p.rep = {}; for (const k of Object.keys(r)) { const v = Math.floor(Number(r[k]) || 0); if (v > 0) p.rep[k] = Math.min(99999, v); } }
   p.errands = Array.isArray(p.errands) ? p.errands.filter(e => e && typeof e === 'object' && typeof e.id === 'string' && typeof e.comp === 'string').slice(0, 8) : [];

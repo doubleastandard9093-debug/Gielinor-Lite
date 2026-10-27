@@ -423,3 +423,14 @@ kbd { font: bold 9.5px var(--f-num); color: var(--c-gold-hi); padding: 2px 5px; 
 #dialogue .w-opt i { position: absolute; left: 5px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border-radius: 50%; color: #fff; font-style: normal; display: grid; place-items: center; font-size: 12px; }
 #dialogue .w-opt small { display: block; font-size: 10px; opacity: .7; text-transform: uppercase; letter-spacing: .06em; }
 @media (max-width: 480px) { #dialogue .w-opt { font-size: 12px; } }
+/* Bonds panel (companions, standing, errands) */
+#bonds{position:fixed;left:50%;top:calc(50% + env(safe-area-inset-top)/2);transform:translate(-50%,-50%);width:min(420px,94vw);max-height:min(560px,78vh);flex-direction:column;background:#2a2018f2;border:2px solid #c8a040;border-radius:10px;color:#ffe9b0;font:13px sans-serif;z-index:60;box-shadow:0 6px 24px #000a}
+#bonds .b-top{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid #6a5030}
+#bonds button{background:#4a3a28;color:#ffe9b0;border:1px solid #c8a040;border-radius:6px;padding:6px 10px;font:600 12px sans-serif;min-height:32px}
+#bonds .b-tabs{display:flex;gap:6px;padding:6px 10px}#bonds .b-tabs button{flex:1}#bonds .b-tabs .on{background:#8a6a30}
+#bonds .b-body{overflow:auto;padding:4px 10px 10px;-webkit-overflow-scrolling:touch}
+#bonds .b-card{background:#0003;border:1px solid #5a4630;border-radius:8px;padding:7px 8px;margin:6px 0}#bonds .b-card.dim{opacity:.7}
+#bonds .b-h{display:flex;justify-content:space-between;gap:8px;font-weight:700}
+#bonds .b-s{font-size:11.5px;color:#d8c8a0;margin-top:4px;line-height:1.35}#bonds .b-s .on{color:#9fe09f}
+#bonds .b-bar{height:6px;background:#0006;border-radius:3px;margin-top:5px;overflow:hidden}#bonds .b-bar i{display:block;height:100%;background:linear-gradient(90deg,#c8a040,#ffd770)}
+#bonds .b-row{margin-top:6px;display:flex;gap:6px}#bonds select{background:#1a140e;color:#ffe9b0;border:1px solid #c8a040;border-radius:6px;padding:4px;max-width:100%}

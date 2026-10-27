@@ -27,6 +27,10 @@ const qtyLabel = n => n >= 10000000 ? Math.floor(n / 1000000) + 'M' : n >= 10000
 const STATION_LABEL = { furnace: '🔥 Furnace', anvil: '⚒️ Anvil', range: '🍳 Range/fire' };
 
 export const WHATS_NEW = `
+<p><b>Sworn Companions.</b> Four allies wait to be recruited: Tamsin the Squire in Brightwater, Ysolde the Ranger in Ashford, Brannoc Ironbeard in Falador and Mirelle the Hedge-mage in Port Sarim. Each sets you a task. Your active companion follows you, joins your fights and boosts XP in their skills as your Bond grows (gifts they like, and words they like on the dialogue wheel).</p>
+<p><b>Words of Choice.</b> Some conversations now offer a dialogue wheel: kind, firm or cunning. Companions notice what you say.</p>
+<p><b>Standing.</b> Quests, bounties and errands raise your standing with the Brightwater Watch, the Sarim Mariners, the Varrock Arcane Circle and the Order of the White Lantern. Each tier adds XP in their skills; claim tier rewards from Quartermaster Odile in Falador. Quests you already finished count.</p>
+<p><b>Errand Ledger.</b> Press B (or the Bonds button) to see companions, standing and errands. Send companions who aren't following you on real-time errands that fill your bank.</p>
 <p><b>Shiftsteeds.</b> Reach Agility 10 for the Fernback Stag and Agility 30 for the Ironbristle Boar. Press G (or Ride) to ride: faster than running and faster again on roads. You dismount to fight. On the boar, press F (or Shift) for Bulwark form: 6 seconds of 30% less damage and a charge that rams the first monster ahead.</p>
 <p><b>Flow Strikes.</b> Land combat skills back to back to build a Flow chain: +8% damage per link, and the third link adds a Flow Finisher swing and some adrenaline. Press Space (or the Roll button) to dodge-roll for 15 run energy: hits that land mid-roll miss you.</p>
 <p><b>No more black box.</b> On High, a single glitched pixel (from a hard edge on a roof, wall or hillside at certain angles) could be smeared by the glow effect into a big flickering black rectangle, mostly when looking toward buildings. Those pixels are now caught and cleaned before any effects run, and the shaders that produced them are fixed.</p>

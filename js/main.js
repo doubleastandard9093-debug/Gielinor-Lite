@@ -45,6 +45,8 @@ import { QUEST_NPCS } from './questnpcs.js';
 import { createInventoryUI } from './inventoryUI.js';
 import { COMPANIONS, companionById, normalizeCompanions, companionXpBonus, addBond, toneReaction, assistMax, assistEvery, GIFT_COOLDOWN_MS, BOND_MAX, BOND_PERKS } from './companions.js';
 import { FACTIONS, TIERS, TIER_REWARDS, BOUNTY_REP, factionById, factionNear, tierOf, nextTier, addRep, repOf } from './standing.js';
+import { ERRANDS, errandById, errandChance, startErrand, collectErrands } from './errands.js';
+import { createBondsUI } from './bondsUI.js';
 import { STEEDS, steedById, normalizeSteeds, grantSteeds, buildSteed, buildBulwarkArmor, poseSteed, ROAD_BONUS, BULWARK } from './steeds.js';
 import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW } from './flow.js';
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from './save.js';
@@ -492,7 +494,7 @@ const inputCtl = setupInput(renderer.domElement, {
   onTap, onContext, onHover,
   onRotate: (dy, dp) => rotateRig(rig, dy, dp),
   onZoom: f => zoomRig(rig, f),
-  onEscape: () => { ui.hideMenu(); invUI.close(); },
+  onEscape: () => { ui.hideMenu(); invUI.close(); bondsUI.close(); },
   onDpad: () => { if (action && action.kind !== 'craft') stopAction(); },
   onKey: k => { if ('wasd'.includes(k) && action && action.kind !== 'craft') stopAction(); },
   onAction: act => {
@@ -501,6 +503,7 @@ const inputCtl = setupInput(renderer.domElement, {
     else if (act === 'dodge') doDodge();
     else if (act === 'ride') toggleRide();
     else if (act === 'shift') steedShift();
+    else if (act === 'bonds') bondsUI.toggle();
     else if (act.startsWith('tab')) invUI.showTab({ tabInv: 'inv', tabEquip: 'equip', tabSkills: 'skills', tabQuests: 'quests', tabPrayer: 'prayer', tabSettings: 'settings' }[act]);
   }
 });
@@ -578,7 +581,7 @@ hud = createHud({ player, skills, monsters, levelColor, combatLevelOf: () => com
   getTarget: () => (action && action.kind === 'attack' && action.mon && action.mon.alive ? action.mon : null) });
 // Words of Choice: every tone you pick is remembered (companions and factions react to it).
 ui.onTone(tone => { player.alignment = player.alignment || {}; player.alignment[tone] = (player.alignment[tone] || 0) + 1; const m = compTalking ? null : toneReaction(player, tone, Date.now()); if (m) log(m, 'game'); markDirty(); });
-hud.onQuick = q => { if (q === 'dodge') doDodge(); else if (q === 'ride') toggleRide(); else if (q === 'shift') steedShift(); };
+hud.onQuick = q => { if (q === 'dodge') doDodge(); else if (q === 'ride') toggleRide(); else if (q === 'shift') steedShift(); else if (q === 'bonds') bondsUI.toggle(); };
 hud.setQuick({});
 
 // ---------------------------------------------------------------------------
@@ -892,7 +895,7 @@ function segDist(px, pz, x1, z1, x2, z2) {
 function riding() { return !!steedState.mesh; }
 function refreshQuick() {
   const st = player.steeds || { owned: [] };
-  if (hud) hud.setQuick({ ride: st.owned.length > 0, riding: riding(), shift: riding() && steedById(steedState.id).shift });
+  if (hud) hud.setQuick({ ride: st.owned.length > 0, riding: riding(), shift: riding() && steedById(steedState.id).shift, bonds: COMPANIONS.some(c => player.companions && player.companions[c.id] && player.companions[c.id].recruited) });
 }
 function mount(id) {
   const def = steedById(id); if (!def) return;
@@ -1422,10 +1425,11 @@ function companionTalk(ent) {
       if (r.kind === 'item') removeItem(player, r.item, r.n);
       s.recruited = true; s.bond = s.firstTone === d.likes ? 2 : 1;
       log(`${d.name} is now your Sworn Companion. Open Bonds (B) to manage companions.`, 'skill');
-      if (!player.activeCompanion) setCompanion(d.id); markDirty();
+      if (!player.activeCompanion) setCompanion(d.id); refreshQuick(); markDirty();
     } }];
   }
   const active = player.activeCompanion === d.id;
+  if (awayUntil(d.id)) return [['npc', `I'm about to head out on an errand. Back in ${Math.max(1, Math.ceil((awayUntil(d.id) - Date.now()) / 60000))} minutes.`]];
   const chat = { wheel: [
     ['kind', 'How are you holding up?', [['npc', d.likes === 'kind' ? 'Better for you asking.' : 'I\'m fine. Don\'t fuss.'], { run: () => talkTone(d, 'kind') }]],
     ['firm', 'Stay sharp. We move soon.', [['npc', d.likes === 'firm' ? 'Ha! That\'s the spirit.' : 'Yes, yes.'], { run: () => talkTone(d, 'firm') }]],
@@ -1464,6 +1468,35 @@ function companionAssist(now) {
   e.mesh.rotation.y = Math.atan2(mp.x - e.mesh.position.x, mp.z - e.mesh.position.z);
   if (mon.hp <= 0) killMonster(mon, now);
 }
+// ---- Errand Ledger and the Bonds panel ----
+player.errands = Array.isArray(player.errands) ? player.errands : [];
+function awayUntil(id) { const r = player.errands.find(e => e.comp === id); return r ? r.end : 0; }
+function finishErrands() {
+  const done = collectErrands(player, Date.now());
+  for (const r of done) {
+    const e = errandById(r.id), c = companionById(r.comp); if (!e || !c) continue;
+    if (!r.ok) { log(`${c.short} came back from "${e.name}" empty-handed, but learned something. (+${Math.round(e.xp / 4)} ${e.skill} XP)`, 'game'); giveXP(e.skill, e.xp / 4); continue; }
+    player.bank = player.bank || {};
+    for (const [it, n] of e.items) player.bank[it] = (player.bank[it] || 0) + n;
+    giveXP(e.skill, e.xp); gainRep(e.fac, e.rep);
+    log(`${c.short} finished "${e.name}": ${e.items.map(i => i[1] + ' ' + i[0]).join(', ')} sent to your bank.`, 'loot', '#ffd700');
+  }
+  if (done.length) markDirty();
+  return done.length;
+}
+const bondsUI = createBondsUI({
+  getData: () => ({
+    companions: COMPANIONS.map(d => { const s = compState(d.id); return { ...d, ...s, active: player.activeCompanion === d.id, away: awayUntil(d.id), perks: BOND_PERKS, chance: errandChance(s.bond), task: s.started ? compTaskText(d, s) : `Talk to ${d.short}. ${d.examine}` }; }),
+    factions: FACTIONS.map(f => { const r = repOf(player, f.id), t = tierOf(r), n = nextTier(r), lo = TIERS[t][0]; return { ...f, rep: r, tier: t, tierName: TIERS[t][1], next: n, pct: n ? Math.round((r - lo) / (n - lo) * 100) : 100 }; }),
+    running: player.errands.map(r => ({ ...r, name: (errandById(r.id) || {}).name || r.id, comp: (companionById(r.comp) || {}).name || r.comp })),
+    errands: ERRANDS
+  }),
+  onAct: (a, o) => {
+    if (a === 'follow') { if (awayUntil(o.comp)) return; setCompanion(player.activeCompanion === o.comp ? null : o.comp); }
+    else if (a === 'collect') finishErrands();
+    else if (a === 'send') { const r = startErrand(player, o.errand, o.comp, Date.now()); if (r) { log(`${companionById(o.comp).short} sets off: ${errandById(o.errand).name}.`, 'game'); markDirty(); } }
+  }
+});
 function talkTo(ent) {
   if (ent.standing) { ui.dialogue(ent.name, '📜', quartermasterTalk(), () => markDirty()); return; }
   if (ent.companion) { const d = companionById(ent.companion); compTalking = d.id; ui.dialogue(d.name, d.face, companionTalk(ent), () => { compTalking = null; markDirty(); }); return; }
@@ -2343,7 +2376,7 @@ function animate(now) {
   if (frame % 15 === 0) cullWorld();
   if (frame % 5 === 2) updateRoofs();
   if (frame % 10 === 3) { setLoadRadius(gfx.quality === 'low' ? 2 : 3); updateChunks(pm.mesh.position.x, pm.mesh.position.z, scene); }
-  if (frame % 300 === 11) refreshStanding(true);
+  if (frame % 300 === 11) { refreshStanding(true); finishErrands(); }
   if (frame % 30 === 7) { const vm = onVisit(player, pm.mesh.position.x, pm.mesh.position.z); for (const m of vm) log(m, 'game'); if (vm.length) markDirty(); }
   updateMonsters(dt, now);
   updatePatrols(dt, now);

@@ -5,7 +5,7 @@ export const KEY_ACTIONS = [
   ['camL', 'Turn camera left', 'arrowleft'], ['camR', 'Turn camera right', 'arrowright'], ['camU', 'Tilt camera up', 'arrowup'], ['camD', 'Tilt camera down', 'arrowdown'],
   ...[1, 2, 3, 4, 5, 6, 7, 8].map(i => [`ab${i}`, `Action bar slot ${i}`, String(i)]),
   ['tabInv', 'Open inventory', 'i'], ['tabEquip', 'Open equipment', 'e'], ['tabSkills', 'Open skills', 'k'], ['tabQuests', 'Open quests', 'q'],
-  ['tabPrayer', 'Open prayer', 'p'], ['tabSettings', 'Open settings', 'o'], ['run', 'Toggle run', 'r'], ['dodge', 'Dodge-roll', ' '], ['ride', 'Ride or dismount steed', 'g'], ['shift', 'Steed shift (Bulwark)', 'f'], ['close', 'Close windows and menus', 'escape']
+  ['tabPrayer', 'Open prayer', 'p'], ['tabSettings', 'Open settings', 'o'], ['run', 'Toggle run', 'r'], ['dodge', 'Dodge-roll', ' '], ['ride', 'Ride or dismount steed', 'g'], ['shift', 'Steed shift (Bulwark)', 'f'], ['bonds', 'Open Bonds (companions, standing, errands)', 'b'], ['close', 'Close windows and menus', 'escape']
 ];
 export const DEFAULT_BINDS = Object.fromEntries(KEY_ACTIONS.map(([id, , k]) => [id, k]));
 let binds = load();
