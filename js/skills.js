@@ -6,13 +6,27 @@ export const SKILL_ICONS = {
   Crafting: "🧶", Cooking: "🍳", Fletching: "🪶", Herblore: "🌿", Runecrafting: "💠"
 };
 
+// v13: OSRS-shaped exponential curve (l + 300*2^(l/7)) / 4, scaled to 30%. Level 99 is about 3.9M XP.
+export const XP_SCALE = 0.3;
 export function xpForLevel(level) {
   if (level <= 1) return 0;
+  let pts = 0;
+  for (let l = 1; l < level; l++) pts += Math.floor(l + 300 * Math.pow(2, l / 7));
+  return Math.floor(pts / 4 * XP_SCALE);
+}
+// The pre-v13 curve, kept only to convert old saves level-for-level.
+export function xpForLevelV1(level) {
   let xp = 0;
-  for (let l = 1; l < level; l++) {
-    xp += Math.floor(l * 50 + Math.pow(l, 1.6) * 2);
-  }
+  for (let l = 1; l < level; l++) xp += Math.floor(l * 50 + Math.pow(l, 1.6) * 2);
   return xp;
+}
+// Convert XP from the old curve keeping the level and the fraction through it.
+export function convertXpV1(xp) {
+  xp = Math.max(0, Number(xp) || 0);
+  let L = 1; while (L < 99 && xp >= xpForLevelV1(L + 1)) L++;
+  if (L >= 99) return xpForLevel(99) + Math.max(0, xp - xpForLevelV1(99)) * 10;
+  const lo = xpForLevelV1(L), hi = xpForLevelV1(L + 1), f = (xp - lo) / (hi - lo);
+  return Math.floor(xpForLevel(L) + f * (xpForLevel(L + 1) - xpForLevel(L)));
 }
 
 const XP_TABLE = [0, 0];

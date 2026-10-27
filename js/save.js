@@ -1,14 +1,14 @@
 import { normalizeSaga } from './saga.js';
 import { normalizeVessel, inSea } from './sea.js';
 import { normalizeCompanions } from './companions.js';
-import { normalizeSkills } from './skills.js';
+import { normalizeSkills, convertXpV1, xpForLevel } from './skills.js';
 import { DEFAULT_SETTINGS, INV_SIZE } from './playerState.js';
 import { ITEMS, isTool, STARTER_TOOLS } from './items.js';
 import { PRAYERS } from './prayer.js';
 import { questPoints } from './quests.js';
 import { normalizeSteeds } from './steeds.js';
 
-export const SAVE_VERSION = 12;
+export const SAVE_VERSION = 13;
 export const POS_LIMIT = 146; // world half-size (150) minus a margin
 const KEY = 'gielinor3d';
 
@@ -117,6 +117,11 @@ export function migrateSave(saved) {
   if (!p.quests || typeof p.quests !== 'object') p.quests = {};
   p.questPoints = questPoints(p);
 
+  // v13: steeper XP curve. Convert XP level-for-level so nobody loses a level.
+  if (fromVersion < 13 && saved.skills && typeof saved.skills === 'object') {
+    for (const k of Object.values(saved.skills)) if (k && typeof k === 'object') { const lv = Math.floor(Number(k.level) || 1); k.xp = Math.max(convertXpV1(k.xp), xpForLevel(Math.min(99, lv))); }
+    notes.push('XP curve updated (steeper, like the old classics). Your levels are unchanged and XP was converted.');
+  }
   saved.skills = normalizeSkills(saved.skills || {});
   if (typeof p.prayerPoints !== 'number' || !(p.prayerPoints >= 0)) p.prayerPoints = saved.skills.Prayer.level * 10;
   p.prayerPoints = Math.min(p.prayerPoints, saved.skills.Prayer.level * 10);
