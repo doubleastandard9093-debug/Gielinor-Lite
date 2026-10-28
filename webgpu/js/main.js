@@ -61,13 +61,14 @@ import { CALLINGS, CHAPTERS, ENDINGS, normalizeSaga, currentChapter, sagaXpBonus
 import { STEEDS, steedById, normalizeSteeds, grantSteeds, buildSteed, buildBulwarkArmor, poseSteed, ROAD_BONUS, BULWARK } from '../../js/steeds.js';
 import { createFlow, flowOnSkillHit, flowDecay, tryDodge, dodging, FLOW, FINISHER, flowPerfectDodge } from '../../js/flow.js';
 import { saveToLocal, loadFromLocal, exportSave, importSave, hasLocalSave, applySaveData } from '../../js/save.js';
-import { CHECKS, normalizeTongue, checkLabel, resolveCheck, openQuestCheck, QUEST_PRIZE } from '../../js/tongue.js';
+import { CHECKS, normalizeTongue, checkLabel, checkScore, resolveCheck, openQuestCheck, QUEST_PRIZE } from '../../js/tongue.js';
 import { QUEST_DATA } from '../../js/quests2.js';
 import { DELVES, ROLES, ROOM_CAP, DELVE, normalizeDelves, roleFx } from '../../js/delves.js';
 import { ROOSTS, FLIGHT, MOUNTS, LOOK_SLOTS, normalizeCodex } from '../../js/codex.js';
 import { SHAPES, shapeFor, inShape, MAX_TARGETS, CANCEL_MS, normalizeAim } from '../../js/aim.js';
 import { COLOSSI, PARTS, BACK_BONUS, CHARGE, RESPAWN_MS, CHEST, isBehind, normalizeColossi } from '../../js/colossi.js';
 import { SKYWING, normalizeSkywing } from '../../js/skywing.js';
+import { HAMLET, SIDES, DEAL_NEED, BETRAY_NEED, APPROVAL, STALLS, normalizeCharter } from '../../js/charter.js';
 import { PATHS as CPATHS, PATH_LEVEL, TALENTS, rowsOpen, normalizePath, pathFx } from '../../js/paths.js';
 import { STILL, SPOT, normalizeStill, addFocus } from '../../js/stillwatch.js';
 import { WRIT_FACTIONS, WRIT_REWARD, normalizeWrits, maybeRoll, writProgress, writLabel } from '../../js/writs.js';
@@ -2024,6 +2025,69 @@ EXT.skywing = skyX;
 EXT.quick.fly = () => skyX.toggle(); EXT.quick.climb = () => skyX.climb(); EXT.quick.dive = () => skyX.dive();
 extFrame.push((dt, now) => { if (!skyS.on || !skyS.mesh) return; const p = pm.mesh.position; skyS.mesh.position.set(p.x, p.y - 1.2, p.z); skyS.mesh.rotation.y = pm.mesh.rotation.y; for (const [i, w] of skyS.mesh.userData.wings.entries()) w.rotation.z = Math.sin(now / 160) * 0.45 * (i ? -1 : 1); });
 extDeath.push(() => { if (skyS.on) skyX.toggle(false); });
+// ---- Charter vs Commons: the hamlet of Wellmere and its contested spring ----
+player.charter = normalizeCharter(player.charter);
+const hamlet = { G: null, charter: null, commons: null, ruin: null };
+function buildHamlet() {
+  if (hamlet.G) return; const G = new THREE.Group(); G.name = 'wellmere'; G.position.set(HAMLET.x, terrainHeight(HAMLET.x, HAMLET.z), HAMLET.z); scene.add(G); hamlet.G = G;
+  const wall = plainMat(0x9a8a6a), roof = plainMat(0x6a3a2a);
+  for (const [x, z] of [[-9, -6], [9, -6], [-9, 7], [9, 7]]) { const h = new THREE.Mesh(new THREE.BoxGeometry(5, 3, 4), wall); h.position.set(x, 1.5, z); G.add(h); const r = new THREE.Mesh(new THREE.ConeGeometry(3.8, 2, 4), roof); r.position.set(x, 4, z); r.rotation.y = Math.PI / 4; G.add(r); }
+  const well = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.3, 1, 12), plainMat(0x7a7a80)); well.position.y = 0.5; G.add(well);
+  const water = new THREE.Mesh(new THREE.CircleGeometry(1, 12), plainMat(0x3a6a9a)); water.rotation.x = -Math.PI / 2; water.position.y = 1.02; G.add(water);
+  hamlet.charter = new THREE.Group(); hamlet.charter.name = 'wellmere-charter'; const post = new THREE.Mesh(new THREE.BoxGeometry(3, 2.2, 2), plainMat(0x5a4a7a)); post.position.set(0, 1.1, -12); hamlet.charter.add(post);
+  for (const x of [-3, 3]) { const g = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.8, 6), plainMat(0x3a3a5a)); g.position.set(x, 0.9, 4); g.name = 'wellmere-guard'; hamlet.charter.add(g); }
+  hamlet.commons = new THREE.Group(); hamlet.commons.name = 'wellmere-commons';
+  for (let i = 0; i < 6; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.4, 1), plainMat(0x4a7a3a)); b.position.set(-5 + i * 2, 0.2, 12); hamlet.commons.add(b); }
+  hamlet.ruin = new THREE.Group(); hamlet.ruin.name = 'wellmere-ruin'; for (const [x, z] of [[-4, -2], [5, 3]]) { const d = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 1.2), plainMat(0x3a3028)); d.position.set(x, 0.25, z); d.rotation.y = x; hamlet.ruin.add(d); }
+  G.add(hamlet.charter, hamlet.commons, hamlet.ruin); refreshHamlet();
+}
+function refreshHamlet() {
+  const s = player.charter.side; if (!hamlet.G) return;
+  hamlet.charter.visible = !s || s === 'charter' || s === 'deal'; hamlet.commons.visible = !s || s === 'commons' || s === 'deal'; hamlet.ruin.visible = s === 'betray';
+  for (const n of nodes) if (n.npc === 'brannoch' || n.npc === 'ysmay') { const gone = s === 'betray' || (s === 'charter' && n.npc === 'ysmay') || (s === 'commons' && n.npc === 'brannoch'); n.mesh.visible = !gone; n.alive = !gone; n.wellmereGone = gone; }
+}
+const charterX = {
+  score: kind => checkScore(kind, skills, player),
+  resolve(side) {
+    const C = player.charter; if (C.side || !SIDES[side]) return false;
+    if (side === 'deal' && !resolveCheck(player.tongue, 'wellmere_deal', 'persuade', DEAL_NEED, skills, player)) { log(`They won't listen. (Persuade ${charterX.score('persuade')}/${DEAL_NEED})`, 'warn'); markDirty(); return false; }
+    if (side === 'betray' && !resolveCheck(player.tongue, 'wellmere_betray', 'lie', BETRAY_NEED, skills, player)) { log(`Neither side believes you. (Lie ${charterX.score('lie')}/${BETRAY_NEED})`, 'warn'); markDirty(); return false; }
+    C.side = side; const S = SIDES[side];
+    if (side === 'charter') { C.rep.charter += 200; C.rep.commons -= 200; addRep(player, S.boon, S.rep); }
+    else if (side === 'commons') { C.rep.commons += 200; C.rep.charter -= 200; addRep(player, S.boon, S.rep); }
+    else if (side === 'deal') { C.rep.charter += 120; C.rep.commons += 120; addRep(player, 'watch', S.rep); addRep(player, 'lantern', S.rep); }
+    else { C.rep.charter -= 300; C.rep.commons -= 300; addItem(player, 'Coins', S.coins); }
+    if (player.saga && player.saga.flags) player.saga.flags['wellmere_' + side] = true;
+    const id = player.activeCompanion, d = id && companionById(id);
+    if (d && APPROVAL[d.likes]) { const n = APPROVAL[d.likes][side]; addBond(player, id, n); log(`${d.short} ${n > 0 ? 'approves' : 'disapproves'} (${n > 0 ? '+' : ''}${n} Bond).`, n > 0 ? 'skill' : 'warn'); }
+    log(side === 'betray' ? `You sell the spring deeds to both sides and pocket ${S.coins} coins. Wellmere empties.` : `Wellmere's spring goes to ${S.short}. The hamlet will remember.`, 'loot', '#ffd700');
+    refreshStanding(true); refreshHamlet(); markDirty(); return true;
+  },
+  stall() { return (STALLS[player.charter.side] || []).filter(([i]) => ITEMS[i]); },
+  buy(i) {
+    const s = charterX.stall()[i]; if (!s) return false; const [item, n, cost] = s;
+    if ((player.inventory.Coins || 0) < cost) { log(`That costs ${cost} coins.`, 'warn'); return false; }
+    if (!canAdd(player, item, n)) { log('Your pack is full.', 'warn'); return false; }
+    removeItem(player, 'Coins', cost); addItem(player, item, n); player.charter.bought++; markDirty(); return true;
+  },
+  script(ent) {
+    const C = player.charter, say = t => [['npc', t]], who = ent && ent.npc === 'ysmay' ? 'commons' : 'charter';
+    C.met = true;
+    if (C.side) {
+      if (C.side === 'betray') return say('...');
+      const opts = charterX.stall().map(([it, n, c], i) => [`Buy ${n} ${it} (${c} coins)`, [{ run: () => { charterX.buy(i); return []; } }]]); opts.push(['Goodbye.', []]);
+      return [['npc', who === 'charter' ? `Brannoch, factor. ${C.side === 'deal' ? 'The Accord holds. Trade is good for everyone.' : 'The Charter runs Wellmere now. Our guards keep the spring.'}` : `Ysmay, elder. ${C.side === 'deal' ? 'The Accord holds. The spring is shared.' : 'The Commons keep the spring for all who work.'}`], { choose: opts }];
+    }
+    const pers = checkLabel('persuade', DEAL_NEED, skills, player, 'Share the spring: water for the Commons, trade rights for the Charter.');
+    const lie = checkLabel('lie', BETRAY_NEED, skills, player, 'Sell each side a forged deed to the spring.');
+    const opts = [[who === 'charter' ? 'Side with the Charter.' : 'Side with the Commons.', [{ run: () => { charterX.resolve(who); return []; } }]],
+      [pers, [{ run: () => { charterX.resolve('deal'); return []; } }]], [lie, [{ run: () => { charterX.resolve('betray'); return []; } }]], ['Think it over.', []]];
+    return [['npc', who === 'charter' ? 'Brannoch, factor of the Wellmere Charter. That spring was bought fair. The Commons squat on it and call it theirs. Help me keep order and the Watch will hear of it.' : 'Ysmay, elder of the Commons. We dug that spring with our own hands. The Charter wants to sell our water back to us. Stand with us.'], { choose: opts }];
+  }
+};
+EXT.charter = charterX;
+extTalk.charter = { face: '⚖️', talk: ent => charterX.script(ent) };
+extTick.push(() => { if (!hamlet.G) buildHamlet(); });
 // Self-cast Path skills (no target needed). Returns true when handled.
 function pathSelfSkill(id, cd) {
   if (id === 'wall') { buffs.wallUntil = tick + 7; log('Stalwart Wall! (60% less damage)', 'combat'); }
