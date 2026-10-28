@@ -38,6 +38,7 @@ import {
   attackSpeedTicks, attackRange, equip, unequip, eat, sellPrice, bestTool, addTool, ownsToolType, toolName,
   burnChance, saveChance, makeXp, buryXp, reduceIncoming, nextGatherWait, xpMultiplier, makeTicks, doubleMakeChance, buyPrice, capeBoosts, regenBonus, SHOPS, gearEffects, weaponProcs, isRareDrop,
   SPELLS, spellById, canCast, castSpell, bestSpell, magicMaxHit, weakTo, WEAK_MULT, SPELL_TICKS, playerMaxHit, AGILITY_OBSTACLES, AGILITY_COURSES, runObstacle, THIEVE_TARGETS, thieve, RUNE_ALTARS, craftRunes
+  , MONSTER_TYPES
 } from './gameplay.js';
 import { POTIONS, isPotion, drinkPotion, effectsTick, applyPoison, poisonTick } from './potions.js';
 import { PRAYERS, prayerById, togglePrayer, drainTick, prayerFx, rechargePrayer, ppRegenPerTick } from './prayer.js';
@@ -71,6 +72,7 @@ import { SHAPES, shapeFor, inShape, MAX_TARGETS, CANCEL_MS, normalizeAim } from 
 import { COLOSSI, PARTS, BACK_BONUS, CHARGE, RESPAWN_MS, CHEST, isBehind, normalizeColossi } from './colossi.js';
 import { SKYWING, normalizeSkywing } from './skywing.js';
 import { HAMLET, SIDES, DEAL_NEED, BETRAY_NEED, APPROVAL, STALLS, normalizeCharter } from './charter.js';
+import { SIEGE, FRIEND_CAP, HOSTILE_CAP, SELLSWORDS, BOSSES, MECH, LOOT, BOSS_COINS, normalizeSiege } from './siege.js';
 import { PATHS as CPATHS, PATH_LEVEL, TALENTS, rowsOpen, normalizePath, pathFx } from './paths.js';
 import { STILL, SPOT, normalizeStill, addFocus } from './stillwatch.js';
 import { WRIT_FACTIONS, WRIT_REWARD, normalizeWrits, maybeRoll, writProgress, writLabel } from './writs.js';
@@ -2126,6 +2128,110 @@ const charterX = {
 EXT.charter = charterX;
 extTalk.charter = { face: '⚖️', talk: ent => charterX.script(ent) };
 extTick.push(() => { if (!hamlet.G) buildHamlet(); });
+// ---- Warband Siege: 4-boss raid, weekly lockout, capped units ----
+player.siege = normalizeSiege(player.siege, weekNo(Date.now()));
+let siegeG = null; const siegePool = [], siegeFriends = [];
+function buildSiege() {
+  if (siegeG) return; const G = new THREE.Group(); G.position.set(SIEGE.x, 0, SIEGE.z); G.name = 'warband-siege'; scene.add(G); siegeG = G;
+  const fl = new THREE.Mesh(new THREE.CylinderGeometry(SIEGE.r, SIEGE.r, 0.2, 36), plainMat(0x4a3a30)); fl.position.y = -0.1; G.add(fl);
+  const wall = new THREE.Mesh(new THREE.CylinderGeometry(SIEGE.r + 0.5, SIEGE.r + 0.5, 3, 36, 1, true), new THREE.MeshLambertMaterial({ color: 0x5a4a3a, side: THREE.DoubleSide })); wall.position.y = 1.5; G.add(wall);
+  const gate = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.6, 0.3), plainMat(0x3a2a1a)); gate.position.y = 1.3;
+  instNode(G, SIEGE.x, SIEGE.z + SIEGE.r - 0.8, gate, { type: 'cave', verb: 'Leave', name: 'Siege gate', examine: 'Leaving ends this attempt. Downed bosses stay down for the week.', dest: { x: -50, z: -84 }, leave: 'You fall back from the siege.', siegeExit: true });
+  const ring = (c, name) => { const m = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 32), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.name = name; m.visible = false; scene.add(m); return m; };
+  siegeX.fireRing = ring(0xff4020, 'siege-fire'); siegeX.stackRing = ring(0x40c0ff, 'siege-stack');
+  if (gfx.quality !== 'low') for (const a of [0, 1.6, 3.2, 4.8]) { const L = new THREE.PointLight(0xff7040, 5, 20, 1.2); L.position.set(Math.cos(a) * 13, 3, Math.sin(a) * 13); L.name = 'siege-light-high'; G.add(L); }
+}
+const siegeX = {
+  run: null, fireRing: null, stackRing: null,
+  lock() { player.siege = normalizeSiege(player.siege, weekNo(Date.now())); return player.siege; },
+  friends() { return siegeFriends.filter(f => f.visible); },
+  hostiles() { return siegeX.run ? siegePool.filter(m => m.alive && m.siege) : []; },
+  enter() {
+    const L = siegeX.lock(); if (siegeX.run || delvesX.run || duel || L.downed.length >= BOSSES.length) { if (L.downed.length >= BOSSES.length) log('The Warband is broken for this week. Come back after the weekly reset.', 'warn'); return false; }
+    if (skyS.on) skyX.toggle(false); if (riding()) dismount();
+    buildSiege(); if (!inInstance(pm.mesh.position.x)) player.instanceReturn = { x: pm.mesh.position.x, z: pm.mesh.position.z };
+    for (const n of nodes) if (n.siegeExit) n.dest = player.instanceReturn || { x: -50, z: -84 };
+    const comps = COMPANIONS.filter(c => player.companions[c.id] && player.companions[c.id].recruited).map(c => c.short).slice(0, 4);
+    const names = [...comps, ...SELLSWORDS].slice(0, FRIEND_CAP - 1);
+    while (siegeFriends.length < names.length) { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 1.7, 6), plainMat(0x6a8aa0)); m.name = 'siege-ally'; scene.add(m); siegeFriends.push(m); }
+    siegeFriends.forEach((m, i) => { m.visible = i < names.length; m.userData.name = names[i]; const a = (i / names.length) * Math.PI - Math.PI; m.position.set(SIEGE.x + Math.cos(a) * 5, 0.85, SIEGE.z + 4 + Math.sin(a) * 2); });
+    siegeX.run = { boss: L.downed.length, mechAt: tick + MECH.every, mechN: 0, pending: null, start: Date.now() };
+    travelTo(SIEGE.x, SIEGE.z + SIEGE.r - 3);
+    log(`The Warband Siege. Your party: ${names.join(', ')}. Bosses down this week: ${L.downed.length}/${BOSSES.length}.`, 'warn');
+    siegeX.spawnBoss(); markDirty(); return true;
+  },
+  spawnUnit(type, x, z) {
+    let m = siegePool.find(q => q.siegeType === type && !q.alive && !q.dying);
+    if (!m) { if (siegePool.filter(q => q.alive).length >= HOSTILE_CAP) return null; m = spawnMonster(type, x, z, 3); m.siegeType = type; siegePool.push(m); }
+    const T = MONSTER_TYPES[type];
+    Object.assign(m, { name: T.name, title: T.title, level: T.level, hp: T.hp, maxHp: T.hp, maxHit: T.maxHit, att: T.att, def: T.def, alive: true, dying: false, state: 'idle', respawnAt: 0, respawn: 1e12, spawnX: x, spawnZ: z, stunUntil: 0, venom: null, siege: true, siegeBoss: null });
+    m.mesh.scale.setScalar(1); m.mesh.visible = true; m.mesh.rotation.set(0, 0, 0); m.mesh.position.set(x, 0, z);
+    setTimeout(() => { if (m.alive && siegeX.run) { m.state = 'fight'; m.nextAttackTick = tick + 2; } }, 1500);
+    return m;
+  },
+  spawnBoss() {
+    const B = BOSSES[siegeX.run.boss], m = siegeX.spawnUnit(B.base, SIEGE.x, SIEGE.z - 5); if (!m) return;
+    Object.assign(m, { name: B.name, title: B.name, hp: B.hp, maxHp: B.hp, maxHit: B.maxHit, att: B.att, def: B.def, level: 120, siegeBoss: B, addsDone: false, barHeight: 2 * B.scale });
+    m.mesh.scale.setScalar(B.scale);
+    log(`Boss ${siegeX.run.boss + 1}/${BOSSES.length}: ${B.name}.`, 'combat');
+  },
+  mech(kind) {
+    const r = siegeX.run; if (!r) return false; const p = pm.mesh.position;
+    if (kind === 'fire') { r.pending = { kind, at: tick + MECH.warn, x: p.x, z: p.z }; siegeX.fireRing.scale.setScalar(MECH.fireR); siegeX.fireRing.position.set(p.x, 0.06, p.z); siegeX.fireRing.visible = true; log('Fire spreads under you! Move out of the red ring.', 'warn'); }
+    else if (kind === 'stack') { const x = SIEGE.x, z = SIEGE.z + 4; r.pending = { kind, at: tick + MECH.warn, x, z }; siegeX.stackRing.scale.setScalar(MECH.stackR); siegeX.stackRing.position.set(x, 0.06, z); siegeX.stackRing.visible = true; log('A crushing blow is coming! Stack with your party in the blue ring to share it.', 'warn'); }
+    else if (kind === 'adds') { let n = 0; for (let i = 0; i < MECH.adds; i++) if (siegeX.spawnUnit(MECH.addType, SIEGE.x - 6 + i * 12, SIEGE.z - 2)) n++; log(`${n} Ashen raiders rush in!`, 'warn'); }
+    else return false;
+    return true;
+  },
+  resolveMech() {
+    const r = siegeX.run, P = r.pending; r.pending = null; siegeX.fireRing.visible = siegeX.stackRing.visible = false;
+    const p = pm.mesh.position, d = Math.hypot(p.x - P.x, p.z - P.z); let dmg = 0;
+    if (P.kind === 'fire' && d < MECH.fireR) dmg = player.maxHp * MECH.fireDmg;
+    if (P.kind === 'stack') dmg = player.maxHp * MECH.stackDmg / (d < MECH.stackR ? siegeX.friends().length + 1 : 1);
+    if (dmg && player.hp > 0 && !pm.dodge) { let x = Math.round(dmg); for (const f of extIncoming) x = f(x, { name: P.kind === 'fire' ? 'Siege fire' : 'Siege blow', siege: true }, performance.now()); player.hp = Math.max(0, player.hp - x); log(`${P.kind === 'fire' ? 'The fire burns' : 'The blow hits'} you for ${x}.`, 'warn'); if (player.hp <= 0) playerDied(); }
+  },
+  tick() {
+    const r = siegeX.run; if (!r) return;
+    if (r.pending && tick >= r.pending.at) siegeX.resolveMech();
+    const boss = siegeX.hostiles().find(m => m.siegeBoss);
+    if (boss) {
+      const party = siegeX.friends().length; if (tick % 3 === 0) { const d = Math.round(boss.maxHp * 0.004 * party); boss.hp -= d; if (boss.hp <= 0) killMonster(boss, performance.now()); }
+      if (!r.pending && tick >= r.mechAt) { const ms = boss.siegeBoss.mechs.filter(k => k !== 'adds' || !boss.addsDone); const k = ms[r.mechN++ % ms.length]; if (k === 'adds') boss.addsDone = true; siegeX.mech(k); r.mechAt = tick + MECH.every; }
+      return;
+    }
+    if (siegeX.hostiles().length) return;
+    const L = siegeX.lock(), B = BOSSES[r.boss];
+    if (!L.downed.includes(B.id)) {
+      L.downed.push(B.id); const loot = LOOT[r.boss].filter(i => ITEMS[i]), it = loot[Math.floor(Math.random() * loot.length)];
+      addItem(player, 'Coins', BOSS_COINS); if (it) addItem(player, it, 1);
+      log(`${B.name} is defeated! +${BOSS_COINS} coins${it ? `, ${it}` : ''}.`, 'loot', '#ffd700');
+    }
+    if (r.boss < BOSSES.length - 1) { r.boss++; r.mechAt = tick + MECH.every; r.mechN = 0; siegeX.spawnBoss(); }
+    else { L.clears++; log('The Ashen Warband is broken! The siege is won.', 'loot', '#ffd700'); siegeX.end(); }
+    markDirty();
+  },
+  end() {
+    siegeX.run = null; for (const m of siegePool) { m.alive = false; m.dying = false; m.state = 'dead'; m.respawnAt = 0; m.siege = false; m.mesh.visible = false; }
+    for (const f of siegeFriends) f.visible = false; if (siegeX.fireRing) siegeX.fireRing.visible = siegeX.stackRing.visible = false;
+    if (action && action.mon && action.mon.siegeType) stopAction(); markDirty();
+    const back = player.instanceReturn || { x: -50, z: -84 };
+    setTimeout(() => { if (!siegeX.run && inInstance(pm.mesh.position.x) && pm.mesh.position.z < -560) travelTo(back.x, back.z); }, 1500);
+  },
+  script() {
+    const L = siegeX.lock(), say = t => [['npc', t]];
+    return [['npc', `Hesk, warcaptain. The Ashen Warband holds the old fort: four war-leaders. Bring your companions; I'll hire three sellswords. Down this week: ${L.downed.length}/${BOSSES.length}. Sieges won: ${L.clears}.`],
+      { choose: [[L.downed.length >= BOSSES.length ? 'The Warband is broken this week.' : 'March on the fort.', [{ run: () => siegeX.enter() ? [] : say('Not now.') }]], ['How does it work?', [{ run: () => say('Get out of red fire. Stack in the blue ring to share the big blow. Kill the raiders when they come. Bosses you down stay down until the weekly reset.') }]], ['Goodbye.', []]] }];
+  }
+};
+EXT.siege = siegeX;
+extTalk.siege = { face: '🏰', talk: () => siegeX.script() };
+extTick.push(() => {
+  if (!siegeX.run) return;
+  if (!inInstance(pm.mesh.position.x) || pm.mesh.position.z > -560) { log('You fall back from the siege.', 'warn'); return siegeX.end(); }
+  if (tick % 4 === 0 && player.hp > 0 && player.hp < player.maxHp) player.hp = Math.min(player.maxHp, player.hp + 2 + siegeX.friends().length);
+  siegeX.tick();
+});
+extDeath.push(() => { if (siegeX.run) siegeX.end(); });
 // Self-cast Path skills (no target needed). Returns true when handled.
 function pathSelfSkill(id, cd) {
   if (id === 'wall') { buffs.wallUntil = tick + 7; log('Stalwart Wall! (60% less damage)', 'combat'); }

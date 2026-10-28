@@ -6,6 +6,7 @@ export const ARENA = { x: -1000, z: -200, r: 13, gate: { x: -1000, z: -188 } };
 export function inInstance(x) { return x < INSTANCE_X; }
 export function instanceAt(x, z) {
   if (!inInstance(x)) return null;
+  if (z < -560) return 'siege';
   if (z < -340) return 'delve';
   return Math.abs(z - HEARTH.z) < 60 ? 'hearth' : 'arena';
 }
@@ -14,6 +15,9 @@ export function clampInstance(pos) {
   if (instanceAt(pos.x, pos.z) === 'hearth') {
     pos.x = Math.max(HEARTH.x - HEARTH.hw + 0.6, Math.min(HEARTH.x + HEARTH.hw - 0.6, pos.x));
     pos.z = Math.max(HEARTH.z - HEARTH.hd + 0.6, Math.min(HEARTH.z + HEARTH.hd - 0.6, pos.z));
+  } else if (instanceAt(pos.x, pos.z) === 'siege') {
+    const dx = pos.x + 1000, dz = pos.z + 640, d = Math.hypot(dx, dz), R = 15.4;
+    if (d > R) { pos.x = -1000 + dx / d * R; pos.z = -640 + dz / d * R; }
   } else if (instanceAt(pos.x, pos.z) === 'delve') {
     const cz = pos.z > -440 ? -400 : -480;
     pos.x = Math.max(-1000 - 10.4, Math.min(-1000 + 10.4, pos.x));

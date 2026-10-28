@@ -1553,6 +1553,7 @@ export function createWorld(scene) {
       { id: 'sefa', name: 'Arenamaster Sefa', x: 128, z: -34, look: { body: 0x7a2a2a, legs: 0x3a2a1a, hat: 0xb8902a, hatH: 0.12 }, flag: { arena: 'master' } },
       { id: 'ysolde', name: 'Apothecary Ysolde', x: 9, z: 18, look: { body: 0x4a6a5a, legs: 0x2a3a2a, apron: 0xd0c8a0, hat: 0x2a4a3a, hatH: 0.14 }, flag: { ext: 'quirks' } },
       { id: 'maelis', name: 'Writkeeper Maelis', x: -8, z: 19, look: { body: 0x6a5a3a, legs: 0x3a2a1a, hat: 0x8a6a2a, hatH: 0.1 }, flag: { ext: 'writs' } },
+      { id: 'hesk', name: 'Warcaptain Hesk', x: -50, z: -88, look: { body: 0x6a3a2a, legs: 0x2a2a2a, hat: 0x5a5a5a, hatH: 0.18, beard: 0x4a3a2a }, flag: { ext: 'siege' } },
       { id: 'brannoch', name: 'Factor Brannoch', x: 37, z: 84, look: { body: 0x5a4a7a, legs: 0x2a2a3a, hat: 0x3a2a4a, hatH: 0.2 }, flag: { ext: 'charter' } },
       { id: 'ysmay', name: 'Elder Ysmay', x: 44, z: 98, look: { body: 0x4a6a3a, legs: 0x3a3022, apron: 0x8a7a5a, hat: 0x6a8a4a, hatH: 0.12 }, flag: { ext: 'charter' } },
       { id: 'hale', name: 'Roostmaster Hale', x: 14, z: 20, look: { body: 0x6a5a3a, legs: 0x3a3022, hat: 0x2a2a34, hatH: 0.2, beard: 0x9a8a6a }, flag: { ext: 'codex' } },
