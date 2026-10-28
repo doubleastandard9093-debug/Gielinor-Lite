@@ -8,6 +8,7 @@ import { PRAYERS, isActive, drainPerTick, prayerBonus } from './prayer.js';
 import { ABILITIES, unlocked, adrenCost, adrenGain } from './abilities.js';
 import { QUESTS, questStatus, questPoints, QUEST_POINTS_TOTAL, QUEST_TOWNS, activeQuestBonuses } from './quests.js';
 import { esc } from './ui.js';
+import { pad, PAD_LEGEND } from './gamepad.js';
 import { unitPrice, stockLeft, wearOf, isTopTier } from './economy.js';
 import { iconImg } from './icons.js';
 import { KEY_ACTIONS, getBinds, setBind, resetBinds, keyLabel, captureNextKey } from './keybinds.js';
@@ -523,6 +524,13 @@ export function createInventoryUI(api) {
       ${t('retaliate', 'Auto Retaliate', s.autoRetaliate)}
       ${t('run', 'Run', s.run)}
       ${t('autoloot', 'Auto-pickup loot', s.autoLoot)}
+      <div class="craftskill">Controller (Xbox)</div>
+      <div class="help">${pad.connected ? '🎮 Connected: ' + esc(pad.id) : 'Pair an Xbox controller over Bluetooth (iPhone: Settings › Bluetooth), then press any button.'}</div>
+      ${v('padsens', 'Camera stick speed', Math.round(pad.sens * 100) + '%')}
+      ${v('paddz', 'Stick deadzone', Math.round(pad.dz * 100) + '%')}
+      ${t('padinv', 'Invert camera Y', pad.invertY)}
+      ${t('padrumble', 'Rumble', pad.rumbleOn)}
+      <div class="help">${PAD_LEGEND}</div>
       <div class="craftskill">Keybinds &amp; controls</div>
       <div class="keybinds">${KEY_ACTIONS.map(([id, label]) => `<div class="kb-row"><span>${label}</span><button class="kb-key ${rebinding === id ? 'listening' : ''} ${B[id] ? '' : 'unbound'}" data-rebind="${id}">${rebinding === id ? 'Press a key…' : keyLabel(B[id])}</button></div>`).join('')}</div>
       <button class="toggle" data-keyreset="1">Reset keybinds to defaults</button>

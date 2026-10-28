@@ -21,6 +21,7 @@ import { createCritters } from '../../js/critters.js';
 import { createPlayer, updatePlayer, applyEquipmentLook, faceToward, resolveCollisions, blockedAt, moveWithCollision } from '../../js/player.js';
 import { createCameraRig, rotateRig, zoomRig, updateRig, shakeRig } from '../../js/camera.js';
 import { setupInput } from '../../js/input.js';
+import { rumble as padRumble, pad, savePad } from '../../js/gamepad.js';
 import { setupUI } from '../../js/ui.js';
 import { createOverlays } from '../../js/overlays.js';
 import { createMinimap } from '../../js/minimap.js';
@@ -500,6 +501,10 @@ const inputCtl = setupInput(renderer.domElement, {
   onEscape: () => { ui.hideMenu(); invUI.close(); bondsUI.close(); minimap.closeMap(); cardsUI.close(); },
   onDpad: () => { if (action && action.kind !== 'craft') stopAction(); },
   onKey: k => { if ('wasd'.includes(k) && action && action.kind !== 'craft') stopAction(); },
+  toast: m => log(m, 'game'),
+  // Controller: act on the nearest thing around the player (A = anything, X = nearest enemy).
+  onInteract: kind => { const ent = padNearest(kind); if (!ent) { log(kind === 'attack' ? 'No enemy nearby.' : 'Nothing nearby to use.', 'game'); return; } if (ui.inDialogue) ui.closeDialogue(); const o = optionsFor(ent); if (o && o[0]) o[0].fn(); },
+  onOptions: () => { const ent = padNearest('any'); if (!ent) return; const p = padScreen(ent); onContext(p.x, p.y); },
   onAction: act => {
     if (/^ab\d$/.test(act)) { const list = ABILITIES.filter(a => abilityUnlocked(skills, a)); const a = list[+act.slice(2) - 1]; if (a) useAbility(a.id); }
     else if (act === 'run') toggleRun();
@@ -553,6 +558,10 @@ function setting(act) {
   else if (act === 'sfx') s.sfx = s.sfx === false;
   else if (act === 'sfxvolume') { const opts = [0.25, 0.5, 1]; s.sfxVolume = opts[(opts.indexOf(s.sfxVolume ?? 0.5) + 1) % opts.length]; }
   else if (act === 'ambience') s.ambience = s.ambience === false;
+  else if (act === 'padsens') { const o = [0.5, 0.75, 1, 1.25, 1.5, 2]; pad.sens = o[(o.indexOf(pad.sens) + 1) % o.length]; savePad(); }
+  else if (act === 'paddz') { const o = [0.1, 0.15, 0.18, 0.25, 0.3]; pad.dz = o[(o.indexOf(pad.dz) + 1) % o.length]; savePad(); }
+  else if (act === 'padinv') { pad.invertY = !pad.invertY; savePad(); }
+  else if (act === 'padrumble') { pad.rumbleOn = !pad.rumbleOn; savePad(); }
   else if (act === 'shake') { s.shake = s.shake === false; rig.shakeOff = s.shake === false; }
   else if (act === 'uisound') s.uiSound = !s.uiSound;
   else if (act === 'uivolume') { const opts = [0.25, 0.5, 1]; s.uiVolume = opts[(opts.indexOf(s.uiVolume || 0.5) + 1) % opts.length]; }
@@ -905,7 +914,12 @@ function updateCrossing(dt) {
   if (c.rope) { c.rope.rotation.x = -(pose.ropeA ?? 0); c.rope.userData.a = pose.ropeA ?? 0; c.rope.userData.v = 0; }
   if (c.t >= 1) { crossing = null; hideOccluders(); releaseRig(pm); if (camSaved) { rig.targetDist = camSaved.dist; rig.targetPitch = camSaved.pitch; camSaved = null; } pm.facing = c.yaw; pm.mesh.position.y = terrainHeight(pm.mesh.position.x, pm.mesh.position.z); }
 }
-function hurtPlayer(dmg) {
+function padPos(e) { return e.mesh && !e.isPile && e.hp !== undefined ? e.mesh.position : { x: e.x, z: e.z, y: 0 }; }
+function padNearest(kind) { const P = pm.mesh.position; let best = null, bd = kind === 'attack' ? 14 : 7;
+  const test = e => { if (!interactive(e)) return; const q = padPos(e); if (q.x === undefined) return; const d = Math.hypot(q.x - P.x, q.z - P.z); if (d < bd) { bd = d; best = e; } };
+  for (const m of monsters) if (m.alive) test(m); if (kind !== 'attack') { for (const n of nodes) test(n); for (const p of piles) test(p); } return best; }
+function padScreen(e) { const q = padPos(e), r = renderer.domElement.getBoundingClientRect(); const v = new THREE.Vector3(q.x, 0.8, q.z).project(camera); return { x: (v.x + 1) / 2 * r.width + r.left, y: (1 - v.y) / 2 * r.height + r.top }; }
+function hurtPlayer(dmg) { padRumble(Math.min(1, 0.3 + dmg / 30), 0.4, 140);
   if (dmg <= 0) return;
   player.hp = Math.max(0, player.hp - dmg);
   playerEnt.lastHitAt = performance.now();

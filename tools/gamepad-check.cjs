@@ -1,0 +1,21 @@
+// Controller headless check with a mocked navigator.getGamepads. Usage: node tools/gamepad-check.cjs [path] [low|high]
+const puppeteer=require('/workspace/pptr/node_modules/puppeteer-core');
+const [,,path='',tier='low']=process.argv;
+(async()=>{const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',headless:'new',args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--enable-unsafe-webgpu']});
+ const p=await b.newPage(); await p.setViewport({width:1280,height:720});
+ const req=[],errs=[]; p.on('request',r=>req.push(r.url())); p.on('pageerror',e=>errs.push(e.message)); p.on('console',m=>{if(m.type()==='error'&&!/favicon|404/.test(m.text()))errs.push(m.text())});
+ await p.evaluateOnNewDocument(()=>{const g={id:'Xbox Wireless Controller (mock)',index:0,connected:true,mapping:'standard',axes:[0,0,0,0],buttons:Array.from({length:17},()=>({pressed:false,value:0})),vibrationActuator:{n:0,playEffect(){this.n++;return Promise.resolve('complete');}}};window.__pad=g;navigator.getGamepads=()=>[g];});
+ const q=path.includes('webgpu')?'&backend=webgl':'';
+ await p.goto(`http://localhost:8811/${path}?gfx=${tier}${q}`,{waitUntil:'load',timeout:90000}); await new Promise(r=>setTimeout(r,25000));
+ const r=await p.evaluate(async()=>{const g=window.__pad,G=window.gielinor,S=ms=>new Promise(r=>setTimeout(r,ms)),o={};
+  const fps=await new Promise(r=>{let n=0,t=performance.now();const f=()=>{n++;if(performance.now()-t<2000)requestAnimationFrame(f);else r(n/2)};requestAnimationFrame(f)}),F=Math.max(1,Math.min(10,30/Math.max(fps,1)));o.fps=fps;
+  const press=async(i,ms=450*F)=>{g.buttons[i]={pressed:true,value:1};await S(ms);g.buttons[i]={pressed:false,value:0};await S(450*F);};
+  await S(1500); o.padClass=document.body.classList.contains('pad'); o.toast=/Controller connected/.test(document.body.innerText);
+  const P=G.pm.mesh.position,x0=P.x,z0=P.z; g.axes=[0,-1,0,0]; await S(2500*F); g.axes=[0,0,0,0]; await S(200); o.moved=Math.hypot(P.x-x0,P.z-z0)>0.5;
+  const yaw0=JSON.stringify(G.rig?.yaw??G.rig?.theta??0); g.axes=[0,0,1,0]; await S(1200*F); g.axes=[0,0,0,0]; o.rotated=JSON.stringify(G.rig?.yaw??G.rig?.theta??0)!==yaw0||G.rig===undefined;
+  await press(9); await S(400*F); const w=document.querySelector('#sidePanel'); o.invOpen=!!w&&!w.classList.contains('collapsed');
+  await press(13); o.focus=!!document.activeElement&&document.activeElement!==document.body; await press(1); await S(300*F); o.invClosed=!document.body.contains(document.activeElement)||document.activeElement===document.body; g.axes=[0,-1,0,0]; const x1=G.pm.mesh.position.x,z1=G.pm.mesh.position.z; await S(2000*F); g.axes=[0,0,0,0]; o.movesAfterMenu=Math.hypot(G.pm.mesh.position.x-x1,G.pm.mesh.position.z-z1)>0.3;
+  await press(0); await press(2); o.noThrow=true; return o;});
+ const hi=req.filter(u=>/textures\/|\.webp|detail_/.test(u));
+ const ok=r.padClass&&r.toast&&r.moved&&r.invOpen&&r.focus&&r.invClosed&&r.movesAfterMenu&&(tier!=='low'||hi.length===0)&&!errs.length;
+ console.log(JSON.stringify({ok,tier,path,r,highAssetRequests:hi.length,errs:errs.slice(0,4)})); await b.close();})();

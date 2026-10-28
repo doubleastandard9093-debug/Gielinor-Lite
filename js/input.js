@@ -1,4 +1,5 @@
 import { actionFor, takeCapture } from './keybinds.js';
+import { setupGamepad } from './gamepad.js';
 // Touch, mouse and keyboard input for the game canvas.
 // Tap = walk/act, long-press or right-click = options menu,
 // one-finger drag = rotate camera, pinch or scroll = zoom.
@@ -122,6 +123,7 @@ export function setupInput(canvas, handlers) {
     btn.addEventListener('pointercancel', off);
   });
 
+  setupGamepad(keys, handlers);
   return {
     keys,
     setDpadVisible(v) { dpad.style.display = v ? 'grid' : 'none'; document.body.classList.toggle('dpad-on', !!v); }
